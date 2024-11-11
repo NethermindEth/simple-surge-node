@@ -50,7 +50,6 @@ services:
       start_period: 10s
     profiles:
       - nethermind_execution_l2
-      - prover
       - proposer
 
   taiko_client_driver:
@@ -78,55 +77,7 @@ services:
       - --jwtSecret=/tmp/jwt/jwtsecret
     profiles:
       - nethermind_execution_l2
-      - prover
       - proposer
-
-  taiko_client_prover_relayer:
-    image: nethsurge/taiko-client:f042ca8
-    container_name: prover-relayer-taiko-l2-client
-    restart: unless-stopped
-    pull_policy: always
-    depends_on:
-      - nethermind_execution_l2
-      - taiko_client_driver
-    networks:
-      - surge
-    ports:
-      - "${PORT_PROVER_SERVER}:9876"
-    entrypoint:
-      - taiko-client
-    command:
-      - prover
-      - --l1.ws=${L1_ENDPOINT_WS}
-      - --l2.ws=ws://execution-taiko-l2-client:8548
-      - --l2.http=http://execution-taiko-l2-client:8547
-      - --taikoL1=${TAIKO_L1_ADDRESS}
-      - --taikoL2=${TAIKO_L2_ADDRESS}
-      - --l1.proverPrivKey=${L1_PROPOSER_PRIVATE_KEY}
-      - --prover.capacity=${PROVER_CAPACITY}
-      - --raiko.host=${SGX_RAIKO_HOST}
-      - --tx.notInMempoolTimeout=30s
-      - --tx.resubmissionTimeout=10s
-      # - --raiko.requestTimeout=${RAIKO_REQUEST_TIMEOUT}
-      # conditioned
-      # - --proverSet ${PROVER_SET}
-      # - --prover.allowance ${TOKEN_ALLOWANCE}
-      # - --prover.minEthBalance ${MIN_ETH_BALANCE}
-      # - --prover.minTaikoTokenBalance ${MIN_TAIKO_BALANCE}
-      # - --prover.proveUnassignedBlocks
-      # - --tx.feeLimitMultiplier ${TX_FEE_LIMIT_MULTIPLIER}
-      # - --tx.feeLimitThreshold ${TX_FEE_LIMIT_THRESHOLD}
-      # - --tx.gasLimit ${TX_GAS_LIMIT}
-      # - --tx.minBaseFee ${TX_MIN_BASEFEE}
-      # - --tx.minTipCap ${TX_MIN_TIP_CAP}
-      # - --tx.notInMempoolTimeout ${TX_NOT_IN_MEMPOOL}
-      # - --tx.numConfirmations ${TX_NUM_CONFIRMATIONS}
-      # - --tx.receiptQueryInterval ${TX_RECEIPT_QUERY}
-      # - --tx.resubmissionTimeout ${TX_RESUBMISSION}
-      # - --tx.safeAbortNonceTooLowCount ${TX_SAFE_ABORT_NONCE_TOO_LOW}
-      # - --tx.sendTimeout ${TX_SEND_TIMEOUT}
-    profiles:
-      - prover
 
   taiko_client_proposer:
     image: nethsurge/taiko-client:f042ca8
