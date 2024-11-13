@@ -1,7 +1,6 @@
 services:
   nethermind_execution_l2:
     image: nethermindeth/nethermind:surge-2b6ed5201
-    # container_name: execution-taiko-l2-client
     restart: unless-stopped
     pull_policy: always
     stop_grace_period: 3m
@@ -83,7 +82,6 @@ services:
 
   taiko_client_proposer:
     image: nethsurge/taiko-client:f042ca8
-    # container_name: proposer-taiko-l2-client
     restart: unless-stopped
     pull_policy: always
     depends_on:
