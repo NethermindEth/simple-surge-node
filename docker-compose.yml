@@ -54,7 +54,6 @@ services:
 
   taiko_client_driver:
     image: nethsurge/taiko-client:f042ca8
-    # container_name: consensus-taiko-l2-client
     restart: unless-stopped
     pull_policy: always
     depends_on:
