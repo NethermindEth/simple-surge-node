@@ -88,10 +88,11 @@ services:
       - --taikoL2=${TAIKO_L2_ADDRESS}
       - --l1.proverPrivKey=${L1_PROPOSER_PRIVATE_KEY}
       - --prover.capacity=${PROVER_CAPACITY}
-      - --raiko.host=${SGX_RAIKO_HOST}
       - --tx.notInMempoolTimeout=30s
       - --tx.resubmissionTimeout=10s
-      # - --raiko.requestTimeout=${RAIKO_REQUEST_TIMEOUT}
+      - --raiko.host.zkvm=${RAIKO_HOST_ZKVM}
+      - --raiko.host=${RAIKO_HOST_ZKVM}
+      - --raiko.requestTimeout=${RAIKO_REQUEST_TIMEOUT}
       # conditioned
       # - --proverSet ${PROVER_SET}
       # - --prover.allowance ${TOKEN_ALLOWANCE}
