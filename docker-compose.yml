@@ -150,8 +150,8 @@ services:
     command:
       - prover
       - --l1.ws=${L1_ENDPOINT_WS}
-      - --l2.ws=ws://l2-nethermind-execution-client:8546
-      - --l2.http=http://l2-nethermind-execution-client:8545
+      - --l2.ws=ws://l2-nethermind-execution-client:8548
+      - --l2.http=http://l2-nethermind-execution-client:8547
       - --taikoL1=${TAIKO_L1_ADDRESS}
       - --taikoL2=${TAIKO_L2_ADDRESS}
       - --l1.proverPrivKey=${L1_PROPOSER_PRIVATE_KEY}
