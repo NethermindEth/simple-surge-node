@@ -254,10 +254,10 @@ services:
       API_V2_ENABLED: true
       ETHEREUM_JSONRPC_VARIANT: nethermind
       MICROSERVICE_SC_VERIFIER_URL: http://taiko-blockscout-verif:8050/api
-      ETHEREUM_JSONRPC_HTTP_URL: http://execution-taiko-l2-client:8547/
+      ETHEREUM_JSONRPC_HTTP_URL: http://l2-nethermind-execution-client:8547/
       INDEXER_DISABLE_PENDING_TRANSACTIONS_FETCHER: true
       SUBNETWORK: Kurtosis
-      ETHEREUM_JSONRPC_TRACE_URL: http://execution-taiko-l2-client:8547/
+      ETHEREUM_JSONRPC_TRACE_URL: http://l2-nethermind-execution-client:8547/
       COIN: ETH
       MICROSERVICE_SC_VERIFIER_TYPE: sc_verifier
       PORT: 4000
