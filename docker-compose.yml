@@ -51,6 +51,7 @@ services:
     profiles:
       - nethermind_execution_l2
       - proposer
+      - prover
       - blockscout
 
   taiko_client_driver:
@@ -79,6 +80,7 @@ services:
     profiles:
       - nethermind_execution_l2
       - proposer
+      - prover
       - blockscout
 
   taiko_client_proposer:
@@ -133,6 +135,7 @@ services:
       # - --tx.sendTimeout ${TX_SEND_TIMEOUT}
     profiles:
       - proposer
+      - prover
       - blockscout
 
   taiko_client_prover_relayer:
