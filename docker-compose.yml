@@ -1,6 +1,6 @@
 services:
   nethermind_execution_l2:
-    image: nethermindeth/nethermind:surge-177139a04
+    image: nethermindeth/nethermind:surge-19b6c6906
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
@@ -111,6 +111,9 @@ services:
       - --tx.notInMempoolTimeout=30s
       - --tx.resubmissionTimeout=10s
       - --epoch.interval=5s
+      - --checkProfitability=false
+      - --allowEmptyBlocks=false
+      # should be false for testnet
       # - --surge.gasNeededForProposingBlock=165000
       # - --surge.gasNeededForProvingBlock=100000
       # - --surge.offChainCosts=50000000000000
@@ -142,7 +145,7 @@ services:
     image: nethsurge/taiko-client:composite-proof-debug
     container_name: l2-taiko-prover-relayer-client
     restart: unless-stopped
-    # pull_policy: always
+    pull_policy: always
     depends_on:
       - nethermind_execution_l2
       - taiko_client_driver
@@ -168,6 +171,8 @@ services:
       - --raiko.host.zkvm=${RAIKO_HOST_ZKVM}
       - --raiko.host=${SGX_RAIKO_HOST}
       - --raiko.requestTimeout=${RAIKO_REQUEST_TIMEOUT}
+      - --verbosity=4
+      - --tx.gasLimit=1000000
       # conditioned
       # - --proverSet ${PROVER_SET}
       # - --prover.allowance ${TOKEN_ALLOWANCE}
