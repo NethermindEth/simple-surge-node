@@ -73,6 +73,8 @@ services:
       - surge
     profiles:
       - set-signal-service
+
 networks:
   surge:
     name: surge-network
+    external: true

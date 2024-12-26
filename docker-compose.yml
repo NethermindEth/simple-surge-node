@@ -224,7 +224,7 @@ services:
     image: prom/prometheus:latest
     restart: unless-stopped
     ports:
-      - ${PORT_PROMETHEUS}:${PORT_PROMETHEUS}
+      - ${PROMETHEUS_PORT}:${PROMETHEUS_PORT}
     depends_on:
       - nethermind_execution_l2
       - taiko_client_driver
@@ -243,7 +243,7 @@ services:
     image: grafana/grafana:latest
     restart: unless-stopped
     ports:
-      - ${PORT_GRAFANA}:${PORT_GRAFANA}
+      - ${GRAFANA_PORT}:${GRAFANA_PORT}
     depends_on:
       - nethermind_execution_l2
       - taiko_client_driver
