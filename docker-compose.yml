@@ -65,6 +65,8 @@ services:
       - ./execution-data-taiko:/data/taiko-geth
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./script:/script
+    env_file:
+      - .env
     entrypoint:
       - /bin/sh
       - -c
@@ -86,7 +88,10 @@ services:
       - nethermind_execution_l2
       - taiko_client_driver
     volumes:
+      - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./script:/script
+    env_file:
+      - .env
     entrypoint:
       - /bin/sh
       - -c
@@ -107,7 +112,10 @@ services:
       - taiko_client_driver
     volumes:
       - ./execution-data-taiko:/data/taiko-geth
+      - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./script:/script
+    env_file:
+      - .env
     entrypoint:
       - /bin/sh
       - -c
