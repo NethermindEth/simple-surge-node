@@ -226,51 +226,63 @@ services:
       - surge
     profiles:
       - blockscout
+  
+prometheus:
+  image: prom/prometheus
+  container_name: prometheus
+  volumes:
+    - ./prometheus/:/etc/prometheus/
+    - ./prometheus_data:/prometheus
+  command:
+    - "--config.file=/etc/prometheus/prometheus.yml"
+    - "--storage.tsdb.path=/prometheus"
+    - "--web.console.libraries=/etc/prometheus/console_libraries"
+    - "--web.console.templates=/etc/prometheus/consoles"
+    - "--storage.tsdb.retention=200h"
+    - "--web.enable-lifecycle"
+  restart: unless-stopped
+  ports:
+    - 9090:9090
+  networks:
+    - surge
+  profiles:
+    - nethermind_execution_l2
+    - prover
+    - proposer
 
-  prometheus:
-    image: prom/prometheus:latest
-    restart: unless-stopped
-    ports:
-      - ${PROMETHEUS_PORT}:${PROMETHEUS_PORT}
-    depends_on:
-      - nethermind_execution_l2
-      - taiko_client_driver
-    volumes:
-      - ./docker/prometheus/l2:/etc/prometheus
-      - prometheus_data:/prometheus
-    command:
-      - --log.level=debug
-      - --config.file=/etc/prometheus/prometheus.yml
-    profiles:
-      - nethermind_execution_l2
-      - prover
-      - proposer
+pushgateway:
+  image: prom/pushgateway
+  container_name: pushgateway
+  restart: unless-stopped
+  ports:
+    - 9091:9091
+  networks:
+    - surge
+  profiles:
+    - nethermind_execution_l2
+    - prover
+    - proposer
 
-  grafana:
-    image: grafana/grafana:latest
-    restart: unless-stopped
-    ports:
-      - ${GRAFANA_PORT}:${GRAFANA_PORT}
-    depends_on:
-      - nethermind_execution_l2
-      - taiko_client_driver
-      - prometheus
-    environment:
-      - GF_PATHS_CONFIG=/etc/grafana/custom/settings.ini
-      - GF_PATHS_PROVISIONING=/etc/grafana/custom/provisioning
-      - GF_LOG_LEVEL=WARN
-    volumes:
-      - ./docker/grafana/custom/settings.ini:/etc/grafana/custom/settings.ini
-      - ./docker/grafana/custom/l2/provisioning/:/etc/grafana/custom/provisioning/
-      - grafana_data:/var/lib/grafana
-    profiles:
-      - nethermind_execution_l2
-      - prover
-      - proposer
+grafana:
+  image: grafana/grafana
+  container_name: grafana
+  restart: unless-stopped
+  ports:
+    - 3000:3000
+  volumes:
+    - ./grafana/config.ini:/etc/grafana/config.ini
+    - ./grafana/provisioning/:/etc/grafana/provisioning/
+  command: >
+    --config /etc/grafana/config.ini
+  networks:
+    - surge
+  profiles:
+    - nethermind_execution_l2
+    - prover
+    - proposer
 
 volumes:
   prometheus_data:
-  grafana_data:
 
 networks:
   surge:
