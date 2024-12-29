@@ -7,3 +7,7 @@ scrape_configs:
     honor_labels: true
     static_configs:
     - targets: ['pushgateway:9091']
+  - job_name: 'nethermind'
+    honor_labels: true
+    static_configs:
+    - targets: ['nethermind_execution_l2:8018']
