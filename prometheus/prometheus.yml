@@ -11,3 +11,7 @@ scrape_configs:
     honor_labels: true
     static_configs:
     - targets: ['nethermind_execution_l2:8018']
+  - job_name: 'taiko-client'
+    honor_labels: true
+    static_configs:
+    - targets: ['taiko_client_driver:6060']

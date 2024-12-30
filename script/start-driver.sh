@@ -11,6 +11,7 @@ if [ "$DISABLE_P2P_SYNC" = "false" ]; then
         --taikoL1 "${TAIKO_L1_ADDRESS}" \
         --taikoL2 "${TAIKO_L2_ADDRESS}" \
         --jwtSecret /tmp/jwt/jwtsecret \
+        --metrics true \
         --p2p.sync \
         --p2p.checkPointSyncUrl "${P2P_SYNC_URL}"
 else
@@ -21,5 +22,6 @@ else
         --l2.auth http://l2-nethermind-execution-client:"${L2_ENGINE_API_PORT}" \
         --taikoL1 "${TAIKO_L1_ADDRESS}" \
         --taikoL2 "${TAIKO_L2_ADDRESS}" \
-        --jwtSecret /tmp/jwt/jwtsecret
+        --jwtSecret /tmp/jwt/jwtsecret \
+        --metrics true
 fi

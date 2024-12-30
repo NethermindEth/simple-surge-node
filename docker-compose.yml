@@ -9,6 +9,7 @@ services:
     depends_on:
       - pushgateway
     volumes:
+      - ./execution-data-taiko:/data/taiko-geth
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./static/chainspec.json:/chainspec.json
     networks:
@@ -68,6 +69,8 @@ services:
       - ./execution-data-taiko:/data/taiko-geth
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./script:/script
+    ports:
+      - 6060:6060
     env_file:
       - .env
     entrypoint:
