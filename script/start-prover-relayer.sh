@@ -12,7 +12,13 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         --prover.capacity ${PROVER_CAPACITY}
         --sgxVerifier ${SGX_VERIFIER}
         --sp1Verifier ${SP1_VERIFIER}
-        --risc0Verifier ${RISC0_VERIFIER}"
+        --risc0Verifier ${RISC0_VERIFIER}
+        --raiko.host ${SGX_RAIKO_HOST}"
+
+    if [ -z "$SGX_RAIKO_HOST" ]; then
+        echo "Error: SGX_RAIKO_HOST must be non-empty"
+        exit 1
+    fi
 
     if [ -z "$L1_ENDPOINT_WS" ]; then
         echo "Error: L1_ENDPOINT_WS must be non-empty"
@@ -27,10 +33,6 @@ if [ "$ENABLE_PROVER" = "true" ]; then
     if [ -z "$L1_PROVER_PRIVATE_KEY" ]; then
         echo "Error: L1_PROVER_PRIVATE_KEY must be non-empty"
         exit 1
-    fi
-
-    if [ -n "$SGX_RAIKO_HOST" ]; then
-        ARGS="${ARGS} --raiko.host ${SGX_RAIKO_HOST}"
     fi
 
     if [ -n "$RAIKO_HOST_ZKVM" ]; then
