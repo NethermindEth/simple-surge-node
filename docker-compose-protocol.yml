@@ -13,7 +13,7 @@ services:
       - sh
       - -c
     command: >
-      'forge script ./script/shared/SetAddress.s.sol --fork-url "${FORK_URL}" --broadcast -vvv'
+      'forge script ./script/shared/SetAddress.s.sol --fork-url "${L1_ENDPOINT_HTTP}" --broadcast -vvv'
   set-signal-service-address-l1:
     image: nethsurge/protocol:surge-docs
     environment:
@@ -28,7 +28,7 @@ services:
       - sh
       - -c
     command: >
-      'forge script ./script/shared/SetAddress.s.sol --fork-url "${FORK_URL}" --broadcast -vvv'
+      'forge script ./script/shared/SetAddress.s.sol --fork-url "${L1_ENDPOINT_HTTP}" --broadcast -vvv'
     networks:
       - surge
     profiles:
@@ -42,13 +42,13 @@ services:
       ADDRESS: ${L1_BRIDGE_ADDRESS}
       NAME: ${BRIDGE_32_BYTES}
       PROXY_ADDRESS: ${L2_SHARED_ADDRESS_MANAGER}
-      FORK_URL: ${L2_ENDPOINT_HTTP}
+      FORK_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
       PRIVATE_KEY: ${OWNER_PRIVATE_KEY}
     entrypoint:
       - sh
       - -c
     command: >
-      'forge script ./script/shared/SetAddress.s.sol --fork-url "${FORK_URL}" --broadcast -vvv'
+      'forge script ./script/shared/SetAddress.s.sol --fork-url http://l2-nethermind-execution-client:${L2_HTTP_PORT} --broadcast -vvv'
     networks:
       - surge
     profiles:
@@ -62,13 +62,13 @@ services:
       ADDRESS: ${L2_SIGNAL_SERVICE_ADDRESS}
       NAME: ${SIGNAL_SERVICE_32_BYTES}
       PROXY_ADDRESS: ${L2_SHARED_ADDRESS_MANAGER}
-      FORK_URL: ${L2_ENDPOINT_HTTP}
+      FORK_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
       PRIVATE_KEY: ${OWNER_PRIVATE_KEY}
     entrypoint:
       - sh
       - -c
     command: >
-      'forge script ./script/shared/SetAddress.s.sol --fork-url "${FORK_URL}" --broadcast -vvv'
+      'forge script ./script/shared/SetAddress.s.sol --fork-url http://l2-nethermind-execution-client:${L2_HTTP_PORT} --broadcast -vvv'
     networks:
       - surge
     profiles:
