@@ -6,8 +6,6 @@ services:
     pull_policy: always
     stop_grace_period: 3m
     tty: true
-    depends_on:
-      - pushgateway
     volumes:
       - ./execution-data-taiko:/data/taiko-geth
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
@@ -29,7 +27,6 @@ services:
       - --Init.DiscoveryEnabled=false
       - --Metrics.Enabled=true
       - --Metrics.ExposePort=${L2_METRICS_PORT}
-      - --Metrics.PushGatewayUrl=http://pushgateway:9091
       - --JsonRpc.Enabled=true
       - --JsonRpc.EnabledModules=[debug,eth,net,web3,txpool,rpc,subscribe,trace,personal,proof,parity,health]
       - --JsonRpc.Host=0.0.0.0
@@ -252,22 +249,7 @@ services:
     networks:
       - surge
     profiles:
-      - nethermind_execution_l2
-      - prover
-      - proposer
-
-  pushgateway:
-    image: prom/pushgateway
-    container_name: pushgateway
-    restart: unless-stopped
-    ports:
-      - 9091:9091
-    networks:
-      - surge
-    profiles:
-      - nethermind_execution_l2
-      - prover
-      - proposer
+      - metrics
 
   grafana:
     image: grafana/grafana
@@ -283,9 +265,7 @@ services:
     networks:
       - surge
     profiles:
-      - nethermind_execution_l2
-      - prover
-      - proposer
+      - metrics
 
 volumes:
   prometheus_data:
