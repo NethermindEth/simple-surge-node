@@ -1,6 +1,6 @@
 services:
   nethermind_execution_l2:
-    image: nethermindeth/nethermind:surge-19b6c6906
+    image: nethermindeth/nethermind:surge-cfc9f7c07
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
