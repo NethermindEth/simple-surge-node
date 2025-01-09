@@ -64,9 +64,9 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         ARGS="${ARGS} --txPool.locals ${TXPOOL_LOCALS}"
     fi
 
-    if [ "$BLOB_ALLOWED" == "true" ]; then
-        ARGS="${ARGS} --l1.blobAllowed"
-    fi
+    # if [ "$BLOB_ALLOWED" == "true" ]; then
+    #     ARGS="${ARGS} --l1.blobAllowed"
+    # fi
 
     # TXMGR Settings
     if [ -n "$TX_FEE_LIMIT_MULTIPLIER" ]; then
