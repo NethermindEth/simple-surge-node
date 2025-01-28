@@ -52,15 +52,15 @@ if [ "$ENABLE_PROVER" = "true" ]; then
     fi
 
     if [ -n "$RAIKO_RISC0_BONSAI" ]; then
-        ARGS="${ARGS} --raiko.risc0Bonsai ${RAIKO_RISC0_BONSAI}"
+        ARGS="${ARGS} --raiko.risc0Bonsai=${RAIKO_RISC0_BONSAI}"
     fi
 
     if [ -n "$RAIKO_RISC0_SNARK" ]; then
-        ARGS="${ARGS} --raiko.risc0Snark ${RAIKO_RISC0_SNARK}"
+        ARGS="${ARGS} --raiko.risc0Snark=${RAIKO_RISC0_SNARK}"
     fi
 
     if [ -n "$RAIKO_RISC0_PROFILE" ]; then
-        ARGS="${ARGS} --raiko.risc0Profile ${RAIKO_RISC0_PROFILE}"
+        ARGS="${ARGS} --raiko.risc0Profile=${RAIKO_RISC0_PROFILE}"
     fi
 
     if [ -n "$RAIKO_RISC0_EXECUTION_PO2" ]; then
@@ -132,7 +132,6 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         ARGS="${ARGS} --tx.sendTimeout ${TX_SEND_TIMEOUT}"
     fi
 
-    exec echo "Executing command: taiko-client proposer ${ARGS}"
     exec taiko-client prover ${ARGS}
 else
     echo "PROVER IS DISABLED"
