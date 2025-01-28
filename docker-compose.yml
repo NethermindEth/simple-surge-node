@@ -51,6 +51,7 @@ services:
       - nethermind_execution_l2
       - proposer
       - prover
+      - multisig
       - blockscout
 
   taiko_client_driver:
@@ -78,6 +79,7 @@ services:
       - nethermind_execution_l2
       - proposer
       - prover
+      - multisig
       - blockscout
 
   taiko_client_prover_relayer:
@@ -101,6 +103,7 @@ services:
       - surge
     profiles:
       - prover
+      - multisig
       - blockscout
 
   taiko_client_proposer:
@@ -125,6 +128,7 @@ services:
       - surge
     profiles:
       - proposer
+      - multisig
       - blockscout
 
   multisig-ui:
