@@ -132,6 +132,7 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         ARGS="${ARGS} --tx.sendTimeout ${TX_SEND_TIMEOUT}"
     fi
 
+    exec echo "Executing command: taiko-client proposer ${ARGS}"
     exec taiko-client prover ${ARGS}
 else
     echo "PROVER IS DISABLED"
