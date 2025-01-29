@@ -208,7 +208,7 @@ services:
       - blockscout
 
   taiko-blockscout:
-    image: blockscout/blockscout:6.10.2
+    image: blockscout/blockscout:6.6.0
     container_name: taiko-blockscout
     restart: unless-stopped
     pull_policy: always
