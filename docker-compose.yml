@@ -183,7 +183,7 @@ services:
       - blockscout
 
   taiko-blockscout-verif:
-    image: ghcr.io/blockscout/smart-contract-verifier:v1.6.0
+    image: ghcr.io/blockscout/smart-contract-verifier:main
     container_name: taiko-blockscout-verif
     restart: unless-stopped
     pull_policy: always
@@ -208,7 +208,7 @@ services:
       - blockscout
 
   taiko-blockscout:
-    image: blockscout/blockscout:6.6.0
+    image: blockscout/blockscout:6.10.2
     container_name: taiko-blockscout
     restart: unless-stopped
     pull_policy: always
@@ -221,7 +221,7 @@ services:
       DATABASE_URL: postgresql://postgres:MyPassword1!@taiko-blockscout-postgres:5432/blockscout
       API_V2_ENABLED: true
       ETHEREUM_JSONRPC_VARIANT: nethermind
-      MICROSERVICE_SC_VERIFIER_URL: http://taiko-blockscout-verif:${VERIFIER_PORT}/api
+      MICROSERVICE_SC_VERIFIER_URL: http://taiko-blockscout-verif:${VERIFIER_PORT}
       ETHEREUM_JSONRPC_HTTP_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}/
       INDEXER_DISABLE_PENDING_TRANSACTIONS_FETCHER: true
       SUBNETWORK: Surge
