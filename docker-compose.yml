@@ -1,6 +1,6 @@
 services:
   nethermind_execution_l2:
-    image: nethermindeth/nethermind:surge-19b6c6906
+    image: nethermindeth/nethermind:surge-fd87ddb09
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
@@ -101,7 +101,7 @@ services:
       - surge
     profiles:
       - prover
-      - blockscout
+      # - blockscout
 
   taiko_client_proposer:
     image: nethsurge/taiko-client:testnet
@@ -125,7 +125,7 @@ services:
       - surge
     profiles:
       - proposer
-      - blockscout
+      # - blockscout
 
   taiko-blockscout-postgres:
     image: postgres:alpine
@@ -159,7 +159,7 @@ services:
       - blockscout
 
   taiko-blockscout-verif:
-    image: ghcr.io/blockscout/smart-contract-verifier:v1.6.0
+    image: ghcr.io/blockscout/smart-contract-verifier:main
     container_name: taiko-blockscout-verif
     restart: unless-stopped
     pull_policy: always
@@ -184,7 +184,7 @@ services:
       - blockscout
 
   taiko-blockscout:
-    image: blockscout/blockscout:6.6.0
+    image: blockscout/blockscout:6.9.0
     container_name: taiko-blockscout
     restart: unless-stopped
     pull_policy: always
