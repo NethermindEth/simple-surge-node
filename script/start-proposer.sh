@@ -11,7 +11,8 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         --jwtSecret /tmp/jwt/jwtsecret
         --l1.proposerPrivKey ${L1_PROPOSER_PRIVATE_KEY}
         --l2.suggestedFeeRecipient ${L2_SUGGESTED_FEE_RECIPIENT}
-        --inbox ${INBOX_ADDRESS}"
+        --aggregator.endpoint ${AGGREGATOR_ENDPOINT}
+        --aggregator.address ${AGGREGATOR_ADDRESS}"
 
     if [ -z "$L1_ENDPOINT_WS" ]; then
         echo "Error: L1_ENDPOINT_WS must be non-empty"

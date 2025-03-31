@@ -135,6 +135,56 @@ services:
       - proposer
       - blockscout
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
+    ports:
+      - ${RABBITMQ_PORT}:${RABBITMQ_PORT}
+      - 15672:15672
+      - 15692:15692
+    volumes:
+      - ./rabbitmq/data/:/var/lib/rabbitmq/
+      - ./rabbitmq/log/:/var/log/rabbitmq
+    networks:
+      - surge
+    profiles:
+      - rabbitmq
+  
+  aggregator-api:
+    image: nethsurge/blob-aggregator:test
+    container_name: aggregator-api
+    restart: unless-stopped
+    pull_policy: always
+    ports:
+      - ${AGGREGATOR_PORT}:${AGGREGATOR_PORT}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "/script/start-aggregator-api.sh"
+    networks:
+      - surge
+    profiles:
+      - aggregator
+
+  aggregator:
+    image: nethsurge/blob-aggregator:test
+    container_name: aggregator
+    restart: unless-stopped
+    pull_policy: always
+    ports:
+      - ${AGGREGATOR_PORT}:${AGGREGATOR_PORT}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "/script/start-aggregator.sh"
+    networks:
+      - surge
+    profiles:
+      - aggregator
+
   taiko-blockscout-postgres:
     image: postgres:alpine
     container_name: taiko-blockscout-postgres
@@ -167,7 +217,7 @@ services:
       - surge
     profiles:
       - blockscout
-
+  
   taiko-blockscout-verif:
     image: ghcr.io/blockscout/smart-contract-verifier:v1.6.0
     container_name: taiko-blockscout-verif
