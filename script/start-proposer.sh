@@ -8,6 +8,9 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         --l2.auth http://l2-nethermind-execution-client:${L2_ENGINE_API_PORT}
         --taikoL1 ${TAIKO_L1_ADDRESS}
         --taikoL2 ${TAIKO_L2_ADDRESS}
+        --taikoToken 0x0000000000000000000000000000000000000000
+        --taikoWrapper 0x0000000000000000000000000000000000000000
+        --forcedInclusionStore 0x0000000000000000000000000000000000000000
         --jwtSecret /tmp/jwt/jwtsecret
         --l1.proposerPrivKey ${L1_PROPOSER_PRIVATE_KEY}
         --l2.suggestedFeeRecipient ${L2_SUGGESTED_FEE_RECIPIENT}
@@ -25,53 +28,29 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         exit 1
     fi
 
-    if [ -n "$CHECK_PROFITABILITY" ]; then
-        ARGS="${ARGS} --checkProfitability=${CHECK_PROFITABILITY}"
-    fi
+    # if [ -n "$CHECK_PROFITABILITY" ]; then
+    #     ARGS="${ARGS} --checkProfitability=${CHECK_PROFITABILITY}"
+    # fi
 
-    if [ -n "$ALLOW_EMPTY_BLOCKS" ]; then
-        ARGS="${ARGS} --allowEmptyBlocks=${ALLOW_EMPTY_BLOCKS}"
-    fi
+    # if [ -n "$ALLOW_EMPTY_BLOCKS" ]; then
+    #     ARGS="${ARGS} --allowEmptyBlocks=${ALLOW_EMPTY_BLOCKS}"
+    # fi
 
-    if [ -n "$SURGE_PROPOSING_BLOCK_GAS" ]; then
-        ARGS="${ARGS} --surge.gasNeededForProposingBlock ${SURGE_PROPOSING_BLOCK_GAS}"
-    fi
+    # if [ -n "$SURGE_PROPOSING_BLOCK_GAS" ]; then
+    #     ARGS="${ARGS} --surge.gasNeededForProposingBlock ${SURGE_PROPOSING_BLOCK_GAS}"
+    # fi
 
-    if [ -n "$SURGE_PROVING_BLOCK_GAS" ]; then
-        ARGS="${ARGS} --surge.gasNeededForProvingBlock ${SURGE_PROVING_BLOCK_GAS}"
-    fi
+    # if [ -n "$SURGE_PROVING_BLOCK_GAS" ]; then
+    #     ARGS="${ARGS} --surge.gasNeededForProvingBlock ${SURGE_PROVING_BLOCK_GAS}"
+    # fi
 
-    if [ -n "$SURGE_OFF_CHAIN_COSTS" ]; then
-        ARGS="${ARGS} --surge.offChainCosts ${SURGE_OFF_CHAIN_COSTS}"
-    fi
+    # if [ -n "$SURGE_OFF_CHAIN_COSTS" ]; then
+    #     ARGS="${ARGS} --surge.offChainCosts ${SURGE_OFF_CHAIN_COSTS}"
+    # fi
 
-    if [ -n "$SURGE_PRICE_FLUCTUATION_MODIFIER" ]; then
-        ARGS="${ARGS} --surge.priceFluctuationModifier ${SURGE_PRICE_FLUCTUATION_MODIFIER}"
-    fi
-
-    if [ -n "$CHECK_PROFITABILITY" ]; then
-        ARGS="${ARGS} --checkProfitability=${CHECK_PROFITABILITY}"
-    fi
-
-    if [ -n "$ALLOW_EMPTY_BLOCKS" ]; then
-        ARGS="${ARGS} --allowEmptyBlocks=${ALLOW_EMPTY_BLOCKS}"
-    fi
-
-    if [ -n "$SURGE_PROPOSING_BLOCK_GAS" ]; then
-        ARGS="${ARGS} --surge.gasNeededForProposingBlock ${SURGE_PROPOSING_BLOCK_GAS}"
-    fi
-
-    if [ -n "$SURGE_PROVING_BLOCK_GAS" ]; then
-        ARGS="${ARGS} --surge.gasNeededForProvingBlock ${SURGE_PROVING_BLOCK_GAS}"
-    fi
-
-    if [ -n "$SURGE_OFF_CHAIN_COSTS" ]; then
-        ARGS="${ARGS} --surge.offChainCosts ${SURGE_OFF_CHAIN_COSTS}"
-    fi
-
-    if [ -n "$SURGE_PRICE_FLUCTUATION_MODIFIER" ]; then
-        ARGS="${ARGS} --surge.priceFluctuationModifier ${SURGE_PRICE_FLUCTUATION_MODIFIER}"
-    fi
+    # if [ -n "$SURGE_PRICE_FLUCTUATION_MODIFIER" ]; then
+    #     ARGS="${ARGS} --surge.priceFluctuationModifier ${SURGE_PRICE_FLUCTUATION_MODIFIER}"
+    # fi
 
     if [ -n "$EPOCH_INTERVAL" ]; then
         ARGS="${ARGS} --epoch.interval ${EPOCH_INTERVAL}"

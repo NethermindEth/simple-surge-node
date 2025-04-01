@@ -1,6 +1,6 @@
 services:
   nethermind_execution_l2:
-    image: nethermindeth/nethermind:surge-fd87ddb09
+    image: nethermindeth/nethermind:master-f16ebbc
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
@@ -56,7 +56,7 @@ services:
       - blockscout
 
   nethermind_execution_l2_extra:
-    image: nethermindeth/nethermind:surge-fd87ddb09
+    image: nethermindeth/nethermind:master-f16ebbc
     container_name: l2-nethermind-execution-client-extra
     restart: unless-stopped
     pull_policy: always
@@ -109,7 +109,7 @@ services:
       - extra
       
   taiko_client_driver:
-    image: nethsurge/taiko-client
+    image: nethsurge/taiko-client:blob
     container_name: l2-taiko-consensus-client
     restart: unless-stopped
     pull_policy: always
@@ -138,7 +138,7 @@ services:
       - blockscout
   
   taiko_client_driver_extra:
-    image: nethsurge/taiko-client
+    image: nethsurge/taiko-client:blob
     container_name: l2-taiko-consensus-client-extra
     restart: unless-stopped
     pull_policy: always
@@ -164,7 +164,7 @@ services:
       - extra
 
   taiko_client_prover_relayer:
-    image: nethsurge/taiko-client
+    image: nethsurge/taiko-client:blob
     container_name: l2-taiko-prover-relayer-client
     restart: unless-stopped
     pull_policy: always
@@ -189,7 +189,7 @@ services:
       - blockscout
 
   taiko_client_proposer:
-    image: nethsurge/taiko-client
+    image: nethsurge/taiko-client:blob
     container_name: l2-taiko-proposer-client
     restart: unless-stopped
     pull_policy: always
@@ -215,7 +215,7 @@ services:
       - blockscout
   
   taiko_client_proposer_extra:
-    image: nethsurge/taiko-client
+    image: nethsurge/taiko-client:blob
     container_name: l2-taiko-proposer-client-extra
     restart: unless-stopped
     pull_policy: always
@@ -262,6 +262,12 @@ services:
     container_name: aggregator-api
     restart: unless-stopped
     pull_policy: always
+    depends_on:
+      - rabbitmq
+    env_file:
+      - .env
+    volumes:
+      - ./script:/script
     ports:
       - ${AGGREGATOR_PORT}:${AGGREGATOR_PORT}
     entrypoint:
@@ -278,8 +284,12 @@ services:
     container_name: aggregator
     restart: unless-stopped
     pull_policy: always
-    ports:
-      - ${AGGREGATOR_PORT}:${AGGREGATOR_PORT}
+    depends_on:
+      - rabbitmq
+    env_file:
+      - .env
+    volumes:
+      - ./script:/script
     entrypoint:
       - /bin/sh
       - -c
@@ -293,11 +303,11 @@ services:
     image: nethsurge/tx-spammer:testnet
     container_name: tx-spammer
     environment:
-      - RPC_URL=http://l2-nethermind-execution-client:8545
-      - TX_FREQUENCY_SECONDS=900
+      - RPC_URL=http://l2-nethermind-execution-client:8547
+      - TX_FREQUENCY_SECONDS=1
       - TX_AMOUNT_WEI=1
       - RECIPIENT_ADDRESS=0xfBDB2A4e5541AfE2d0CD47B3213C722BE75EE022
-      - PRIVATE_KEY=0xffff82ba077701482d12a0ec3c2f5c6e042ef94c5fce510a9309c98a611301c6
+      - PRIVATE_KEY=
     command: ["python", "-u", "tx_spammer.py"]
     networks:
       - surge
@@ -308,16 +318,16 @@ services:
     image: nethsurge/tx-spammer:testnet
     container_name: tx-spammer-extra
     environment:
-      - RPC_URL=http://l2-nethermind-execution-client-extra:8545
-      - TX_FREQUENCY_SECONDS=900
+      - RPC_URL=http://l2-nethermind-execution-client-extra:8549
+      - TX_FREQUENCY_SECONDS=1
       - TX_AMOUNT_WEI=1
       - RECIPIENT_ADDRESS=0xfBDB2A4e5541AfE2d0CD47B3213C722BE75EE022
-      - PRIVATE_KEY=0xffff82ba077701482d12a0ec3c2f5c6e042ef94c5fce510a9309c98a611301c6
+      - PRIVATE_KEY=
     command: ["python", "-u", "tx_spammer.py"]
     networks:
       - surge
     profiles:
-      - tx-spammer
+      - tx-spammer-extra
 
   taiko-blockscout-postgres:
     image: postgres:alpine
@@ -427,50 +437,6 @@ services:
       - surge
     profiles:
       - blockscout
-
-  prometheus:
-    image: prom/prometheus
-    container_name: prometheus
-    volumes:
-      - ./prometheus/:/etc/prometheus/
-      - prometheus_data:/prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--web.console.libraries=/etc/prometheus/console_libraries"
-      - "--web.console.templates=/etc/prometheus/consoles"
-      - "--storage.tsdb.retention.time=200h"
-      - "--web.enable-lifecycle"
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - 9090:9090
-    networks:
-      - surge
-    profiles:
-      - metrics
-
-  grafana:
-    image: grafana/grafana
-    container_name: grafana
-    restart: unless-stopped
-    ports:
-      - 3001:3000
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./grafana/config.ini:/etc/grafana/config.ini
-      - ./grafana/provisioning/:/etc/grafana/provisioning/
-    command: >
-      --config /etc/grafana/config.ini
-    networks:
-      - surge
-    profiles:
-      - metrics
-
-volumes:
-  prometheus_data:
 
 networks:
   surge:
