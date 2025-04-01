@@ -4,10 +4,10 @@ set -eou pipefail
 
 if [ "$ENABLE_PROPOSER" = "true" ]; then
     ARGS="--l1.ws ${L1_ENDPOINT_WS}
-        --l2.http http://l2-nethermind-execution-client:${L2_HTTP_PORT}
-        --l2.auth http://l2-nethermind-execution-client:${L2_ENGINE_API_PORT}
-        --taikoL1 ${TAIKO_L1_ADDRESS}
-        --taikoL2 ${TAIKO_L2_ADDRESS}
+        --l2.http http://l2-nethermind-execution-client-extra:${L2_HTTP_PORT_EXTRA}
+        --l2.auth http://l2-nethermind-execution-client-extra:${L2_ENGINE_API_PORT_EXTRA}
+        --taikoL1 ${TAIKO_L1_ADDRESS_EXTRA}
+        --taikoL2 ${TAIKO_L2_ADDRESS_EXTRA}
         --jwtSecret /tmp/jwt/jwtsecret
         --l1.proposerPrivKey ${L1_PROPOSER_PRIVATE_KEY}
         --l2.suggestedFeeRecipient ${L2_SUGGESTED_FEE_RECIPIENT}
