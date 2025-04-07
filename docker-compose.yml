@@ -1,6 +1,6 @@
 services:
   nethermind_execution_l2:
-    image: nethermindeth/nethermind:surge-19b6c6906
+    image: nethermindeth/nethermind:ccc88f011
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
@@ -56,7 +56,7 @@ services:
       - blockscout
 
   taiko_client_driver:
-    image: nethsurge/taiko-client:surge-testnet
+    image: nethsurge/taiko-client:hoodi
     container_name: l2-taiko-consensus-client
     restart: unless-stopped
     pull_policy: always
@@ -85,7 +85,7 @@ services:
       - blockscout
 
   taiko_client_prover_relayer:
-    image: nethsurge/taiko-client:surge-testnet
+    image: nethsurge/taiko-client:hoodi
     container_name: l2-taiko-prover-relayer-client
     restart: unless-stopped
     pull_policy: always
@@ -110,7 +110,7 @@ services:
       - blockscout
 
   taiko_client_proposer:
-    image: nethsurge/taiko-client:surge-testnet
+    image: nethsurge/taiko-client:hoodi
     container_name: l2-taiko-proposer-client
     restart: unless-stopped
     pull_policy: always
