@@ -43,6 +43,10 @@ services:
       - --log=${NETHERMIND_LOG_LEVEL}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    labels:
+      metrics_enabled: "true"
+      metrics_port: "${L2_METRICS_PORT}"
+      logs_enabled: "true"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8547'"]
       interval: 2s
@@ -78,6 +82,10 @@ services:
       - "/script/start-driver.sh"
     networks:
       - surge
+    labels:
+      metrics_enabled: "true"
+      metrics_port: "6060"
+      logs_enabled: "true"
     profiles:
       - nethermind_execution_l2
       - proposer
@@ -95,6 +103,8 @@ services:
     volumes:
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./script:/script
+    ports:
+      - 6060:6061
     env_file:
       - .env
     extra_hosts:
@@ -105,6 +115,10 @@ services:
       - "/script/start-prover-relayer.sh"
     networks:
       - surge
+    labels:
+      metrics_enabled: "true"
+      metrics_port: "6061"
+      logs_enabled: "true"
     profiles:
       - prover
       - blockscout
@@ -121,6 +135,8 @@ services:
       - ./execution-data-taiko:/data/taiko-nethermind
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./script:/script
+    ports:
+      - 6060:6062
     env_file:
       - .env
     extra_hosts:
@@ -131,6 +147,10 @@ services:
       - "/script/start-proposer.sh"
     networks:
       - surge
+    labels:
+      metrics_enabled: "true"
+      metrics_port: "6062"
+      logs_enabled: "true"
     profiles:
       - proposer
       - blockscout
