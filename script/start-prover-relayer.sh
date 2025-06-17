@@ -9,11 +9,12 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         --taikoL1 ${TAIKO_L1_ADDRESS}
         --taikoL2 ${TAIKO_L2_ADDRESS}
         --l1.proverPrivKey ${L1_PROVER_PRIVATE_KEY}
-        --prover.capacity ${PROVER_CAPACITY}
         --sgxVerifier ${SGX_VERIFIER}
         --sp1Verifier ${SP1_VERIFIER}
         --risc0Verifier ${RISC0_VERIFIER}
         --raiko.host ${SGX_RAIKO_HOST}
+        --prover.sgx.batchSize ${SGX_BATCH_SIZE}
+        --prover.zkvm.batchSize ${ZKVM_BATCH_SIZE}
         --metrics true" 
 
     if [ -z "$SGX_RAIKO_HOST" ]; then
@@ -72,20 +73,12 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         ARGS="${ARGS} --proverSet ${PROVER_SET}"
     fi
 
-    if [ -n "$TOKEN_ALLOWANCE" ]; then
-        ARGS="${ARGS} --prover.allowance ${TOKEN_ALLOWANCE}"
-    fi
-
-    if [ -n "$MIN_ETH_BALANCE" ]; then
-        ARGS="${ARGS} --prover.minEthBalance ${MIN_ETH_BALANCE}"
-    fi
-
-    if [ -n "$MIN_TAIKO_BALANCE" ]; then
-        ARGS="${ARGS} --prover.minTaikoTokenBalance ${MIN_TAIKO_BALANCE}"
-    fi
-
     if [ "$PROVE_UNASSIGNED_BLOCKS" = "true" ]; then
         ARGS="${ARGS} --prover.proveUnassignedBlocks"
+    fi
+
+    if [ -n "$FORCE_BATCH_PROVING_INTERVAL" ]; then
+        ARGS="${ARGS} --prover.forceBatchProvingInterval ${FORCE_BATCH_PROVING_INTERVAL}"
     fi
 
     # TXMGR Settings
@@ -131,6 +124,10 @@ if [ "$ENABLE_PROVER" = "true" ]; then
 
     if [ -n "$TX_SEND_TIMEOUT" ]; then
         ARGS="${ARGS} --tx.sendTimeout ${TX_SEND_TIMEOUT}"
+    fi
+
+    if [ -n "$PROOF_POLLING_INTERVAL" ]; then
+        ARGS="${ARGS} --prover.proofPollingInterval ${PROOF_POLLING_INTERVAL}"
     fi
 
     exec taiko-client prover ${ARGS}

@@ -12,6 +12,8 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         --l1.proposerPrivKey ${L1_PROPOSER_PRIVATE_KEY}
         --l2.suggestedFeeRecipient ${L2_SUGGESTED_FEE_RECIPIENT}
         --inbox ${L1_SIGNAL_SERVICE_ADDRESS}
+        --taikoWrapper ${L1_TAIKO_WRAPPER_ADDRESS}
+        --forcedInclusionStore ${L1_FORCED_INCLUSION_STORE}
         --metrics true"
 
     if [ -z "$L1_ENDPOINT_WS" ]; then
@@ -91,6 +93,14 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
 
     if [ "$BLOB_ALLOWED" == "true" ]; then
         ARGS="${ARGS} --l1.blobAllowed"
+    fi
+
+    if [ "$FALLBACK_TO_CALLDATA" == "true" ]; then
+        ARGS="${ARGS} --l1.fallbackToCalldata"
+    fi
+
+    if [ "$REVERT_PROTECTION" == "true" ]; then
+        ARGS="${ARGS} --l1.revertProtection"
     fi
 
     # TXMGR Settings
