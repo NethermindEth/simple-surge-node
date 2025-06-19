@@ -6,16 +6,14 @@ if [ "$ENABLE_PROVER" = "true" ]; then
     ARGS="--l1.ws ${L1_ENDPOINT_WS}
         --l2.ws ws://l2-nethermind-execution-client:${L2_WS_PORT}
         --l2.http http://l2-nethermind-execution-client:${L2_HTTP_PORT}
-        --taikoL1 ${TAIKO_L1_ADDRESS}
-        --taikoL2 ${TAIKO_L2_ADDRESS}
+        --taikoInbox ${TAIKO_INBOX_ADDRESS}
+        --taikoAnchor ${TAIKO_ANCHOR_ADDRESS}
         --l1.proverPrivKey ${L1_PROVER_PRIVATE_KEY}
-        --sgxVerifier ${SGX_VERIFIER}
-        --sp1Verifier ${SP1_VERIFIER}
-        --risc0Verifier ${RISC0_VERIFIER}
         --raiko.host ${SGX_RAIKO_HOST}
         --prover.sgx.batchSize ${SGX_BATCH_SIZE}
         --prover.zkvm.batchSize ${ZKVM_BATCH_SIZE}
-        --metrics true" 
+        --metrics true
+        --metrics.port 6062"
 
     if [ -z "$SGX_RAIKO_HOST" ]; then
         echo "Error: SGX_RAIKO_HOST must be non-empty"
@@ -45,30 +43,6 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         ARGS="${ARGS} --raiko.requestTimeout ${RAIKO_REQUEST_TIMEOUT}"
     fi
 
-    if [ -n "$RAIKO_SP1_RECURSION" ]; then
-        ARGS="${ARGS} --raiko.sp1Recursion ${RAIKO_SP1_RECURSION}"
-    fi
-
-    if [ -n "$RAIKO_SP1_PROVER" ]; then
-        ARGS="${ARGS} --raiko.sp1Prover ${RAIKO_SP1_PROVER}"
-    fi
-
-    if [ -n "$RAIKO_RISC0_BONSAI" ]; then
-        ARGS="${ARGS} --raiko.risc0Bonsai=${RAIKO_RISC0_BONSAI}"
-    fi
-
-    if [ -n "$RAIKO_RISC0_SNARK" ]; then
-        ARGS="${ARGS} --raiko.risc0Snark=${RAIKO_RISC0_SNARK}"
-    fi
-
-    if [ -n "$RAIKO_RISC0_PROFILE" ]; then
-        ARGS="${ARGS} --raiko.risc0Profile=${RAIKO_RISC0_PROFILE}"
-    fi
-
-    if [ -n "$RAIKO_RISC0_EXECUTION_PO2" ]; then
-        ARGS="${ARGS} --raiko.risc0ExecutionPo2 ${RAIKO_RISC0_EXECUTION_PO2}"
-    fi
-
     if [ -n "$PROVER_SET" ]; then
         ARGS="${ARGS} --proverSet ${PROVER_SET}"
     fi
@@ -79,6 +53,18 @@ if [ "$ENABLE_PROVER" = "true" ]; then
 
     if [ -n "$FORCE_BATCH_PROVING_INTERVAL" ]; then
         ARGS="${ARGS} --prover.forceBatchProvingInterval ${FORCE_BATCH_PROVING_INTERVAL}"
+    fi
+
+    if [ -n "$STARTING_BATCH_ID" ]; then
+        ARGS="${ARGS} --prover.startingBatchId ${STARTING_BATCH_ID}"
+    fi
+
+    if [ -n "$LOCAL_PROPOSER_ADDRESSES" ]; then
+        ARGS="${ARGS} --prover.localProposerAddresses ${LOCAL_PROPOSER_ADDRESSES}"
+    fi
+
+    if [ -n "$BLOCK_CONFIRMATIONS" ]; then
+        ARGS="${ARGS} --prover.blockConfirmations ${BLOCK_CONFIRMATIONS}"
     fi
 
     # TXMGR Settings

@@ -6,15 +6,17 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
     ARGS="--l1.ws ${L1_ENDPOINT_WS}
         --l2.http http://l2-nethermind-execution-client:${L2_HTTP_PORT}
         --l2.auth http://l2-nethermind-execution-client:${L2_ENGINE_API_PORT}
-        --taikoL1 ${TAIKO_L1_ADDRESS}
-        --taikoL2 ${TAIKO_L2_ADDRESS}
+        --taikoInbox ${TAIKO_INBOX_ADDRESS}
+        --taikoAnchor ${TAIKO_ANCHOR_ADDRESS}
         --jwtSecret /tmp/jwt/jwtsecret
         --l1.proposerPrivKey ${L1_PROPOSER_PRIVATE_KEY}
         --l2.suggestedFeeRecipient ${L2_SUGGESTED_FEE_RECIPIENT}
         --inbox ${L1_SIGNAL_SERVICE_ADDRESS}
+        --bridge ${L1_BRIDGE_ADDRESS}
         --taikoWrapper ${L1_TAIKO_WRAPPER_ADDRESS}
         --forcedInclusionStore ${L1_FORCED_INCLUSION_STORE}
-        --metrics true"
+        --metrics true
+        --metrics.port 6061"
 
     if [ -z "$L1_ENDPOINT_WS" ]; then
         echo "Error: L1_ENDPOINT_WS must be non-empty"
@@ -80,6 +82,18 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
 
     if [ -n "$EPOCH_MIN_TIP" ]; then
         ARGS="${ARGS} --epoch.minTip ${EPOCH_MIN_TIP}"
+    fi
+
+    if [ -n "$EPOCH_MIN_PROPOSING_INTERVAL" ]; then
+        ARGS="${ARGS} --epoch.minProposingInterval ${EPOCH_MIN_PROPOSING_INTERVAL}"
+    fi
+
+    if [ -n "$ALLOW_ZERO_TIP_INTERVAL" ]; then
+        ARGS="${ARGS} --epoch.allowZeroTipInterval ${ALLOW_ZERO_TIP_INTERVAL}"
+    fi
+
+    if [ -n "$MAX_TX_LISTS_PER_EPOCH" ]; then
+        ARGS="${ARGS} --txPool.maxTxListsPerEpoch ${MAX_TX_LISTS_PER_EPOCH}"
     fi
 
     if [ -n "$PROVER_SET" ]; then

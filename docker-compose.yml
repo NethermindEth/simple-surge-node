@@ -1,13 +1,13 @@
 services:
   nethermind_execution_l2:
-    image: nethermindeth/nethermind:master-fd56a42
+    image: nethermind/nethermind:latest
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
     stop_grace_period: 3m
     tty: true
     volumes:
-      - ./execution-data-taiko:/data/taiko-nethermind
+      - ./execution-data:/data/surge
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ${CHAINSPEC_PATH_ON_HOST:-./static/hoodi/chainspec.json}:/chainspec.json
     networks:
@@ -21,7 +21,7 @@ services:
       - ${L2_ENGINE_API_PORT}:${L2_ENGINE_API_PORT}
     command:
       - --config=none
-      - --datadir=/data/taiko-nethermind
+      - --datadir=/data/surge
       - --Init.ChainSpecPath=/chainspec.json
       - --Init.GenesisHash=${L2_GENESIS_HASH}
       - --Init.DiscoveryEnabled=false
@@ -60,14 +60,14 @@ services:
       - blockscout
 
   taiko_client_driver:
-    image: nethsurge/taiko-client:surge-testnet
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-26b1c3b
     container_name: l2-taiko-consensus-client
     restart: unless-stopped
     pull_policy: always
     depends_on:
       - nethermind_execution_l2
     volumes:
-      - ./execution-data-taiko:/data/taiko-nethermind
+      - ./execution-data:/data/surge
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./script:/script
     ports:
@@ -92,39 +92,8 @@ services:
       - prover
       - blockscout
 
-  taiko_client_prover_relayer:
-    image: nethsurge/taiko-client:surge-testnet
-    container_name: l2-taiko-prover-relayer-client
-    restart: unless-stopped
-    pull_policy: always
-    depends_on:
-      - nethermind_execution_l2
-      - taiko_client_driver
-    volumes:
-      - ./static/jwtsecret:/tmp/jwt/jwtsecret
-      - ./script:/script
-    ports:
-      - 6060:6061
-    env_file:
-      - .env
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    entrypoint:
-      - /bin/sh
-      - -c
-      - "/script/start-prover-relayer.sh"
-    networks:
-      - surge
-    labels:
-      metrics_enabled: "true"
-      metrics_port: "6061"
-      logs_enabled: "true"
-    profiles:
-      - prover
-      - blockscout
-
   taiko_client_proposer:
-    image: nethsurge/taiko-client:surge-testnet
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-26b1c3b
     container_name: l2-taiko-proposer-client
     restart: unless-stopped
     pull_policy: always
@@ -132,11 +101,11 @@ services:
       - nethermind_execution_l2
       - taiko_client_driver
     volumes:
-      - ./execution-data-taiko:/data/taiko-nethermind
+      - ./execution-data:/data/taiko-nethermind
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./script:/script
     ports:
-      - 6060:6062
+      - 6061:6061
     env_file:
       - .env
     extra_hosts:
@@ -149,10 +118,41 @@ services:
       - surge
     labels:
       metrics_enabled: "true"
-      metrics_port: "6062"
+      metrics_port: "6061"
       logs_enabled: "true"
     profiles:
       - proposer
+      - blockscout
+  
+  taiko_client_prover_relayer:
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-26b1c3b
+    container_name: l2-taiko-prover-relayer-client
+    restart: unless-stopped
+    pull_policy: always
+    depends_on:
+      - nethermind_execution_l2
+      - taiko_client_driver
+    volumes:
+      - ./static/jwtsecret:/tmp/jwt/jwtsecret
+      - ./script:/script
+    ports:
+      - 6062:6062
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "/script/start-prover-relayer.sh"
+    networks:
+      - surge
+    labels:
+      metrics_enabled: "true"
+      metrics_port: "6062"
+      logs_enabled: "true"
+    profiles:
+      - prover
       - blockscout
 
   taiko-blockscout-postgres:
