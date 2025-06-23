@@ -44,9 +44,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     labels:
-      metrics_enabled: "true"
-      metrics_port: "${L2_METRICS_PORT}"
-      logs_enabled: "true"
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "${L2_METRICS_PORT}"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8547'"]
       interval: 2s
@@ -83,9 +84,10 @@ services:
     networks:
       - surge
     labels:
-      metrics_enabled: "true"
-      metrics_port: "6060"
-      logs_enabled: "true"
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6060"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - nethermind_execution_l2
       - proposer
@@ -117,9 +119,10 @@ services:
     networks:
       - surge
     labels:
-      metrics_enabled: "true"
-      metrics_port: "6061"
-      logs_enabled: "true"
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6061"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - proposer
       - blockscout
@@ -148,9 +151,10 @@ services:
     networks:
       - surge
     labels:
-      metrics_enabled: "true"
-      metrics_port: "6062"
-      logs_enabled: "true"
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6062"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - prover
       - blockscout
