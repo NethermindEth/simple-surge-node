@@ -9,7 +9,7 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         --taikoInbox ${TAIKO_INBOX_ADDRESS}
         --taikoAnchor ${TAIKO_ANCHOR_ADDRESS}
         --l1.proverPrivKey ${L1_PROVER_PRIVATE_KEY}
-        --raiko.host ${SGX_RAIKO_HOST}
+        --raiko.host.sgx ${SGX_RAIKO_HOST}
         --prover.sgx.batchSize ${SGX_BATCH_SIZE}
         --prover.zkvm.batchSize ${ZKVM_BATCH_SIZE}
         --metrics true
@@ -34,7 +34,7 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         echo "Error: L1_PROVER_PRIVATE_KEY must be non-empty"
         exit 1
     fi
-
+    
     if [ -n "$RAIKO_HOST_ZKVM" ]; then
         ARGS="${ARGS} --raiko.host.zkvm ${RAIKO_HOST_ZKVM}"
     fi
