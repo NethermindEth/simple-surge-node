@@ -177,6 +177,9 @@ services:
       - "--sk=0x94eb3102993b41ec55c241060f47daa0f6372e2e3ad7e91612ae36c364042e44"
     networks:
       - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - spammer
 
@@ -210,6 +213,9 @@ services:
       - "max_connections=1000"
     networks:
       - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - blockscout
 
@@ -233,6 +239,9 @@ services:
       - "./smart-contract-verifier-server"
     networks:
       - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - blockscout
 
@@ -281,6 +290,9 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - blockscout
 
@@ -307,7 +319,7 @@ services:
       NEXT_PUBLIC_NETWORK_NAME: Surge
       NEXT_PUBLIC_APP_HOST: 127.0.0.1
       NEXT_PUBLIC_API_PROTOCOL: http
-      NEXT_PUBLIC_API_HOST: localhost:${BLOCKSCOUT_PORT}
+      NEXT_PUBLIC_API_HOST: ${BLOCKSCOUT_API_HOST}:${BLOCKSCOUT_PORT}
       NEXT_PUBLIC_USE_NEXT_JS_PROXY: false
       NEXT_PUBLIC_NETWORK_RPC_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
       NEXT_PUBLIC_IS_TESTNET: true
@@ -323,6 +335,9 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - blockscout
 
