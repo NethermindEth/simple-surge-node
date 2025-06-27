@@ -1,6 +1,6 @@
 services:
   nethermind_execution_client:
-    image: nethermind/nethermind:latest
+    image: nethermindeth/nethermind:taiko-new-apis
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
