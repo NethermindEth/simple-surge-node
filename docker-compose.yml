@@ -62,7 +62,7 @@ services:
       - blockscout
 
   taiko_client_driver:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-988aead
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-2728dac
     container_name: l2-taiko-consensus-client
     restart: unless-stopped
     pull_policy: always
@@ -97,7 +97,7 @@ services:
       - blockscout
 
   taiko_client_proposer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-988aead
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-2728dac
     container_name: l2-taiko-proposer-client
     restart: unless-stopped
     pull_policy: always
@@ -131,7 +131,7 @@ services:
       - blockscout
   
   taiko_client_prover_relayer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-988aead
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-2728dac
     container_name: l2-taiko-prover-relayer-client
     restart: unless-stopped
     pull_policy: always
