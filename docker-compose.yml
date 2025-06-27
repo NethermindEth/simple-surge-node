@@ -1,5 +1,5 @@
 services:
-  nethermind_execution_l2:
+  nethermind_execution_client:
     image: nethermind/nethermind:latest
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
@@ -55,18 +55,19 @@ services:
       retries: 15
       start_period: 10s
     profiles:
-      - nethermind_execution_l2
+      - driver
       - proposer
       - prover
+      - spammer
       - blockscout
 
   taiko_client_driver:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-17b01cd
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-988aead
     container_name: l2-taiko-consensus-client
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_l2
+      - nethermind_execution_client
     volumes:
       - ./execution-data:/data/surge
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
@@ -89,18 +90,19 @@ services:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
-      - nethermind_execution_l2
+      - driver
       - proposer
       - prover
+      - spammer
       - blockscout
 
   taiko_client_proposer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-17b01cd
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-988aead
     container_name: l2-taiko-proposer-client
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_l2
+      - nethermind_execution_client
       - taiko_client_driver
     volumes:
       - ./execution-data:/data/taiko-nethermind
@@ -125,15 +127,16 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - proposer
+      - spammer
       - blockscout
   
   taiko_client_prover_relayer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-17b01cd
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-988aead
     container_name: l2-taiko-prover-relayer-client
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_l2
+      - nethermind_execution_client
       - taiko_client_driver
     volumes:
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
@@ -157,15 +160,33 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - prover
-      - blockscout
-
-  taiko-blockscout-postgres:
-    image: postgres:alpine
-    container_name: taiko-blockscout-postgres
+ 
+  tx-spammer:
+    image: ethpandaops/tx-fuzz:master
+    container_name: l2-tx-spammer
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_l2
+      - nethermind_execution_client
+      - taiko_client_driver
+      - taiko_client_proposer
+    command:
+      - "spam"
+      - "--rpc=http://l2-nethermind-execution-client:${L2_HTTP_PORT}"
+      - "--gaslimit=10000000"
+      - "--sk=0x94eb3102993b41ec55c241060f47daa0f6372e2e3ad7e91612ae36c364042e44"
+    networks:
+      - surge
+    profiles:
+      - spammer
+
+  blockscout-postgres:
+    image: postgres:alpine
+    container_name: l2-blockscout-postgres
+    restart: unless-stopped
+    pull_policy: always
+    depends_on:
+      - nethermind_execution_client
       - taiko_client_driver
     volumes:
       - ./blockscout-postgres-data:/var/lib/postgresql/data
@@ -178,9 +199,9 @@ services:
       PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       GOSU_VERSION: 1.17
       PG_MAJOR: 17
-      PG_VERSION: 17.0
-      PG_SHA256: 7e276131c0fdd6b62588dbad9b3bb24b8c3498d5009328dba59af16e819109de
-      DOCKER_PG_LLVM_DEPS: llvm15-dev \t\tclang15
+      PG_VERSION: 17.5
+      PG_SHA256: fcb7ab38e23b264d1902cb25e6adafb4525a6ebcbd015434aeef9eda80f528d8
+      DOCKER_PG_LLVM_DEPS: llvm19-dev \t\tclang19
       PGDATA: /var/lib/postgresql/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -192,24 +213,20 @@ services:
     profiles:
       - blockscout
 
-  taiko-blockscout-verif:
-    image: ghcr.io/blockscout/smart-contract-verifier:v1.6.0
-    container_name: taiko-blockscout-verif
+  blockscout-verifer:
+    image: ghcr.io/blockscout/smart-contract-verifier:latest
+    container_name: l2-blockscout-verif
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_l2
+      - nethermind_execution_client
       - taiko_client_driver
     ports:
       - ${VERIFIER_PORT}:${VERIFIER_PORT}
     environment:
       SMART_CONTRACT_VERIFIER__SERVER__HTTP__ADDR: 0.0.0.0:${VERIFIER_PORT}
       PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-      SMART_CONTRACT_VERIFIER__SOLIDITY__COMPILERS_DIR: /tmp/solidity-compilers
-      SMART_CONTRACT_VERIFIER__SOLIDITY__REFRESH_VERSIONS_SCHEDULE: 0 0 * * * * *
       APP_USER: app
-      SMART_CONTRACT_VERIFIER__SOLIDITY__ENABLED: true
-      SMART_CONTRACT_VERIFIER__SOLIDITY__FETCHER__LIST__LIST_URL: https://solc-bin.ethereum.org/linux-amd64/list.json
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command:
@@ -219,44 +236,43 @@ services:
     profiles:
       - blockscout
 
-  taiko-blockscout:
-    image: blockscout/blockscout:6.6.0
-    container_name: taiko-blockscout
+  blockscout:
+    image: ghcr.io/blockscout/blockscout:latest
+    container_name: l2-blockscout
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_l2
+      - nethermind_execution_client
       - taiko_client_driver
     ports:
       - ${BLOCKSCOUT_PORT}:${BLOCKSCOUT_PORT}
     environment:
-      DATABASE_URL: postgresql://postgres:MyPassword1!@taiko-blockscout-postgres:5432/blockscout
-      API_V2_ENABLED: true
-      ETHEREUM_JSONRPC_VARIANT: nethermind
-      MICROSERVICE_SC_VERIFIER_URL: http://taiko-blockscout-verif:${VERIFIER_PORT}/api
-      ETHEREUM_JSONRPC_HTTP_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}/
-      INDEXER_DISABLE_PENDING_TRANSACTIONS_FETCHER: true
-      SUBNETWORK: Surge
-      ETHEREUM_JSONRPC_TRACE_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}/
-      COIN: ETH
-      MICROSERVICE_SC_VERIFIER_TYPE: sc_verifier
-      PORT: ${BLOCKSCOUT_PORT}
-      MICROSERVICE_SC_VERIFIER_ENABLED: true
+      MICROSERVICE_SC_VERIFIER_URL: http://l2-blockscout-verif:${VERIFIER_PORT}/api
       ECTO_USE_SSL: false
+      ETHEREUM_JSONRPC_HTTP_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}/
+      DATABASE_URL: postgresql://postgres:MyPassword1!@l2-blockscout-postgres:5432/blockscout
+      ETHEREUM_JSONRPC_VARIANT: nethermind
+      ETHEREUM_JSONRPC_TRACE_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}/
+      SUBNETWORK: Surge
+      API_V2_ENABLED: true
+      PORT: ${BLOCKSCOUT_PORT}
+      NETWORK: Surge
+      MICROSERVICE_SC_VERIFIER_TYPE: sc_verifier
+      INDEXER_DISABLE_PENDING_TRANSACTIONS_FETCHER: true
+      COIN: ETH
+      MICROSERVICE_SC_VERIFIER_ENABLED: true
       SECRET_KEY_BASE: 56NtB48ear7+wMSf0IQuWDAAazhpb31qyc7GiyspBP2vh7t5zlCsF5QDv76chXeN
-      CHAIN_ID: ${L2_CHAIN_ID}
-      SHOW_TESTNET_LABEL: false
-      DISABLE_EXCHANGE_RATES: true
-      DISABLE_KNOWN_TOKENS: true
-      INDEXER_INTERNAL_TRANSACTIONS_BATCH_SIZE: 10000
-      INDEXER_HIDE_INDEXING_PROGRESS_ALERT: false
       PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-      RELEASE_VERSION: 6.6.0
+      DISABLE_WEBAPP: true
+      ADMIN_PANEL_ENABLED: false
+      DISABLE_API:
+      API_V1_READ_METHODS_DISABLED:
+      API_V1_WRITE_METHODS_DISABLED:
       CHAIN_TYPE:
       BRIDGED_TOKENS_ENABLED:
-      BLOCKSCOUT_VERSION: v6.6.0-beta
-      SMART_CONTRACT_VERIFIER__SOLIDITY__ENABLED: true
-      SMART_CONTRACT_VERIFIER__SOLIDITY__FETCHER__LIST__LIST_URL: https://solc-bin.ethereum.org/linux-amd64/list.json
+      API_GRAPHQL_MAX_COMPLEXITY:
+      RELEASE_VERSION: 8.1.1
+      BLOCKSCOUT_VERSION: v8.1.1
     command:
       - "/bin/sh"
       - "-c"
@@ -268,49 +284,47 @@ services:
     profiles:
       - blockscout
 
-  prometheus:
-    image: prom/prometheus
-    container_name: prometheus
-    volumes:
-      - ./prometheus/:/etc/prometheus/
-      - prometheus_data:/prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--web.console.libraries=/etc/prometheus/console_libraries"
-      - "--web.console.templates=/etc/prometheus/consoles"
-      - "--storage.tsdb.retention.time=200h"
-      - "--web.enable-lifecycle"
+  blockscout-frontend:
+    image: ghcr.io/blockscout/frontend:latest
+    container_name: l2-blockscout-frontend
     restart: unless-stopped
+    pull_policy: always
+    depends_on:
+      - nethermind_execution_client
+      - taiko_client_driver
+    ports:
+      - ${BLOCKSCOUT_FRONTEND_PORT}:${BLOCKSCOUT_FRONTEND_PORT}
+    environment:
+      PORT: ${BLOCKSCOUT_FRONTEND_PORT}
+      NEXT_PUBLIC_NETWORK_ICON: https://docs.surge.wtf/img/favicon.ico
+      NEXT_PUBLIC_NETWORK_ID: ${L2_CHAIN_ID}
+      NEXT_PUBLIC_APP_PROTOCOL: http
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_AD_BANNER_PROVIDER: none
+      NEXT_PUBLIC_HAS_BEACON_CHAIN: false
+      NEXT_PUBLIC_GAS_TRACKER_ENABLED: true
+      # NEXT_PUBLIC_DISABLE_EXCHANGE_RATES: true
+      NEXT_PUBLIC_NETWORK_NAME: Surge
+      NEXT_PUBLIC_APP_HOST: 127.0.0.1
+      NEXT_PUBLIC_API_PROTOCOL: http
+      NEXT_PUBLIC_API_HOST: localhost:${BLOCKSCOUT_PORT}
+      NEXT_PUBLIC_USE_NEXT_JS_PROXY: false
+      NEXT_PUBLIC_NETWORK_RPC_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
+      NEXT_PUBLIC_IS_TESTNET: true
+      NEXT_PUBLIC_API_WEBSOCKET_PROTOCOL: ws
+      NEXT_PUBLIC_APP_PORT: ${BLOCKSCOUT_FRONTEND_PORT}
+      NEXT_PUBLIC_NETWORK_VERIFICATION_TYPE: validation
+      NEXT_PUBLIC_AD_TEXT_PROVIDER: none
+      PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      NODE_VERSION: 22.11.0
+      YARN_VERSION: 1.22.22
+      ENVS_PRESET:
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    ports:
-      - 9090:9090
     networks:
       - surge
     profiles:
-      - metrics
-
-  grafana:
-    image: grafana/grafana
-    container_name: grafana
-    restart: unless-stopped
-    ports:
-      - 3001:3000
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./grafana/config.ini:/etc/grafana/config.ini
-      - ./grafana/provisioning/:/etc/grafana/provisioning/
-    command: >
-      --config /etc/grafana/config.ini
-    networks:
-      - surge
-    profiles:
-      - metrics
-
-volumes:
-  prometheus_data:
+      - blockscout
 
 networks:
   surge:
