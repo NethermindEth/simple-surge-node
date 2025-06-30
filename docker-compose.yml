@@ -1,4 +1,35 @@
 services:
+  surge-l1-deployer:
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-2e9ab86
+    container_name: surge-l1-deployer
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+    entrypoint:
+      - /bin/sh
+      - -c
+      - sleep infinity
+    command:
+      - ./script/layer1/surge/deploy_surge_l1.sh
+    env_file:
+      - .env
+    environment:
+      FORK_URL: ${L1_ENDPOINT_HTTP}
+      BROADCAST: ${BROADCAST:-false}
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'test -f /app/deployments/setup_l1.json'"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 10s
+    profiles:
+      - l1-deployer
+
   nethermind_execution_client:
     image: nethermindeth/nethermind:taiko-new-api-2
     container_name: l2-nethermind-execution-client
@@ -60,6 +91,7 @@ services:
       - prover
       - spammer
       - blockscout
+      - l2-deployer
 
   taiko_client_driver:
     image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-2728dac
@@ -67,7 +99,9 @@ services:
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_client
+      nethermind_execution_client:
+        condition: service_healthy
+        restart: true
     volumes:
       - ./execution-data:/data/surge
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
@@ -95,6 +129,7 @@ services:
       - prover
       - spammer
       - blockscout
+      - l2-deployer
 
   taiko_client_proposer:
     image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-2728dac
@@ -129,6 +164,7 @@ services:
       - proposer
       - spammer
       - blockscout
+      - l2-deployer
   
   taiko_client_prover_relayer:
     image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-2728dac
@@ -309,7 +345,7 @@ services:
     environment:
       PORT: ${BLOCKSCOUT_FRONTEND_PORT}
       NEXT_PUBLIC_NETWORK_ICON: https://docs.surge.wtf/img/favicon.ico
-      NEXT_PUBLIC_NETWORK_ID: ${L2_CHAIN_ID}
+      NEXT_PUBLIC_NETWORK_ID: ${L2_CHAINID}
       NEXT_PUBLIC_APP_PROTOCOL: http
       HOSTNAME: 0.0.0.0
       NEXT_PUBLIC_AD_BANNER_PROVIDER: none
@@ -340,6 +376,35 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - blockscout
+
+  surge-l2-deployer:
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-2e9ab86
+    container_name: surge-l2-deployer
+    pull_policy: always
+    depends_on:
+      - nethermind_execution_client
+      - taiko_client_driver
+      - taiko_client_proposer
+    entrypoint:
+     - ./script/layer2/surge/setup_surge_l2.sh
+    env_file:
+      - .env
+    environment:
+      FORK_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
+      BROADCAST: ${BROADCAST:-false}
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'test -f /app/deployments/setup_l2.json'"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 10s
+    profiles:
+      - l2-deployer
 
 networks:
   surge:

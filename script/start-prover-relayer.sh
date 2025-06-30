@@ -6,8 +6,8 @@ if [ "$ENABLE_PROVER" = "true" ]; then
     ARGS="--l1.ws ${L1_ENDPOINT_WS}
         --l2.ws ws://l2-nethermind-execution-client:${L2_WS_PORT}
         --l2.http http://l2-nethermind-execution-client:${L2_HTTP_PORT}
-        --taikoInbox ${TAIKO_INBOX_ADDRESS}
-        --taikoAnchor ${TAIKO_ANCHOR_ADDRESS}
+        --taikoInbox ${TAIKO_INBOX}
+        --taikoAnchor ${TAIKO_ANCHOR}
         --l1.proverPrivKey ${L1_PROVER_PRIVATE_KEY}
         --raiko.host.sgx ${SGX_RAIKO_HOST}
         --prover.sgx.batchSize ${SGX_BATCH_SIZE}
