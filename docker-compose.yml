@@ -8,13 +8,10 @@ services:
     entrypoint:
       - /bin/sh
       - -c
-      - sleep infinity
-    command:
-      - ./script/layer1/surge/deploy_surge_l1.sh
+      - /deployer/deploy-surge-l1.sh
     env_file:
       - .env
     environment:
-      FORK_URL: ${L1_ENDPOINT_HTTP}
       BROADCAST: ${BROADCAST:-false}
     networks:
       - surge
@@ -29,6 +26,29 @@ services:
       start_period: 10s
     profiles:
       - l1-deployer
+  
+  surge-bond-depositer:
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-2e9ab86
+    container_name: surge-bond-depositer
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/deposit-bond.sh
+    env_file:
+      - .env
+    environment:
+      BOND_AMOUNT: ${BROADCAST:-1000000000000000000}
+      GAS_LIMIT: ${GAS_LIMIT:-100000}
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - bond-depositer
 
   nethermind_execution_client:
     image: nethermindeth/nethermind:taiko-new-api-2
