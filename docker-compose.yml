@@ -12,6 +12,7 @@ services:
     env_file:
       - .env
     environment:
+      SHOULD_SETUP_VERIFIERS: ${SHOULD_SETUP_VERIFIERS:-false}
       BROADCAST: ${BROADCAST:-false}
     networks:
       - surge
