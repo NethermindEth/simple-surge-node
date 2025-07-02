@@ -94,7 +94,7 @@ services:
       - l2-deployer
 
   taiko_client_driver:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-2728dac
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-056cf10
     container_name: l2-taiko-consensus-client
     restart: unless-stopped
     pull_policy: always
@@ -132,7 +132,7 @@ services:
       - l2-deployer
 
   taiko_client_proposer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-2728dac
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-056cf10
     container_name: l2-taiko-proposer-client
     restart: unless-stopped
     pull_policy: always
@@ -167,7 +167,7 @@ services:
       - l2-deployer
   
   taiko_client_prover_relayer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-2728dac
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-056cf10
     container_name: l2-taiko-prover-relayer-client
     restart: unless-stopped
     pull_policy: always
