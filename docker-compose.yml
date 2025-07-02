@@ -1,6 +1,6 @@
 services:
   surge-l1-deployer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-2e9ab86
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
     container_name: surge-l1-deployer
     pull_policy: always
     volumes:
@@ -378,7 +378,7 @@ services:
       - blockscout
 
   surge-l2-deployer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-2e9ab86
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
     container_name: surge-l2-deployer
     pull_policy: always
     depends_on:
