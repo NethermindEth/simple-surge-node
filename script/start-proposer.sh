@@ -13,8 +13,8 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         --l2.suggestedFeeRecipient ${L2_SUGGESTED_FEE_RECIPIENT}
         --inbox ${L1_SIGNAL_SERVICE}
         --bridge ${L1_BRIDGE}
-        --taikoWrapper ${L1_TAIKO_WRAPPER}
-        --forcedInclusionStore ${L1_FORCED_INCLUSION_STORE}
+        --taikoWrapper ${TAIKO_WRAPPER}
+        --forcedInclusionStore ${FORCED_INCLUSION_STORE}
         --metrics true
         --metrics.port 6061"
 

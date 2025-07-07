@@ -1,10 +1,11 @@
 services:
   surge-l1-deployer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-2e9ab86
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
     container_name: surge-l1-deployer
     pull_policy: always
     volumes:
       - ./deployer:/deployer
+      - ./deployment:/deployment
     entrypoint:
       - /bin/sh
       - -c
@@ -12,6 +13,7 @@ services:
     env_file:
       - .env
     environment:
+      USE_TIMELOCKED_OWNER: ${USE_TIMELOCKED_OWNER:-false}
       SHOULD_SETUP_VERIFIERS: ${SHOULD_SETUP_VERIFIERS:-false}
       BROADCAST: ${BROADCAST:-false}
     networks:
@@ -20,16 +22,80 @@ services:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'test -f /app/deployments/setup_l1.json'"]
+      test: ["CMD-SHELL", "bash -c 'test -f /app/deployments/deploy_l1.json'"]
       interval: 2s
       timeout: 2s
       retries: 15
       start_period: 10s
     profiles:
       - l1-deployer
-  
+
+  surge-sgx-register:
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
+    container_name: surge-sgx-register
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/register-sgx.sh
+    env_file:
+      - .env
+    environment:
+      BROADCAST: ${BROADCAST:-false}
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - sgx-register
+
+  surge-risc0-register:
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
+    container_name: surge-risc0-register
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/register-r0.sh
+    env_file:
+      - .env
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - risc0-register
+
+  surge-sp1-register:
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
+    container_name: surge-sp1-register
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/register-sp1.sh
+    env_file:
+      - .env
+    environment:
+      GAS_LIMIT: ${GAS_LIMIT:-100000}
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - sp1-register
+
   surge-bond-depositer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-2e9ab86
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
     container_name: surge-bond-depositer
     pull_policy: always
     volumes:
@@ -41,6 +107,7 @@ services:
     env_file:
       - .env
     environment:
+      TAIKO_INBOX: ${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
       BOND_AMOUNT: ${BROADCAST:-1000000000000000000}
       GAS_LIMIT: ${GAS_LIMIT:-100000}
     networks:
@@ -50,6 +117,40 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - bond-depositer
+
+  surge-l2-deployer:
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
+    container_name: surge-l2-deployer
+    pull_policy: always
+    depends_on:
+      - nethermind_execution_client
+      - taiko_client_driver
+      - taiko_client_proposer
+    entrypoint:
+     - ./script/layer2/surge/setup_surge_l2.sh
+    env_file:
+      - .env
+    environment:
+      L1_BRIDGE: ${L1_BRIDGE:-0x75689954C665396167a6D372aC9154814FD30Fa4}
+      L1_ERC1155_VAULT: ${L1_ERC1155_VAULT:-0x2dEf0967ccF7F1C5088Afe17ba0eF3D54409c503}
+      L1_ERC20_VAULT: ${L1_ERC20_VAULT:-0x56e51543785bb41f8f6244aaF09a410d2C22D9A4}
+      L1_ERC721_VAULT: ${L1_ERC721_VAULT:-0xB00AF8098B4d949AC0C8bfcf5eaCd4FF07d05D28}
+      L1_TIMELOCK_CONTROLLER: ${L1_TIMELOCK_CONTROLLER:-0x0000000000000000000000000000000000000000}
+      FORK_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
+      BROADCAST: ${BROADCAST:-false}
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'test -f /app/deployments/setup_l2.json'"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 10s
+    profiles:
+      - l2-deployer
 
   nethermind_execution_client:
     image: nethermindeth/nethermind:taiko-new-api-2
@@ -131,6 +232,8 @@ services:
       - 6060:6060
     env_file:
       - .env
+    environment:
+      TAIKO_INBOX: ${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     entrypoint:
@@ -168,6 +271,12 @@ services:
       - 6061:6061
     env_file:
       - .env
+    environment:
+      TAIKO_INBOX: ${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
+      L1_SIGNAL_SERVICE: ${L1_SIGNAL_SERVICE:-0xefc92277E9166C27529CCD889143C6d4B6171595}
+      L1_BRIDGE: ${L1_BRIDGE:-0x75689954C665396167a6D372aC9154814FD30Fa4}
+      TAIKO_WRAPPER: ${TAIKO_WRAPPER:-0x9224cFB28d3f21Ab56591d970F2DC432F4CE4900}
+      FORCED_INCLUSION_STORE: ${FORCED_INCLUSION_STORE:-0x2386d67200b89f63735DE6Abb22F5c5cA863902C}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     entrypoint:
@@ -184,7 +293,6 @@ services:
     profiles:
       - proposer
       - spammer
-      - blockscout
       - l2-deployer
   
   taiko_client_prover_relayer:
@@ -202,6 +310,8 @@ services:
       - 6062:6062
     env_file:
       - .env
+    environment:
+      TAIKO_INBOX: ${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     entrypoint:
@@ -398,34 +508,322 @@ services:
     profiles:
       - blockscout
 
-  surge-l2-deployer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-2e9ab86
-    container_name: surge-l2-deployer
-    pull_policy: always
-    depends_on:
-      - nethermind_execution_client
-      - taiko_client_driver
-      - taiko_client_proposer
-    entrypoint:
-     - ./script/layer2/surge/setup_surge_l2.sh
+  # Relayer infrastructure services
+  relayer-db:
+    image: mysql:8.0
+    container_name: relayer-db
+    cap_add:
+      - SYS_NICE
+    restart: always
     env_file:
       - .env
     environment:
-      FORK_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
-      BROADCAST: ${BROADCAST:-false}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    networks:
+      - surge
+    profiles:
+      - relayer-init
+
+  relayer-migrations:
+    image: ghcr.io/kukymbr/goose-docker:3.22.1
+    container_name: relayer-migrations
+    environment:
+      - GOOSE_DRIVER=mysql
+      - GOOSE_DBSTRING=root:root@tcp(relayer-db:3306)/relayer
+    volumes:
+      - ./migrations:/migrations
+    networks:
+      - surge
+    profiles:
+      - relayer-migrations
+
+  relayer-rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: relayer-rabbitmq
+    env_file:
+      - .env
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
+    ports:
+      - ${RABBITMQ_PORT}:${RABBITMQ_PORT}
+      - 15672:15672
+      - 15692:15692
+    volumes:
+      - ./rabbitmq/data/:/var/lib/rabbitmq/
+      - ./rabbitmq/log/:/var/log/rabbitmq
+    networks:
+      - surge
+    profiles:
+      - relayer-init
+
+  relayer-l1-processor:
+    image: nethermind.jfrog.io/modular-oci-local-dev/relayer:sha-fbbab41
+    container_name: relayer-l1-processor
+    restart: always
+    environment:
+      - L1_SIGNAL_SERVICE=${L1_SIGNAL_SERVICE:-0xefc92277E9166C27529CCD889143C6d4B6171595}
+    entrypoint: ["/usr/local/bin/relayer"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - 6063:6063
+    command:
+      - processor
+      - --queue.prefetch=${QUEUE_PREFETCH}
+      - --db.host=relayer-db
+      - --db.maxIdleConns=${MYSQL_MAX_IDLE_CONNS}
+      - --db.maxOpenConns=${MYSQL_MAX_OPEN_CONNS}
+      - --db.name=${MYSQL_DATABASE}
+      - --db.password=${MYSQL_PASSWORD}
+      - --db.username=${MYSQL_USER}
+      - --queue.host=relayer-rabbitmq
+      - --queue.password=${RABBITMQ_PASSWORD}
+      - --queue.port=${RABBITMQ_PORT}
+      - --queue.username=${RABBITMQ_USER}
+      - --processorPrivateKey=${PROCESSOR_PRIVATE_KEY}
+      - --srcSignalServiceAddress=${L1_SIGNAL_SERVICE}
+      - --srcRpcUrl=http://host.docker.internal:32003
+      - --destBridgeAddress=${L2_BRIDGE}
+      - --destERC20VaultAddress=${L2_ERC20_VAULT}
+      - --destERC721Address=${L2_ERC721_VAULT}
+      - --destERC1155Address=${L2_ERC1155_VAULT}
+      - --destTaikoAddress=${TAIKO_ANCHOR}
+      - --destRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
+      - --confirmations=${CONFIRMATIONS_BEFORE_PROCESSING:-0}
+      - --headerSyncInterval=${HEADER_SYNC_INTERVAL_IN_SECONDS:-2}
+      - --profitableOnly=${PROFITABLE_ONLY:-false}
+      - --tx.minTipCap=${TX_MIN_TIP_CAP:-0.01}
+      - --metrics.port=6063
     networks:
       - surge
     labels:
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6063"
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'test -f /app/deployments/setup_l2.json'"]
-      interval: 2s
-      timeout: 2s
-      retries: 15
-      start_period: 10s
     profiles:
-      - l2-deployer
+      - relayer-l1
+
+  relayer-l1-indexer:
+    image: nethermind.jfrog.io/modular-oci-local-dev/relayer:sha-fbbab41
+    container_name: relayer-l1-indexer
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - TAIKO_INBOX=${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
+      - L1_SIGNAL_SERVICE=${L1_SIGNAL_SERVICE:-0xefc92277E9166C27529CCD889143C6d4B6171595}
+      - L1_BRIDGE=${L1_BRIDGE:-0x75689954C665396167a6D372aC9154814FD30Fa4}
+    entrypoint: ["/usr/local/bin/relayer"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - 6064:6064
+    command:
+      - indexer
+      - --db.host=relayer-db
+      - --db.connMaxLifetime=${MYSQL_CONN_MAX_LIFETIME}
+      - --db.maxIdleConns=${MYSQL_MAX_IDLE_CONNS}
+      - --db.maxOpenConns=${MYSQL_MAX_OPEN_CONNS}
+      - --db.name=${MYSQL_DATABASE}
+      - --db.password=${MYSQL_PASSWORD}
+      - --db.username=${MYSQL_USER}
+      - --queue.host=relayer-rabbitmq
+      - --queue.password=${RABBITMQ_PASSWORD}
+      - --queue.port=${RABBITMQ_PORT}
+      - --queue.username=${RABBITMQ_USER}
+      - --srcBridgeAddress=${L1_BRIDGE}
+      - --srcTaikoAddress=${TAIKO_INBOX}
+      - --srcSignalServiceAddress=${L1_SIGNAL_SERVICE}
+      - --srcRpcUrl=http://host.docker.internal:32003
+      - --destBridgeAddress=${L2_BRIDGE}
+      - --destRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
+      - --maxNumGoroutines=${NUM_GOROUTINES}
+      - --blockBatchSize=${BLOCK_BATCH_SIZE}
+      - --event=MessageSent
+      - --confirmations=${CONFIRMATIONS_BEFORE_PROCESSING:-0}
+      - --metrics.port=6064
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6064"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - relayer-l1
+
+  relayer-l1-api:
+    image: nethermind.jfrog.io/modular-oci-local-dev/relayer:sha-fbbab41
+    container_name: relayer-l1-api
+    restart: always
+    env_file:
+      - .env
+    entrypoint: ["/usr/local/bin/relayer"]
+    ports:
+      - 4102:4102
+      - 6065:6065
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - api
+      - --db.host=relayer-db
+      - --db.connMaxLifetime=${MYSQL_CONN_MAX_LIFETIME}
+      - --db.maxIdleConns=${MYSQL_MAX_IDLE_CONNS}
+      - --db.maxOpenConns=${MYSQL_MAX_OPEN_CONNS}
+      - --db.name=${MYSQL_DATABASE}
+      - --db.password=${MYSQL_PASSWORD}
+      - --db.username=${MYSQL_USER}
+      - --srcRpcUrl=http://host.docker.internal:32003
+      - --destRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
+      - --destTaikoAddress=${TAIKO_ANCHOR}
+      - --processingFeeMultiplier=${PROCESSING_FEE_MULTIPLIER}
+      - --metrics.port=6065
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6065"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - relayer-api
+
+  relayer-l2-api:
+    image: nethermind.jfrog.io/modular-oci-local-dev/relayer:sha-fbbab41
+    container_name: relayer-l2-api
+    restart: always
+    environment:
+      - TAIKO_INBOX=${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
+    entrypoint: ["/usr/local/bin/relayer"]
+    ports:
+      - 4103:4103
+      - 6066:6066
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - api
+      - --db.host=relayer-db
+      - --db.connMaxLifetime=${MYSQL_CONN_MAX_LIFETIME}
+      - --db.maxIdleConns=${MYSQL_MAX_IDLE_CONNS}
+      - --db.maxOpenConns=${MYSQL_MAX_OPEN_CONNS}
+      - --db.name=${MYSQL_DATABASE}
+      - --db.password=${MYSQL_PASSWORD}
+      - --db.username=${MYSQL_USER}
+      - --srcRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
+      - --destRpcUrl=http://host.docker.internal:32003
+      - --destTaikoAddress=${TAIKO_INBOX}
+      - --processingFeeMultiplier=${PROCESSING_FEE_MULTIPLIER}
+      - --metrics.port=6066
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6066"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - relayer-api
+
+  relayer-l2-processor:
+    image: nethermind.jfrog.io/modular-oci-local-dev/relayer:sha-fbbab41
+    container_name: relayer-l2-processor
+    restart: always
+    environment:
+      - TAIKO_INBOX=${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
+      - L1_BRIDGE=${L1_BRIDGE:-0x75689954C665396167a6D372aC9154814FD30Fa4}
+      - L1_ERC20_VAULT=${L1_ERC20_VAULT:-0x56e51543785bb41f8f6244aaF09a410d2C22D9A4}
+      - L1_ERC721_VAULT=${L1_ERC721_VAULT:-0xB00AF8098B4d949AC0C8bfcf5eaCd4FF07d05D28}
+      - L1_ERC1155_VAULT=${L1_ERC1155_VAULT:-0x2dEf0967ccF7F1C5088Afe17ba0eF3D54409c503}
+    entrypoint: ["/usr/local/bin/relayer"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - 6067:6067
+    command:
+      - processor
+      - --queue.prefetch=100
+      - --db.host=relayer-db
+      - --db.maxIdleConns=${MYSQL_MAX_IDLE_CONNS}
+      - --db.maxOpenConns=${MYSQL_MAX_OPEN_CONNS}
+      - --db.name=${MYSQL_DATABASE}
+      - --db.password=${MYSQL_PASSWORD}
+      - --db.username=${MYSQL_USER}
+      - --queue.host=relayer-rabbitmq
+      - --queue.password=${RABBITMQ_PASSWORD}
+      - --queue.port=${RABBITMQ_PORT}
+      - --queue.username=${RABBITMQ_USER}
+      - --processorPrivateKey=${PROCESSOR_PRIVATE_KEY}
+      - --srcSignalServiceAddress=${L2_SIGNAL_SERVICE}
+      - --srcRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
+      - --destBridgeAddress=${L1_BRIDGE}
+      - --destERC20VaultAddress=${L1_ERC20_VAULT}
+      - --destERC721Address=${L1_ERC721_VAULT}
+      - --destERC1155Address=${L1_ERC1155_VAULT}
+      - --destTaikoAddress=${TAIKO_INBOX}
+      - --destRpcUrl=http://host.docker.internal:32003
+      - --confirmations=${CONFIRMATIONS_BEFORE_PROCESSING:-0}
+      - --headerSyncInterval=${HEADER_SYNC_INTERVAL_IN_SECONDS:-2}
+      - --profitableOnly=${PROFITABLE_ONLY:-false}
+      - --tx.minTipCap=${TX_MIN_TIP_CAP:-0.01}
+      - --metrics.port=6067
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6067"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - relayer-l2
+
+  relayer-l2-indexer:
+    image: nethermind.jfrog.io/modular-oci-local-dev/relayer:sha-fbbab41
+    container_name: relayer-l2-indexer
+    restart: always
+    environment:
+      - L1_BRIDGE=${L1_BRIDGE:-0x75689954C665396167a6D372aC9154814FD30Fa4}
+    entrypoint: ["/usr/local/bin/relayer"]
+    ports:
+      - 6068:6068
+    command:
+      - indexer
+      - --db.host=relayer-db
+      - --db.connMaxLifetime=${MYSQL_CONN_MAX_LIFETIME}
+      - --db.maxIdleConns=${MYSQL_MAX_IDLE_CONNS}
+      - --db.maxOpenConns=${MYSQL_MAX_OPEN_CONNS}
+      - --db.name=${MYSQL_DATABASE}
+      - --db.password=${MYSQL_PASSWORD}
+      - --db.username=${MYSQL_USER}
+      - --queue.host=relayer-rabbitmq
+      - --queue.password=${RABBITMQ_PASSWORD}
+      - --queue.port=${RABBITMQ_PORT}
+      - --queue.username=${RABBITMQ_USER}
+      - --srcBridgeAddress="0x7633740000000000000000000000000000000001"
+      - --srcSignalServiceAddress="0x7633740000000000000000000000000000000005"
+      - --srcRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
+      - --destBridgeAddress="0x75689954C665396167a6D372aC9154814FD30Fa4"
+      - --destRpcUrl=http://host.docker.internal:32003
+      - --maxNumGoroutines=${NUM_GOROUTINES}
+      - --blockBatchSize=${BLOCK_BATCH_SIZE}
+      - --event=MessageSent
+      - --confirmations=${CONFIRMATIONS_BEFORE_PROCESSING:-0}
+      - --metrics.port=6068
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6068"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - relayer-l2
 
 networks:
   surge:
