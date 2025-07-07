@@ -105,11 +105,11 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         ARGS="${ARGS} --txPool.locals ${TXPOOL_LOCALS}"
     fi
 
-    if [ "$BLOB_ALLOWED" == "true" ]; then
+    if [ "$L1_BLOB_ALLOWED" == "true" ]; then
         ARGS="${ARGS} --l1.blobAllowed"
     fi
 
-    if [ "$FALLBACK_TO_CALLDATA" == "true" ]; then
+    if [ "$L1_FALLBACK_TO_CALLDATA" == "true" ]; then
         ARGS="${ARGS} --l1.fallbackToCalldata"
     fi
 
