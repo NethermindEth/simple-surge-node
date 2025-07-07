@@ -52,6 +52,45 @@ deploy_l1() {
 
     echo "SHOULD_SETUP_VERIFIERS: $SHOULD_SETUP_VERIFIERS"
 
+    if [ "$SHOULD_SETUP_VERIFIERS" = "true" ]; then
+        # Prompt user for SGX MR_ENCLAVE
+        echo "Enter SGX MR_ENCLAVE (return to skip): "
+        read -r sgx_mr_enclave
+        export MR_ENCLAVE=${sgx_mr_enclave:-3ec57ed7974834005b8df5d80e0edfc69542580a0a305f80fd81199c181ac7cc}
+
+        # Prompt user for SGX MR_SIGNER
+        echo "Enter SGX MR_SIGNER (return to skip): "
+        read -r sgx_mr_signer
+        export MR_SIGNER=${sgx_mr_signer:-ca0583a715534a8c981b914589a7f0dc5d60959d9ae79fb5353299a4231673d5}
+
+        # Prompt user for SGX V3_QUOTE_BYTES
+        echo "Is SGX V3_QUOTE_BYTES file ready (return to continue): "
+        read -r is_v3_quote_bytes_ready
+        export V3_QUOTE_BYTES=$(cat V3_QUOTE_BYTES.txt)
+
+        echo "V3_QUOTE_BYTES: $V3_QUOTE_BYTES"
+
+        # Prompt user for SP1_BLOCK_PROVING_PROGRAM_VKEY
+        echo "Enter SP1_BLOCK_PROVING_PROGRAM_VKEY (return to skip): "
+        read -r sp1_block_proving_program_vkey
+        export SP1_BLOCK_PROVING_PROGRAM_VKEY=${sp1_block_proving_program_vkey:-7551aa7009644e503ffa7fce53f657264a3a1b45516afc5b026ff7e43c10d62a}
+
+        # Prompt user for SP1_BLOCK_PROVING_PROGRAM_VK_HASH
+        echo "Enter SP1_AGGREGATION_PROGRAM_VKEY (return to skip): "
+        read -r sp1_aggregation_program_vkey
+        export SP1_AGGREGATION_PROGRAM_VKEY=${sp1_aggregation_program_vkey:-0x000795db478eeeb7bef37247eb93389ba2a4e6c1cbe59a49afc3bd6ac2ad27ba}
+
+        # Prompt user for RISC0_BLOCK_PROVING_IMAGE_ID
+        echo "Enter RISC0_BLOCK_PROVING_IMAGE_ID (return to skip): "
+        read -r risc0_block_proving_image_id
+        export RISC0_BLOCK_PROVING_IMAGE_ID=${risc0_block_proving_image_id:-0x002eb51e99132ea02f27349345fe7e98c6867beab29a2426d1e4f693e2857bcd}
+
+        # Prompt user for RISC0_AGGREGATION_IMAGE_ID
+        echo "Enter RISC0_AGGREGATION_IMAGE_ID (return to skip): "
+        read -r risc0_aggregation_image_id
+        export RISC0_AGGREGATION_IMAGE_ID=${risc0_aggregation_image_id:-0x00dfdb4cc33bb068dce12585b8ecfcc8c3ae194ffaf6d19e0ebfd3fc33145c7a}
+    fi
+
     BROADCAST=true USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER SHOULD_SETUP_VERIFIERS=$SHOULD_SETUP_VERIFIERS docker compose --profile l1-deployer up
 }
 
