@@ -164,9 +164,11 @@ deploy_l2() {
 
     if [ "$L1_TIMELOCK_CONTROLLER" != "0x0000000000000000000000000000000000000000" ]; then
         echo "Surge timelock controller is set. Starting deployment."
+        L1_OWNER=$L1_TIMELOCK_CONTROLLER
         BROADCAST=true docker compose --profile l2-deployer up -d
     else
-        echo "Surge timelock controller is not set. Stopping deployment."
+        echo "Surge timelock controller is not set. Use L1 owner for timelock controller."
+        BROADCAST=true docker compose --profile l2-deployer up -d
         return 0
     fi
 
@@ -174,20 +176,33 @@ deploy_l2() {
 }
 
 start_relayers() {
-    echo "Starting relayers..."
+    # Prompt user for START_RELAYERS
+    echo "Start relayers? (true/false) [default: true]: "
+    read -r start_relayers
 
-    echo "Starting init to prepare DB and queues..."
-    docker compose --profile relayer-init up -d
+    START_RELAYERS=${start_relayers:-true}
 
-    # Wait for services to initialize
-    sleep 20
+    if [ "$START_RELAYERS" = "true" ]; then
+        # Deploy L2 SCs first
+        deploy_l2
 
-    # Execute migrations
-    echo "Executing migrations..."
-    docker compose --profile relayer-migrations up
+        echo "Starting relayers..."
 
-    docker compose --profile relayer-l1 --profile relayer-l2 --profile relayer-api up -d
-    echo "Relayers started successfully"
+        echo "Starting init to prepare DB and queues..."
+        docker compose --profile relayer-init up -d
+
+        # Wait for services to initialize
+        sleep 20
+
+        # Execute migrations
+        echo "Executing migrations..."
+        docker compose --profile relayer-migrations up
+
+        docker compose --profile relayer-l1 --profile relayer-l2 --profile relayer-api up -d
+        echo "Relayers started successfully"
+    else
+        return 0
+    fi
 }
 
 deploy_surge() {
@@ -202,9 +217,6 @@ deploy_surge() {
 
     # Start L2 Stack
     start_l2_stack
-
-    # Deploy L2 SCs
-    deploy_l2
 
     # Start Relayers
     start_relayers

@@ -1,6 +1,6 @@
 services:
   surge-l1-deployer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-109f167
     container_name: surge-l1-deployer
     pull_policy: always
     volumes:
@@ -31,7 +31,7 @@ services:
       - l1-deployer
 
   surge-sgx-register:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-109f167
     container_name: surge-sgx-register
     pull_policy: always
     volumes:
@@ -53,7 +53,7 @@ services:
       - sgx-register
 
   surge-risc0-register:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-109f167
     container_name: surge-risc0-register
     pull_policy: always
     volumes:
@@ -73,7 +73,7 @@ services:
       - risc0-register
 
   surge-sp1-register:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-109f167
     container_name: surge-sp1-register
     pull_policy: always
     volumes:
@@ -95,7 +95,7 @@ services:
       - sp1-register
 
   surge-bond-depositer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-109f167
     container_name: surge-bond-depositer
     pull_policy: always
     volumes:
@@ -119,7 +119,7 @@ services:
       - bond-depositer
 
   surge-l2-deployer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-056cf10
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-109f167
     container_name: surge-l2-deployer
     pull_policy: always
     depends_on:
@@ -127,15 +127,16 @@ services:
       - taiko_client_driver
       - taiko_client_proposer
     entrypoint:
-     - ./script/layer2/surge/setup_surge_l2.sh
+      - ./script/layer2/surge/setup_surge_l2.sh
     env_file:
       - .env
     environment:
       L1_BRIDGE: ${L1_BRIDGE:-0x75689954C665396167a6D372aC9154814FD30Fa4}
+      L1_SIGNAL_SERVICE: ${L1_SIGNAL_SERVICE:-0xefc92277E9166C27529CCD889143C6d4B6171595}
       L1_ERC1155_VAULT: ${L1_ERC1155_VAULT:-0x2dEf0967ccF7F1C5088Afe17ba0eF3D54409c503}
       L1_ERC20_VAULT: ${L1_ERC20_VAULT:-0x56e51543785bb41f8f6244aaF09a410d2C22D9A4}
       L1_ERC721_VAULT: ${L1_ERC721_VAULT:-0xB00AF8098B4d949AC0C8bfcf5eaCd4FF07d05D28}
-      L1_TIMELOCK_CONTROLLER: ${L1_TIMELOCK_CONTROLLER:-0x0000000000000000000000000000000000000000}
+      L1_OWNER: ${L1_OWNER:-0x3e95dFbBaF6B348396E6674C7871546dCC568e56}
       FORK_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
       BROADCAST: ${BROADCAST:-false}
     networks:
@@ -534,7 +535,7 @@ services:
     container_name: relayer-migrations
     environment:
       - GOOSE_DRIVER=mysql
-      - GOOSE_DBSTRING=root:root@tcp(relayer-db:3306)/relayer
+      - GOOSE_DBSTRING=${MYSQL_USER}:${MYSQL_PASSWORD}@tcp(relayer-db:3306)/${MYSQL_DATABASE}
     volumes:
       - ./migrations:/migrations
     networks:
