@@ -18,6 +18,8 @@ services:
       BROADCAST: ${BROADCAST:-false}
     networks:
       - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
@@ -46,6 +48,8 @@ services:
       BROADCAST: ${BROADCAST:-false}
     networks:
       - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
@@ -71,6 +75,8 @@ services:
       RISC0_BLOCK_PROVING_IMAGE_ID: ${RISC0_BLOCK_PROVING_IMAGE_ID:-0x002eb51e99132ea02f27349345fe7e98c6867beab29a2426d1e4f693e2857bcd}
     networks:
       - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
@@ -96,6 +102,8 @@ services:
       SP1_AGGREGATION_PROGRAM_VKEY: ${SP1_AGGREGATION_PROGRAM_VKEY:-0x000795db478eeeb7bef37247eb93389ba2a4e6c1cbe59a49afc3bd6ac2ad27ba}
     networks:
       - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
@@ -120,6 +128,8 @@ services:
       GAS_LIMIT: ${GAS_LIMIT:-100000}
     networks:
       - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
@@ -149,6 +159,8 @@ services:
       BROADCAST: ${BROADCAST:-false}
     networks:
       - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
