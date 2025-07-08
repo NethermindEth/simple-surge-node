@@ -838,6 +838,8 @@ services:
       - --metrics.port=6068
     networks:
       - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels:
       com.kurtosistech.custom.metrics_enabled: "true"
       com.kurtosistech.custom.metrics_port: "6068"
