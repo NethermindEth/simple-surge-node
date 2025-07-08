@@ -2,6 +2,14 @@
 
 set -e
 
+# Load environment variables from .env file if it exists
+if [ -f .env ]; then
+    echo "Loading environment variables from .env file..."
+    set -a  # automatically export all variables
+    source .env
+    set +a  # disable automatic export
+fi
+
 deploy_l1() {
     # Verify if deployment is already running or it's already completed
     mkdir -p deployment
@@ -244,6 +252,147 @@ start_relayers() {
     fi
 }
 
+prepare_bridge_ui_configs() {
+    echo "Preparing Bridge UI configs..."
+
+    # Get chain IDs from environment or use defaults
+    L1_CHAIN_ID=${L1_CHAINID:-3151908}
+    L2_CHAIN_ID=${L2_CHAINID:-763374}
+
+    # Generate configuredBridges.json
+    cat > configs/configuredBridges.json << EOF
+{
+  "configuredBridges": [
+    {
+      "source": "$L1_CHAIN_ID",
+      "destination": "$L2_CHAIN_ID",
+      "addresses": {
+        "bridgeAddress": "$L1_BRIDGE",
+        "erc20VaultAddress": "$L1_ERC20_VAULT",
+        "erc721VaultAddress": "$L1_ERC721_VAULT",
+        "erc1155VaultAddress": "$L1_ERC1155_VAULT",
+        "crossChainSyncAddress": "",
+        "signalServiceAddress": "$L1_SIGNAL_SERVICE",
+        "quotaManagerAddress": ""
+      }
+    },
+    {
+      "source": "$L2_CHAIN_ID",
+      "destination": "$L1_CHAIN_ID",
+      "addresses": {
+        "bridgeAddress": "$L2_BRIDGE",
+        "erc20VaultAddress": "$L2_ERC20_VAULT",
+        "erc721VaultAddress": "$L2_ERC721_VAULT",
+        "erc1155VaultAddress": "$L2_ERC1155_VAULT",
+        "crossChainSyncAddress": "",
+        "signalServiceAddress": "$L2_SIGNAL_SERVICE",
+        "quotaManagerAddress": ""
+      }
+    }
+  ]
+}
+EOF
+
+    # Generate configuredChains.json
+    cat > configs/configuredChains.json << EOF
+{
+  "configuredChains": [
+    {
+      "$L1_CHAIN_ID": {
+        "name": "L1 Devnet",
+        "type": "L1",
+        "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
+        "rpcUrls": {
+          "default": {
+            "http": ["http://localhost:32003"]
+          }
+        },
+        "nativeCurrency": {
+          "name": "ETH",
+          "symbol": "ETH",
+          "decimals": 18
+        },
+        "blockExplorers": {
+          "default": {
+            "name": "L1 Devnet Explorer",
+            "url": "http://localhost:36005"
+          }
+        }
+      }
+    },
+    {
+      "$L2_CHAIN_ID": {
+        "name": "Surge Devnet",
+        "type": "L2",
+        "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
+        "rpcUrls": {
+          "default": {
+            "http": ["http://localhost:${L2_HTTP_PORT:-8547}"]
+          }
+        },
+        "nativeCurrency": {
+          "name": "ETH",
+          "symbol": "ETH",
+          "decimals": 18
+        },
+        "blockExplorers": {
+          "default": {
+            "name": "Surge Explorer",
+            "url": "http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+          }
+        }
+      }
+    }
+  ]
+}
+EOF
+
+    # Generate configuredRelayer.json
+    cat > configs/configuredRelayer.json << EOF
+{
+  "configuredRelayer": [
+    {
+      "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID],
+      "url": "http://localhost:4102"
+    },
+    {
+      "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID],
+      "url": "http://localhost:4103"
+    }
+  ]
+}
+EOF
+
+    # Generate configuredEventIndexer.json
+    cat > configs/configuredEventIndexer.json << EOF
+{
+  "configuredEventIndexer": [
+    {
+      "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID],
+      "url": "http://localhost:4102"
+    },
+    {
+      "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID],
+      "url": "http://localhost:4103"
+    }
+  ]
+}
+EOF
+
+    # Generate configuredCustomTokens.json (empty array for now)
+    cat > configs/configuredCustomTokens.json << EOF
+[]
+EOF
+
+    echo "Bridge UI configs generated successfully!"
+    echo "Generated files:"
+    echo "  - configs/configuredBridges.json"
+    echo "  - configs/configuredChains.json"
+    echo "  - configs/configuredRelayer.json"
+    echo "  - configs/configuredEventIndexer.json"
+    echo "  - configs/configuredCustomTokens.json"
+}
+
 deploy_surge() {
     # Deploy L1 SCs
     deploy_l1
@@ -259,6 +408,9 @@ deploy_surge() {
 
     # Start Relayers
     start_relayers
+
+    # Prepare Bridge UI Configs
+    prepare_bridge_ui_configs
 }
 
 deploy_surge

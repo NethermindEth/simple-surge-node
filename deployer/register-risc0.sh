@@ -2,7 +2,9 @@
 
 set -eu
 
-echo "Starting to set up SP1 trusted program vkey..."
-cast send ${SUCCINCT_VERIFIER} 'setTrustedProgramVKey(bytes32,bool)' ${SP1_BLOCK_PROVING_PROGRAM_VKEY} true --private-key ${PRIVATE_KEY} --rpc-url ${L1_ENDPOINT_HTTP} --gas-limit ${GAS_LIMIT}
+echo "Starting to set up RISC0 trusted image ids..."
 
-echo "SP1 trusted program vkey set successfully"
+cast send ${RISC0_GROTH16_VERIFIER} 'setImageIdTrusted(bytes32,bool)' ${RISC0_BLOCK_PROVING_IMAGE_ID} true --private-key ${PRIVATE_KEY} --rpc-url ${L1_ENDPOINT_HTTP} --gas-limit ${GAS_LIMIT}
+cast send ${RISC0_GROTH16_VERIFIER} 'setImageIdTrusted(bytes32,bool)' ${RISC0_AGGREGATION_IMAGE_ID} true --private-key ${PRIVATE_KEY} --rpc-url ${L1_ENDPOINT_HTTP} --gas-limit ${GAS_LIMIT}
+
+echo "RISC0 trusted image ids set successfully"

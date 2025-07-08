@@ -61,9 +61,14 @@ services:
     entrypoint:
       - /bin/sh
       - -c
-      - /deployer/register-r0.sh
+      - /deployer/register-risc0.sh
     env_file:
       - .env
+    environment:
+      GAS_LIMIT: ${GAS_LIMIT:-100000}
+      RISC0_GROTH16_VERIFIER: ${RISC0_GROTH16_VERIFIER:-0x0000000000000000000000000000000000000000}
+      RISC0_AGGREGATION_IMAGE_ID: ${RISC0_AGGREGATION_IMAGE_ID:-0x00dfdb4cc33bb068dce12585b8ecfcc8c3ae194ffaf6d19e0ebfd3fc33145c7a}
+      RISC0_BLOCK_PROVING_IMAGE_ID: ${RISC0_BLOCK_PROVING_IMAGE_ID:-0x002eb51e99132ea02f27349345fe7e98c6867beab29a2426d1e4f693e2857bcd}
     networks:
       - surge
     labels:
@@ -86,6 +91,9 @@ services:
       - .env
     environment:
       GAS_LIMIT: ${GAS_LIMIT:-100000}
+      SUCCINCT_VERIFIER: ${SUCCINCT_VERIFIER:-0x0000000000000000000000000000000000000000}
+      SP1_BLOCK_PROVING_PROGRAM_VKEY: ${SP1_BLOCK_PROVING_PROGRAM_VKEY:-7551aa7009644e503ffa7fce53f657264a3a1b45516afc5b026ff7e43c10d62a}
+      SP1_AGGREGATION_PROGRAM_VKEY: ${SP1_AGGREGATION_PROGRAM_VKEY:-0x000795db478eeeb7bef37247eb93389ba2a4e6c1cbe59a49afc3bd6ac2ad27ba}
     networks:
       - surge
     labels:
