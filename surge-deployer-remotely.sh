@@ -290,13 +290,28 @@ prepare_bridge_ui_configs() {
 
   if [ "$devnet_machine" = "1" ]; then
     echo "Using Devnet 1 (prover)"
-    export URL="https://devnet-one.surge.wtf"
+    export L1_RPC="https://devnet-one.surge.wtf/l1-rpc"
+    export L1_EXPLORER="https://devnet-one.surge.wtf/l1-block-explorer"
+    export L2_RPC="https://devnet-one.surge.wtf/l2-rpc"
+    export L2_EXPLORER="https://devnet-one.surge.wtf/l2-block-explorer"
+    export L1_RELAYER="https://devnet-one.surge.wtf/l1-relayer"
+    export L2_RELAYER="https://devnet-one.surge.wtf/l2-relayer"
   elif [ "$devnet_machine" = "2" ]; then
     echo "Using Devnet 2 (taiko-client)"
-    export URL="https://devnet-two.surge.wtf"
+    export L1_RPC="https://devnet-two.surge.wtf/l1-rpc"
+    export L1_EXPLORER="https://devnet-two.surge.wtf/l1-block-explorer"
+    export L2_RPC="https://devnet-two.surge.wtf/l2-rpc"
+    export L2_EXPLORER="https://devnet-two.surge.wtf/l2-block-explorer"
+    export L1_RELAYER="https://devnet-two.surge.wtf/l1-relayer"
+    export L2_RELAYER="https://devnet-two.surge.wtf/l2-relayer"
   else
     echo "Using others"
-    export URL="http://$MACHINE_IP"
+    export L1_RPC="http://$MACHINE_IP:32003"
+    export L1_EXPLORER="http://$MACHINE_IP:36005"
+    export L2_RPC="http://$MACHINE_IP:${L2_HTTP_PORT:-8547}"
+    export L2_EXPLORER="http://$MACHINE_IP:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+    export L1_RELAYER="http://$MACHINE_IP:4102"
+    export L2_RELAYER="http://$MACHINE_IP:4103"
   fi
 
   # Get chain IDs from environment or use defaults
@@ -348,7 +363,7 @@ EOF
         "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
         "rpcUrls": {
           "default": {
-            "http": ["$URL:32003"]
+            "http": ["$L1_RPC"]
           }
         },
         "nativeCurrency": {
@@ -359,7 +374,7 @@ EOF
         "blockExplorers": {
           "default": {
             "name": "L1 Devnet Explorer",
-            "url": "$URL:36005"
+            "url": "$L1_EXPLORER"
           }
         }
       }
@@ -371,7 +386,7 @@ EOF
         "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
         "rpcUrls": {
           "default": {
-            "http": ["$URL:${L2_HTTP_PORT:-8547}"]
+            "http": ["$L2_RPC"]
           }
         },
         "nativeCurrency": {
@@ -382,7 +397,7 @@ EOF
         "blockExplorers": {
           "default": {
             "name": "Surge Explorer",
-            "url": "$URL:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+            "url": "$L2_EXPLORER"
           }
         }
       }
@@ -397,11 +412,11 @@ EOF
   "configuredRelayer": [
     {
       "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID],
-      "url": "$URL:4102"
+      "url": "$L1_RELAYER"
     },
     {
       "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID],
-      "url": "$URL:4103"
+      "url": "$L2_RELAYER"
     }
   ]
 }
@@ -413,11 +428,11 @@ EOF
   "configuredEventIndexer": [
     {
       "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID],
-      "url": "$URL:4102"
+      "url": "$L1_RELAYER"
     },
     {
       "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID],
-      "url": "$URL:4103"
+      "url": "$L2_RELAYER"
     }
   ]
 }
