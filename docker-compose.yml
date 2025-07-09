@@ -551,7 +551,7 @@ services:
       - relayer-init
 
   relayer-migrations:
-    image: ghcr.io/kukymbr/goose-docker:3.22.1
+    image: ghcr.io/kukymbr/goose-docker:latest
     container_name: relayer-migrations
     environment:
       - GOOSE_DRIVER=mysql
