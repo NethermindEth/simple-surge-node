@@ -1,6 +1,6 @@
 services:
   surge-l1-deployer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-109f167
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
     container_name: surge-l1-deployer
     pull_policy: always
     volumes:
@@ -33,7 +33,7 @@ services:
       - l1-deployer
 
   surge-sgx-register:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-109f167
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
     container_name: surge-sgx-register
     pull_policy: always
     volumes:
@@ -57,7 +57,7 @@ services:
       - sgx-register
 
   surge-risc0-register:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-109f167
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
     container_name: surge-risc0-register
     pull_policy: always
     volumes:
@@ -84,7 +84,7 @@ services:
       - risc0-register
 
   surge-sp1-register:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-109f167
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
     container_name: surge-sp1-register
     pull_policy: always
     volumes:
@@ -111,7 +111,7 @@ services:
       - sp1-register
 
   surge-bond-depositer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-109f167
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
     container_name: surge-bond-depositer
     pull_policy: always
     volumes:
@@ -137,7 +137,7 @@ services:
       - bond-depositer
 
   surge-l2-deployer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:sha-109f167
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
     container_name: surge-l2-deployer
     pull_policy: always
     depends_on:
@@ -237,7 +237,7 @@ services:
       - l2-deployer
 
   taiko_client_driver:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-2728dac
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:main-pacaya-v1.6.1
     container_name: l2-taiko-consensus-client
     restart: unless-stopped
     pull_policy: always
@@ -277,7 +277,7 @@ services:
       - l2-deployer
 
   taiko_client_proposer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-2728dac
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:main-pacaya-v1.6.1
     container_name: l2-taiko-proposer-client
     restart: unless-stopped
     pull_policy: always
@@ -317,7 +317,7 @@ services:
       - l2-deployer
   
   taiko_client_prover_relayer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:sha-2728dac
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:main-pacaya-v1.6.1
     container_name: l2-taiko-prover-relayer-client
     restart: unless-stopped
     pull_policy: always
