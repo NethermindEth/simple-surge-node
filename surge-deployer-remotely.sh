@@ -87,6 +87,11 @@ deploy_l1() {
 
   echo "SHOULD_SETUP_VERIFIERS: $SHOULD_SETUP_VERIFIERS"
 
+  BROADCAST=false USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER SHOULD_SETUP_VERIFIERS=$SHOULD_SETUP_VERIFIERS docker compose --profile l1-deployer up
+  
+  echo "Extracting L1 deployment results after simulation..."
+  extract_l1_deployment_results
+
   if [ "$SHOULD_SETUP_VERIFIERS" = "true" ]; then
       generate_prover_chain_spec
 
