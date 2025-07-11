@@ -61,6 +61,8 @@ deploy_l1() {
     echo "SHOULD_SETUP_VERIFIERS: $SHOULD_SETUP_VERIFIERS"
 
     if [ "$SHOULD_SETUP_VERIFIERS" = "true" ]; then
+        generate_prover_chain_spec
+
         # Prompt user for SGX MR_ENCLAVE
         echo "Enter SGX MR_ENCLAVE (return to skip): "
         read -r sgx_mr_enclave
@@ -247,6 +249,9 @@ start_relayers() {
 
         docker compose --profile relayer-l1 --profile relayer-l2 --profile relayer-api up -d
         echo "Relayers started successfully"
+
+        # Prepare Bridge UI Configs only if relayers are needed
+        prepare_bridge_ui_configs
     else
         return 0
     fi
@@ -393,6 +398,12 @@ EOF
     echo "  - configs/configuredCustomTokens.json"
 }
 
+generate_prover_chain_spec() {
+  echo "Generating prover chain spec..."
+
+  echo "Deploying locally, will skip..."
+}
+
 deploy_surge() {
     # Deploy L1 SCs
     deploy_l1
@@ -408,9 +419,6 @@ deploy_surge() {
 
     # Start Relayers
     start_relayers
-
-    # Prepare Bridge UI Configs
-    prepare_bridge_ui_configs
 }
 
 deploy_surge
