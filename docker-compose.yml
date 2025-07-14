@@ -151,7 +151,7 @@ services:
       - bond-depositer
 
   surge-l2-deployer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main_pacaya_v1.6.1_add_json_logs
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
     container_name: surge-l2-deployer
     pull_policy: always
     volumes:
