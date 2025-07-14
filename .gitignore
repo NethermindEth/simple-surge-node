@@ -6,6 +6,6 @@
 /mysql-data/
 /rabbitmq/
 /execution-data/
-/deployment/deploy_l1.json
-/deployment/setup_l2.json
+/deployment/*.json
+/configs/*.json
 /blockscout-postgres-data/

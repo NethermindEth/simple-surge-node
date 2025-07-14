@@ -25,4 +25,6 @@ prepare_sgx_assets
 echo "Starting to register SGX instance..."
 ./script/layer1/surge/register_sgx_instance.sh
 
+cp /app/deployments/sgx_instances.json /deployment/sgx_instances.json
+
 echo "SGX instance registered successfully"

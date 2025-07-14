@@ -25,7 +25,9 @@ deploy_l1() {
     ./script/layer1/surge/deploy_surge_l1.sh
 
     echo "Copying deployment results to /deployment..."
+
     cp /app/deployments/deploy_l1.json /deployment/deploy_l1.json
+    cp /app/deployments/sgx_instances.json /deployment/sgx_instances.json
 
     echo "Deployment completed successfully"
 }
