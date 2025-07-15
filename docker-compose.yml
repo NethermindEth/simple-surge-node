@@ -845,10 +845,10 @@ services:
       - --queue.password=${RABBITMQ_PASSWORD}
       - --queue.port=${RABBITMQ_PORT}
       - --queue.username=${RABBITMQ_USER}
-      - --srcBridgeAddress="0x7633740000000000000000000000000000000001"
-      - --srcSignalServiceAddress="0x7633740000000000000000000000000000000005"
+      - --srcBridgeAddress=${L2_BRIDGE}
+      - --srcSignalServiceAddress=${L2_SIGNAL_SERVICE}
       - --srcRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
-      - --destBridgeAddress="0x75689954C665396167a6D372aC9154814FD30Fa4"
+      - --destBridgeAddress=${L1_BRIDGE}
       - --destRpcUrl=http://host.docker.internal:32003
       - --maxNumGoroutines=${NUM_GOROUTINES}
       - --blockBatchSize=${BLOCK_BATCH_SIZE}
