@@ -39,8 +39,18 @@ remove_db() {
     echo "Database removed successfully"
 }
 
+remove_configs() {
+    echo "Removing configs..."
+
+    rm -rf ./deployment/*.json
+    rm -rf ./configs/*.json
+
+    echo "Configs removed successfully"
+}
+
 remove_l2_stack
 remove_relayers
 remove_db
+remove_configs
 
 echo "Surge removed successfully"

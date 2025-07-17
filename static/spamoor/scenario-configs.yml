@@ -1,0 +1,2 @@
+- {"config":{"throughput":10},"name":"Optional name for this example spammer","scenario":"eoatx"}
+- {"config":{"throughput":10},"scenario":"erctx"}

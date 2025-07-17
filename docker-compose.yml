@@ -369,7 +369,7 @@ services:
       - prover
  
   tx-spammer:
-    image: ethpandaops/tx-fuzz:master
+    image: ethpandaops/spamoor:latest
     container_name: l2-tx-spammer
     restart: unless-stopped
     pull_policy: always
@@ -377,11 +377,16 @@ services:
       - nethermind_execution_client
       - taiko_client_driver
       - taiko_client_proposer
+    volumes:
+      - ./static/spamoor:/config
+    ports:
+      - 8080:8080
+    entrypoint:
+      - ./spamoor-daemon
     command:
-      - "spam"
-      - "--rpc=http://l2-nethermind-execution-client:${L2_HTTP_PORT}"
-      - "--gaslimit=10000000"
-      - "--sk=0x94eb3102993b41ec55c241060f47daa0f6372e2e3ad7e91612ae36c364042e44"
+      - "--rpchost=http://l2-nethermind-execution-client:${L2_HTTP_PORT}"
+      - "--startup-spammer=/config/scenario-configs.yml"
+      - "--privkey=0x94eb3102993b41ec55c241060f47daa0f6372e2e3ad7e91612ae36c364042e44"
     networks:
       - surge
     labels:
