@@ -1,2 +1,2 @@
-- {"config":{"throughput":10},"name":"Optional name for this example spammer","scenario":"eoatx"}
-- {"config":{"throughput":10},"scenario":"erctx"}
+- {"config":{"throughput":20},"name":"Standard ETH transfers","scenario":"eoatx"}
+- {"config":{"throughput":20},"name":"Deploy ERC20 tokens and perform transfers","scenario":"erctx"}
