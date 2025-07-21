@@ -61,7 +61,7 @@
   },
   "accounts": {
     "0x3e95dFbBaF6B348396E6674C7871546dCC568e56": {
-      "balance": "0x3635c9adc5dea00000"
+      "balance": "1000000000000000000000000000"
     },
     "0x0763374000000000000000000000000000000006": {
       "contractName": "SharedResolverImpl",
