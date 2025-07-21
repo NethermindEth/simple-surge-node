@@ -193,7 +193,7 @@ services:
       - l2-deployer
 
   nethermind_execution_client:
-    image: nethermindeth/nethermind:taiko-new-api-2
+    image: nethermindeth/nethermind:surge-gas-price-oracle
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
@@ -212,6 +212,8 @@ services:
       - ${L2_HTTP_PORT}:${L2_HTTP_PORT}
       - ${L2_WS_PORT}:${L2_WS_PORT}
       - ${L2_ENGINE_API_PORT}:${L2_ENGINE_API_PORT}
+    environment:
+      TAIKO_INBOX: ${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
     command:
       - --config=none
       - --datadir=/data/surge
@@ -233,6 +235,8 @@ services:
       - --Sync.FastSync=false
       - --Sync.SnapSync=false
       - --HealthChecks.Enabled=true
+      - --Surge.L1EthApiEndpoint=${L1_ENDPOINT_HTTP}
+      - --Surge.TaikoInboxAddress=${TAIKO_INBOX}
       - --log=${NETHERMIND_LOG_LEVEL}
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -334,7 +338,7 @@ services:
       - proposer
       - spammer
       - l2-deployer
-  
+
   taiko_client_prover_relayer:
     image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:main-pacaya-v1.6.1
     container_name: l2-taiko-prover-relayer-client
@@ -367,7 +371,7 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - prover
- 
+
   tx-spammer:
     image: ethpandaops/spamoor:latest
     container_name: l2-tx-spammer
