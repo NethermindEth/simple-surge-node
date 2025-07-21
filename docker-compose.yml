@@ -193,7 +193,7 @@ services:
       - l2-deployer
 
   nethermind_execution_client:
-    image: nethermindeth/nethermind:master-9bb8edb
+    image: nethermindeth/nethermind:surge-gas-price-oracle
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always

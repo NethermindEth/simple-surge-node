@@ -1,9 +1,7 @@
 {
     "version": "1",
     "engine": {
-      "Taiko": {
-        "UseSurgeGasPriceOracle": true
-      }
+      "Taiko": {}
     },
     "params": {
       "eip150Transition": "0x0",
@@ -273,4 +271,4 @@
       }
     }
   }
-
+  
