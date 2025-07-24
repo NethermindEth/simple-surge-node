@@ -16,7 +16,7 @@ deploy_proposer_wrapper() {
 
     if [ "$BROADCAST" = "true" ]; then
         echo "Authorizing caller..."
-        cast call ${SURGE_PROPOSER_WRAPPER} 'authorizeCaller(address)' ${ADMIN} --private-key ${PRIVATE_KEY} --rpc-url ${L1_ENDPOINT_HTTP} --gas-limit ${GAS_LIMIT}
+        cast send ${SURGE_PROPOSER_WRAPPER} 'authorizeCaller(address)' ${ADMIN} --private-key ${PRIVATE_KEY} --rpc-url ${L1_ENDPOINT_HTTP} --gas-limit ${GAS_LIMIT}
     fi
 
     echo "Deployment completed successfully"
