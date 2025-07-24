@@ -1,6 +1,7 @@
 services:
+# Deployer
   surge-l1-deployer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1-proposer-wrapper
     container_name: surge-l1-deployer
     pull_policy: always
     volumes:
@@ -23,6 +24,7 @@ services:
       RISC0_BLOCK_PROVING_IMAGE_ID: ${RISC0_BLOCK_PROVING_IMAGE_ID:-0x002eb51e99132ea02f27349345fe7e98c6867beab29a2426d1e4f693e2857bcd}
       SP1_BLOCK_PROVING_PROGRAM_VKEY: ${SP1_BLOCK_PROVING_PROGRAM_VKEY:-7551aa7009644e503ffa7fce53f657264a3a1b45516afc5b026ff7e43c10d62a}
       SP1_AGGREGATION_PROGRAM_VKEY: ${SP1_AGGREGATION_PROGRAM_VKEY:-0x000795db478eeeb7bef37247eb93389ba2a4e6c1cbe59a49afc3bd6ac2ad27ba}
+      FOUNDRY_PROFILE: layer1
     networks:
       - surge
     extra_hosts:
@@ -39,8 +41,38 @@ services:
     profiles:
       - l1-deployer
 
+  proposer-wrapper-deployer:
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1-proposer-wrapper
+    container_name: proposer-wrapper-deployer
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/deploy-proposer-wrapper.sh
+    env_file:
+      - .env
+    environment:
+      BROADCAST: ${BROADCAST:-false}
+      GAS_LIMIT: ${GAS_LIMIT:-100000}
+      TAIKO_WRAPPER: ${TAIKO_WRAPPER:-0x9224cFB28d3f21Ab56591d970F2DC432F4CE4900}
+      TAIKO_INBOX: ${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
+      ADMIN: ${DEPLOYER_ADMIN:-0x3e95dFbBaF6B348396E6674C7871546dCC568e56}
+      FOUNDRY_PROFILE: layer1
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - wrapper-deployer
+  
   surge-sgx-register:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1-proposer-wrapper
     container_name: surge-sgx-register
     pull_policy: always
     volumes:
@@ -60,6 +92,7 @@ services:
       SGX_RETH_VERIFIER: ${SGX_RETH_VERIFIER:-0x0000000000000000000000000000000000000000}
       PEM_CERT_CHAIN_LIB: ${PEM_CERT_CHAIN_LIB:-0x0000000000000000000000000000000000000000}
       BROADCAST: ${BROADCAST:-false}
+      FOUNDRY_PROFILE: layer1
     networks:
       - surge
     extra_hosts:
@@ -71,7 +104,7 @@ services:
       - sgx-register
 
   surge-risc0-register:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1-proposer-wrapper
     container_name: surge-risc0-register
     pull_policy: always
     volumes:
@@ -98,7 +131,7 @@ services:
       - risc0-register
 
   surge-sp1-register:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1-proposer-wrapper
     container_name: surge-sp1-register
     pull_policy: always
     volumes:
@@ -125,7 +158,7 @@ services:
       - sp1-register
 
   surge-bond-depositer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1-proposer-wrapper
     container_name: surge-bond-depositer
     pull_policy: always
     volumes:
@@ -151,16 +184,19 @@ services:
       - bond-depositer
 
   surge-l2-deployer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1-proposer-wrapper
     container_name: surge-l2-deployer
     pull_policy: always
     volumes:
       - ./deployer:/deployer
       - ./deployment:/deployment
     depends_on:
-      - nethermind_execution_client
-      - taiko_client_driver
-      - taiko_client_proposer
+      nethermind_execution_client:
+        condition: service_healthy
+      taiko_client_driver:
+        condition: service_started
+      taiko_client_proposer:
+        condition: service_started
     entrypoint:
       - /bin/sh
       - -c
@@ -176,6 +212,7 @@ services:
       L1_OWNER: ${L1_OWNER:-0x3e95dFbBaF6B348396E6674C7871546dCC568e56}
       FORK_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
       BROADCAST: ${BROADCAST:-false}
+      FOUNDRY_PROFILE: layer2
     networks:
       - surge
     extra_hosts:
@@ -192,6 +229,7 @@ services:
     profiles:
       - l2-deployer
 
+# L2 stack components
   nethermind_execution_client:
     image: nethermindeth/nethermind:surge-gas-price-oracle
     container_name: l2-nethermind-execution-client
@@ -258,9 +296,12 @@ services:
       - spammer
       - blockscout
       - l2-deployer
+      - relayer-l1
+      - relayer-l2
+      - relayer-api
 
   taiko_client_driver:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:main-pacaya-v1.6.1
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:main-pacaya-v1.6.1-proposer-wrapper
     container_name: l2-taiko-consensus-client
     restart: unless-stopped
     pull_policy: always
@@ -298,15 +339,21 @@ services:
       - spammer
       - blockscout
       - l2-deployer
+      - relayer-l1
+      - relayer-l2
+      - relayer-api
 
   taiko_client_proposer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:main-pacaya-v1.6.1
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:main-pacaya-v1.6.1-proposer-wrapper
     container_name: l2-taiko-proposer-client
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_client
-      - taiko_client_driver
+      nethermind_execution_client:
+        condition: service_healthy
+        restart: true
+      taiko_client_driver:
+        condition: service_started
     volumes:
       - ./execution-data:/data/taiko-nethermind
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
@@ -321,6 +368,7 @@ services:
       L1_BRIDGE: ${L1_BRIDGE:-0x75689954C665396167a6D372aC9154814FD30Fa4}
       TAIKO_WRAPPER: ${TAIKO_WRAPPER:-0x9224cFB28d3f21Ab56591d970F2DC432F4CE4900}
       FORCED_INCLUSION_STORE: ${FORCED_INCLUSION_STORE:-0x2386d67200b89f63735DE6Abb22F5c5cA863902C}
+      SURGE_PROPOSER_WRAPPER: ${SURGE_PROPOSER_WRAPPER:-0xBcc621C504BF31f7F5B619EC04319077a2A4D999}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     entrypoint:
@@ -340,13 +388,16 @@ services:
       - l2-deployer
 
   taiko_client_prover_relayer:
-    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:main-pacaya-v1.6.1
+    image: nethermind.jfrog.io/modular-oci-local-dev/taiko-client:main-pacaya-v1.6.1-proposer-wrapper
     container_name: l2-taiko-prover-relayer-client
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_client
-      - taiko_client_driver
+      nethermind_execution_client:
+        condition: service_healthy
+        restart: true
+      taiko_client_driver:
+        condition: service_started
     volumes:
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./script:/script
@@ -356,6 +407,7 @@ services:
       - .env
     environment:
       TAIKO_INBOX: ${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
+      SURGE_PROPOSER_WRAPPER: ${SURGE_PROPOSER_WRAPPER:-0xBcc621C504BF31f7F5B619EC04319077a2A4D999}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     entrypoint:
@@ -378,9 +430,12 @@ services:
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_client
-      - taiko_client_driver
-      - taiko_client_proposer
+      nethermind_execution_client:
+        condition: service_healthy
+      taiko_client_driver:
+        condition: service_started
+      taiko_client_proposer:
+        condition: service_started
     volumes:
       - ./static/spamoor:/config
     ports:
@@ -404,9 +459,6 @@ services:
     container_name: l2-blockscout-postgres
     restart: unless-stopped
     pull_policy: always
-    depends_on:
-      - nethermind_execution_client
-      - taiko_client_driver
     volumes:
       - ./blockscout-postgres-data:/var/lib/postgresql/data
     ports:
@@ -441,8 +493,12 @@ services:
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_client
-      - taiko_client_driver
+      nethermind_execution_client:
+        condition: service_healthy
+      taiko_client_driver:
+        condition: service_started
+      blockscout-postgres:
+        condition: service_started
     ports:
       - ${VERIFIER_PORT}:${VERIFIER_PORT}
     environment:
@@ -467,8 +523,15 @@ services:
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_client
-      - taiko_client_driver
+      nethermind_execution_client:
+        condition: service_healthy
+        restart: true
+      taiko_client_driver:
+        condition: service_started
+      blockscout-postgres:
+        condition: service_started
+      blockscout-verifer:
+        condition: service_started
     ports:
       - ${BLOCKSCOUT_PORT}:${BLOCKSCOUT_PORT}
     environment:
@@ -518,8 +581,16 @@ services:
     restart: unless-stopped
     pull_policy: always
     depends_on:
-      - nethermind_execution_client
-      - taiko_client_driver
+      nethermind_execution_client:
+        condition: service_healthy
+      taiko_client_driver:
+        condition: service_started
+      blockscout-postgres:
+        condition: service_started
+      blockscout-verifer:
+        condition: service_started
+      blockscout:
+        condition: service_started
     ports:
       - ${BLOCKSCOUT_FRONTEND_PORT}:${BLOCKSCOUT_FRONTEND_PORT}
     environment:
@@ -557,7 +628,7 @@ services:
     profiles:
       - blockscout
 
-  # Relayer infrastructure services
+# Relayer infrastructure services
   relayer-db:
     image: mysql:8.0
     container_name: relayer-db
@@ -617,6 +688,11 @@ services:
     restart: always
     environment:
       - L1_SIGNAL_SERVICE=${L1_SIGNAL_SERVICE:-0xefc92277E9166C27529CCD889143C6d4B6171595}
+    depends_on:
+      nethermind_execution_client:
+        condition: service_healthy
+      taiko_client_driver:
+        condition: service_started
     entrypoint: ["/usr/local/bin/relayer"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -669,6 +745,11 @@ services:
       - TAIKO_INBOX=${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
       - L1_SIGNAL_SERVICE=${L1_SIGNAL_SERVICE:-0xefc92277E9166C27529CCD889143C6d4B6171595}
       - L1_BRIDGE=${L1_BRIDGE:-0x75689954C665396167a6D372aC9154814FD30Fa4}
+    depends_on:
+      nethermind_execution_client:
+        condition: service_healthy
+      taiko_client_driver:
+        condition: service_started
     entrypoint: ["/usr/local/bin/relayer"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -714,6 +795,11 @@ services:
     restart: always
     env_file:
       - .env
+    depends_on:
+      nethermind_execution_client:
+        condition: service_healthy
+      taiko_client_driver:
+        condition: service_started
     entrypoint: ["/usr/local/bin/relayer"]
     ports:
       - 4102:4102
@@ -748,6 +834,11 @@ services:
     image: nethermind.jfrog.io/modular-oci-local-dev/relayer:sha-fbbab41
     container_name: relayer-l2-api
     restart: always
+    depends_on:
+      nethermind_execution_client:
+        condition: service_healthy
+      taiko_client_driver:
+        condition: service_started
     environment:
       - TAIKO_INBOX=${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
     entrypoint: ["/usr/local/bin/relayer"]
@@ -784,6 +875,11 @@ services:
     image: nethermind.jfrog.io/modular-oci-local-dev/relayer:sha-fbbab41
     container_name: relayer-l2-processor
     restart: always
+    depends_on:
+      nethermind_execution_client:
+        condition: service_healthy
+      taiko_client_driver:
+        condition: service_started
     environment:
       - TAIKO_INBOX=${TAIKO_INBOX:-0xC3c933d714FbD79e1D6cA89AA1126FC52a64873b}
       - L1_BRIDGE=${L1_BRIDGE:-0x75689954C665396167a6D372aC9154814FD30Fa4}
@@ -836,6 +932,11 @@ services:
     image: nethermind.jfrog.io/modular-oci-local-dev/relayer:sha-fbbab41
     container_name: relayer-l2-indexer
     restart: always
+    depends_on:
+      nethermind_execution_client:
+        condition: service_healthy
+      taiko_client_driver:
+        condition: service_started
     environment:
       - L1_BRIDGE=${L1_BRIDGE:-0x75689954C665396167a6D372aC9154814FD30Fa4}
     entrypoint: ["/usr/local/bin/relayer"]
