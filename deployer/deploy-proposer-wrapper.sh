@@ -24,7 +24,7 @@ deploy_proposer_wrapper() {
 
 extract_proposer_wrapper_address() {
     echo "Extracting Proposer Wrapper address..."
-    export SURGE_PROPOSER_WRAPPER=$(cat /deployment/proposer_wrappers.json | jq -r '.proposer_wrapper')
+    SURGE_PROPOSER_WRAPPER=$(cat /deployment/proposer_wrappers.json | jq -r '.proposer_wrapper')
 
     echo "Proposer Wrapper address: ${SURGE_PROPOSER_WRAPPER}"
 }

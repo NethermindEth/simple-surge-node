@@ -10,6 +10,33 @@ if [ -f .env ]; then
   set +a  # disable automatic export
 fi
 
+prepare_blockscout_for_remote() {
+  # Get the machine's IP address using ip command (works on Ubuntu)
+  export MACHINE_IP=$(ip route get 1.1.1.1 | grep -oP 'src \K\S+' | head -n1)
+
+  # Fallback to hostname -I if ip route doesn't work
+  if [ -z "$MACHINE_IP" ]; then
+    MACHINE_IP=$(hostname -I | awk '{print $1}')
+  fi
+
+  # Final fallback to parsing ip addr output
+  if [ -z "$MACHINE_IP" ]; then
+    MACHINE_IP=$(ip addr show | grep 'inet ' | grep -v '127.0.0.1' | head -n1 | awk '{print $2}' | cut -d'/' -f1)
+  fi
+
+  if [ -z "$MACHINE_IP" ]; then
+    echo "Error: Could not determine machine IP address"
+    exit 1
+  fi
+
+  echo "Setting Blockscout to use machine IP: $MACHINE_IP"
+
+  # Replace localhost with machine IP for blockscout
+  sed -i.bak 's/^BLOCKSCOUT_API_HOST=.*/BLOCKSCOUT_API_HOST='$MACHINE_IP'/g' .env
+
+  echo "Successfully updated blockscout launcher to use machine IP: $MACHINE_IP"
+}
+
 deploy_l1() {
   # Verify if deployment is already running or it's already completed
   mkdir -p deployment
@@ -173,15 +200,24 @@ extract_l1_deployment_results() {
 }
 
 deploy_proposer_wrapper() {
-  echo "Deploying Proposer Wrapper..."
+  # Check if deployment is already completed
+  if [ -f "deployment/proposer_wrappers.json" ]; then
+    export SURGE_PROPOSER_WRAPPER=$(cat ./deployment/proposer_wrappers.json | jq -r '.proposer_wrapper')
+    echo "Proposer Wrapper deployment already completed (proposer_wrappers.json exists), deployment will be skipped"
+    return 0
+  else
+    echo "Deploying Proposer Wrapper..."
 
-  echo "Run the simulation first..."
-  BROADCAST=false docker compose --profile wrapper-deployer up
+    echo "Run the simulation first..."
+    BROADCAST=false docker compose --profile wrapper-deployer up
 
-  echo "Run the actual deployment..."
-  BROADCAST=true docker compose --profile wrapper-deployer up
+    export SURGE_PROPOSER_WRAPPER=$(cat ./deployment/proposer_wrappers.json | jq -r '.proposer_wrapper')
 
-  echo "Proposer Wrapper deployed successfully"
+    echo "Run the actual deployment..."
+    BROADCAST=true docker compose --profile wrapper-deployer up
+
+    echo "Proposer Wrapper deployed successfully"
+  fi
 }
 
 deposit_bond() {
@@ -236,18 +272,24 @@ start_l2_stack() {
 }
 
 deploy_l2() {
-  echo "Deploying L2 SCs..."
-
-  if [ "$L1_TIMELOCK_CONTROLLER" != "0x0000000000000000000000000000000000000000" ]; then
-    echo "Surge timelock controller is set. Starting deployment."
-    L1_OWNER=$L1_TIMELOCK_CONTROLLER
-    BROADCAST=true docker compose --profile l2-deployer up -d
+  # Check if deployment is already completed
+  if [ -f "deployment/setup_l2.json" ]; then
+    echo "L2 deployment already completed (setup_l2.json exists), deployment will be skipped"
+    return 0
   else
-    echo "Surge timelock controller is not set. Use L1 owner for timelock controller."
-    BROADCAST=true docker compose --profile l2-deployer up  -d
-  fi
+    echo "Deploying L2 SCs..."
 
-  echo "L2 deployment completed successfully"
+    if [ "$L1_TIMELOCK_CONTROLLER" != "0x0000000000000000000000000000000000000000" ]; then
+      echo "Surge timelock controller is set. Starting deployment."
+      L1_OWNER=$L1_TIMELOCK_CONTROLLER
+      BROADCAST=true docker compose --profile l2-deployer up -d
+    else
+      echo "Surge timelock controller is not set. Use L1 owner for timelock controller."
+      BROADCAST=true docker compose --profile l2-deployer up -d
+    fi
+
+    echo "L2 deployment completed successfully"
+  fi
 }
 
 start_relayers() {
@@ -335,7 +377,7 @@ EOF
         "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
         "rpcUrls": {
           "default": {
-            "http": ["http://localhost:32003"]
+            "http": ["$L1_RPC"]
           }
         },
         "nativeCurrency": {
@@ -346,7 +388,7 @@ EOF
         "blockExplorers": {
           "default": {
             "name": "L1 Devnet Explorer",
-            "url": "http://localhost:36005"
+            "url": "$L1_EXPLORER"
           }
         }
       }
@@ -358,7 +400,7 @@ EOF
         "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
         "rpcUrls": {
           "default": {
-            "http": ["http://localhost:${L2_HTTP_PORT:-8547}"]
+            "http": ["$L2_RPC"]
           }
         },
         "nativeCurrency": {
@@ -369,7 +411,7 @@ EOF
         "blockExplorers": {
           "default": {
             "name": "Surge Explorer",
-            "url": "http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+            "url": "$L2_EXPLORER"
           }
         }
       }
@@ -384,11 +426,11 @@ EOF
   "configuredRelayer": [
     {
       "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID],
-      "url": "http://localhost:4102"
+      "url": "$L1_RELAYER"
     },
     {
       "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID],
-      "url": "http://localhost:4103"
+      "url": "$L2_RELAYER"
     }
   ]
 }
@@ -400,11 +442,11 @@ EOF
   "configuredEventIndexer": [
     {
       "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID],
-      "url": "http://localhost:4102"
+      "url": "$L1_RELAYER"
     },
     {
       "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID],
-      "url": "http://localhost:4103"
+      "url": "$L2_RELAYER"
     }
   ]
 }
@@ -427,16 +469,196 @@ EOF
 generate_prover_chain_spec() {
   echo "Generating prover chain spec..."
 
-  echo "Deploying locally, will skip..."
+  # Get chain IDs from environment or use defaults
+  L1_CHAIN_ID=${L1_CHAINID:-3151908}
+  L2_CHAIN_ID=${L2_CHAINID:-763374}
+
+  GENESIS_TIME=$(curl -s http://localhost:33001/eth/v1/beacon/genesis | jq -r '.data.genesis_time')
+
+  # Generate chain spec list
+  cat > configs/chain_spec_list_default.json << EOF
+[
+  {
+    "name": "surge_dev_l1",
+    "chain_id": $L1_CHAIN_ID,
+    "max_spec_id": "CANCUN",
+    "hard_forks": {
+      "FRONTIER": {
+        "Block": 0
+      },
+      "SHANGHAI": {
+        "Timestamp": 0
+      },
+      "CANCUN": {
+        "Timestamp": 0
+      }
+    },
+    "eip_1559_constants": {
+      "base_fee_change_denominator": "0x8",
+      "base_fee_max_increase_denominator": "0x8",
+      "base_fee_max_decrease_denominator": "0x8",
+      "elasticity_multiplier": "0x2"
+    },
+    "l1_contract": null,
+    "l2_contract": null,
+    "rpc": "$L1_RPC",
+    "beacon_rpc": "$L1_BEACON_RPC",
+    "verifier_address_forks": {
+      "FRONTIER": {
+        "SGX": null,
+        "SP1": null,
+        "RISC0": null
+      }
+    },
+    "genesis_time": $GENESIS_TIME,
+    "seconds_per_slot": 12,
+    "is_taiko": false
+  },
+  {
+    "name": "surge_dev",
+    "chain_id": $L2_CHAIN_ID,
+    "max_spec_id": "PACAYA",
+    "hard_forks": {
+      "HEKLA": {
+        "Block": 0
+      },
+      "ONTAKE": {
+        "Block": 1
+      },
+      "PACAYA": {
+        "Block": 1
+      },
+      "CANCUN": "TBD"
+    },
+    "eip_1559_constants": {
+      "base_fee_change_denominator": "0x8",
+      "base_fee_max_increase_denominator": "0x8",
+      "base_fee_max_decrease_denominator": "0x8",
+      "elasticity_multiplier": "0x2"
+    },
+    "l1_contract": "$TAIKO_INBOX",
+    "l2_contract": "$TAIKO_ANCHOR",
+    "rpc": "$L2_RPC",
+    "beacon_rpc": null,
+    "verifier_address_forks": {
+      "HEKLA": {
+        "SGX": "$SGX_RETH_VERIFIER",
+        "SP1": "$SP1_RETH_VERIFIER",
+        "RISC0": "$RISC0_RETH_VERIFIER"
+      },
+      "ONTAKE": {
+        "SGX": "$SGX_RETH_VERIFIER",
+        "SP1": "$SP1_RETH_VERIFIER",
+        "RISC0": "$RISC0_RETH_VERIFIER"
+      }
+    },
+    "genesis_time": 0,
+    "seconds_per_slot": 1,
+    "is_taiko": true
+  }
+]
+EOF
+  
+  echo "Prover chain spec generated successfully"
+  
+  # Print the generated content with clear dividers
+  echo ""
+  echo "=================================================================================="
+  echo "GENERATED CHAIN SPEC LIST (configs/chain_spec_list_default.json)"
+  echo "=================================================================================="
+  echo ""
+  cat configs/chain_spec_list_default.json
+  echo ""
+  echo "=================================================================================="
+  echo "Chain spec generated and saved to: configs/chain_spec_list_default.json"
+  echo "=================================================================================="
+  echo ""
 }
 
 generate_prover_env_vars() {
   echo "Generating prover env vars..."
 
-  echo "Deploying locally, will skip..."
+  # Set SGX_INSTANCE_ID from the JSON file
+  export SGX_INSTANCE_ID=$(cat deployment/sgx_instances.json | jq -r '.sgx_instance_id')
+
+  echo ""
+  echo "=================================================================================="
+  echo "GENERATED PROVER ENV VARS"
+  echo "=================================================================================="
+  echo ""
+  echo "export SGX_INSTANCE_ID=$SGX_INSTANCE_ID"
+  echo "export SGX_VERIFIER_ADDRESS=$SGX_RETH_VERIFIER"
+  echo "export ATTESTATION_ADDRESS=$AUTOMATA_DCAP_ATTESTATION"
+  echo "export PEM_CERTCHAIN_ADDRESS=$PEM_CERT_CHAIN_LIB"
+  echo "export GROTH16_VERIFIER_ADDRESS=$RISC0_GROTH16_VERIFIER"
+  echo "export SP1_VERIFIER_ADDRESS=$SUCCINCT_VERIFIER"
+  echo ""
+  echo "=================================================================================="
+  echo "Prover env vars generated, please copy and paste them when you start the provers"
+  echo "=================================================================================="
+  echo ""
+
+  echo "Prover env vars generated successfully"
 }
 
 deploy_surge() {
+  # Select remote or local
+  echo "Select remote or local (0 for local, 1 for remote) [default: local]: "
+  read -r remote_or_local
+
+  REMOTE_OR_LOCAL=${remote_or_local:-0}
+
+  if [ "$REMOTE_OR_LOCAL" = "1" ]; then
+    echo "Using remote environment"
+
+    # Prepare Blockscout for remote
+    prepare_blockscout_for_remote
+
+    # Select which devnet machine to use
+    echo "Select which devnet machine to use (1 for Devnet 1 (prover), 2 for Devnet 2 (taiko-client), return to skip for others (default: others)): "
+    read -r devnet_machine
+
+    DEVNET_MACHINE=${devnet_machine:-3}
+
+    if [ "$devnet_machine" = "1" ]; then
+      echo "Using Devnet 1 (prover)"
+      export L1_RPC="https://devnet-one.surge.wtf/l1-rpc"
+      export L1_BEACON_RPC="https://devnet-one.surge.wtf/l1-beacon"
+      export L1_EXPLORER="https://devnet-one.surge.wtf/l1-block-explorer"
+      export L2_RPC="https://devnet-one.surge.wtf/l2-rpc"
+      export L2_EXPLORER="https://devnet-one.surge.wtf/l2-block-explorer"
+      export L1_RELAYER="https://devnet-one.surge.wtf/l1-relayer"
+      export L2_RELAYER="https://devnet-one.surge.wtf/l2-relayer"
+    elif [ "$devnet_machine" = "2" ]; then
+      echo "Using Devnet 2 (taiko-client)"
+      export L1_RPC="https://devnet-two.surge.wtf/l1-rpc"
+      export L1_BEACON_RPC="https://devnet-two.surge.wtf/l1-beacon"
+      export L1_EXPLORER="https://devnet-two.surge.wtf/l1-block-explorer"
+      export L2_RPC="https://devnet-two.surge.wtf/l2-rpc"
+      export L2_EXPLORER="https://devnet-two.surge.wtf/l2-block-explorer"
+      export L1_RELAYER="https://devnet-two.surge.wtf/l1-relayer"
+      export L2_RELAYER="https://devnet-two.surge.wtf/l2-relayer"
+    else
+      echo "Using others"
+      export L1_RPC="http://$MACHINE_IP:32003"
+      export L1_BEACON_RPC="http://$MACHINE_IP:33001"
+      export L1_EXPLORER="http://$MACHINE_IP:36005"
+      export L2_RPC="http://$MACHINE_IP:${L2_HTTP_PORT:-8547}"
+      export L2_EXPLORER="http://$MACHINE_IP:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+      export L1_RELAYER="http://$MACHINE_IP:4102"
+      export L2_RELAYER="http://$MACHINE_IP:4103"
+    fi
+  else
+    echo "Using local environment"
+    export L1_RPC="http://localhost:32003"
+    export L1_BEACON_RPC="http://localhost:33001"
+    export L1_EXPLORER="http://localhost:36005"
+    export L2_RPC="http://localhost:${L2_HTTP_PORT:-8547}"
+    export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+    export L1_RELAYER="http://localhost:4102"
+    export L2_RELAYER="http://localhost:4103"
+  fi
+
   # Deploy L1 SCs
   deploy_l1
 

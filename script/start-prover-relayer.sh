@@ -67,7 +67,7 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         ARGS="${ARGS} --prover.blockConfirmations ${BLOCK_CONFIRMATIONS}"
     fi
 
-    if [ -n "$SURGE_PROPOSER_WRAPPER"]; then
+    if [ -n "$SURGE_PROPOSER_WRAPPER" ]; then
         ARGS="${ARGS} --surgeProposerWrapper ${SURGE_PROPOSER_WRAPPER}"
     fi
 
@@ -120,6 +120,7 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         ARGS="${ARGS} --prover.proofPollingInterval ${PROOF_POLLING_INTERVAL}"
     fi
 
+    echo "Starting Prover Relayer with args: ${ARGS}"
     exec taiko-client prover ${ARGS}
 else
     echo "PROVER IS DISABLED"

@@ -21,6 +21,10 @@ prepare_sgx_assets() {
 deploy_l1() {
     export FORK_URL=${L1_ENDPOINT_HTTP}
 
+    if [ "$SHOULD_SETUP_VERIFIERS" = "true" ]; then
+        prepare_sgx_assets
+    fi
+    
     echo "Deploying Surge L1 SCs..."
     ./script/layer1/surge/deploy_surge_l1.sh
 
@@ -35,4 +39,4 @@ deploy_l1() {
     echo "Deployment completed successfully"
 }
 
-prepare_sgx_assets && deploy_l1
+deploy_l1

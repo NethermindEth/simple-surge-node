@@ -52,7 +52,7 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         ARGS="${ARGS} --surge.priceFluctuationModifier ${SURGE_PRICE_FLUCTUATION_MODIFIER}"
     fi
 
-    if [ -n "$SURGE_PROPOSER_WRAPPER"]; then
+    if [ -n "$SURGE_PROPOSER_WRAPPER" ]; then
         ARGS="${ARGS} --surgeProposerWrapper ${SURGE_PROPOSER_WRAPPER}"
     fi
 
@@ -142,6 +142,7 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         ARGS="${ARGS} --tx.sendTimeout ${TX_SEND_TIMEOUT}"
     fi
 
+    echo "Starting Proposer with args: ${ARGS}"
     exec taiko-client proposer ${ARGS}
 else
     echo "PROPOSER IS DISABLED"
