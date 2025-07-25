@@ -52,6 +52,10 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         ARGS="${ARGS} --surge.priceFluctuationModifier ${SURGE_PRICE_FLUCTUATION_MODIFIER}"
     fi
 
+    if [ -n "$SURGE_PROPOSER_WRAPPER"]; then
+        ARGS="${ARGS} --surgeProposerWrapper ${SURGE_PROPOSER_WRAPPER}"
+    fi
+
     if [ -n "$EPOCH_INTERVAL" ]; then
         ARGS="${ARGS} --epoch.interval ${EPOCH_INTERVAL}"
     fi

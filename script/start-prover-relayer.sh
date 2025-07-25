@@ -67,6 +67,10 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         ARGS="${ARGS} --prover.blockConfirmations ${BLOCK_CONFIRMATIONS}"
     fi
 
+    if [ -n "$SURGE_PROPOSER_WRAPPER"]; then
+        ARGS="${ARGS} --surgeProposerWrapper ${SURGE_PROPOSER_WRAPPER}"
+    fi
+
     # TXMGR Settings
     if [ -n "$TX_FEE_LIMIT_MULTIPLIER" ]; then
         ARGS="${ARGS} --tx.feeLimitMultiplier ${TX_FEE_LIMIT_MULTIPLIER}"

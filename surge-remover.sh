@@ -9,7 +9,7 @@ remove_l2_stack() {
     docker compose --profile driver --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans
 
     # Remove deployer containers
-    docker compose --profile l1-deployer --profile bond-depositer --profile l2-deployer --profile sgx-register --profile sp1-register --profile risc0-register down --remove-orphans
+    docker compose --profile l1-deployer --profile bond-depositer --profile l2-deployer --profile sgx-register --profile sp1-register --profile risc0-register --profile wrapper-deployer down --remove-orphans
 
 
     echo "L2 stack and relayers removed successfully"

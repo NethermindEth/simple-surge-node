@@ -172,6 +172,18 @@ extract_l1_deployment_results() {
   echo "L1 deployment results extracted successfully"
 }
 
+deploy_proposer_wrapper() {
+  echo "Deploying Proposer Wrapper..."
+
+  echo "Run the simulation first..."
+  BROADCAST=false docker compose --profile wrapper-deployer up
+
+  echo "Run the actual deployment..."
+  BROADCAST=true docker compose --profile wrapper-deployer up
+
+  echo "Proposer Wrapper deployed successfully"
+}
+
 deposit_bond() {
   echo "Depositing bond..."
 
@@ -430,6 +442,9 @@ deploy_surge() {
 
   # Extract L1 deployment results
   extract_l1_deployment_results
+
+  # Deploy Proposer Wrapper
+  deploy_proposer_wrapper
 
   # Deposit bond
   deposit_bond
