@@ -71,4 +71,4 @@ extract_l1_deployment_results
 
 prompt_for_risc0_configs
 
-docker compose --profile risc0-register up
+RISC0_RETH_VERIFIER=$RISC0_RETH_VERIFIER docker compose --profile risc0-register up
