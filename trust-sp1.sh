@@ -71,4 +71,4 @@ extract_l1_deployment_results
 
 prompt_for_sp1_configs
 
-SP1_RETH_VERIFIER=$SP1_RETH_VERIFIER docker compose --profile sp1-register up
+docker compose --profile sp1-register up
