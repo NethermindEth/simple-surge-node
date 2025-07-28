@@ -16,7 +16,8 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         --taikoWrapper ${TAIKO_WRAPPER}
         --forcedInclusionStore ${FORCED_INCLUSION_STORE}
         --metrics true
-        --metrics.port 6061"
+        --metrics.port 6061
+        --verbosity 4"
 
     if [ -z "$L1_ENDPOINT_WS" ]; then
         echo "Error: L1_ENDPOINT_WS must be non-empty"

@@ -538,10 +538,10 @@ services:
     environment:
       MICROSERVICE_SC_VERIFIER_URL: http://l2-blockscout-verif:${VERIFIER_PORT}/api
       ECTO_USE_SSL: false
-      ETHEREUM_JSONRPC_HTTP_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}/
+      ETHEREUM_JSONRPC_HTTP_URL: http://${BLOCKSCOUT_L2_HOST}:${L2_HTTP_PORT}/
       DATABASE_URL: postgresql://postgres:MyPassword1!@l2-blockscout-postgres:5432/blockscout
       ETHEREUM_JSONRPC_VARIANT: nethermind
-      ETHEREUM_JSONRPC_TRACE_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}/
+      ETHEREUM_JSONRPC_TRACE_URL: http://${BLOCKSCOUT_L2_HOST}:${L2_HTTP_PORT}/
       SUBNETWORK: Surge
       API_V2_ENABLED: true
       PORT: ${BLOCKSCOUT_PORT}

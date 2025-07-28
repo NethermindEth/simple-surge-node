@@ -33,6 +33,7 @@ prepare_blockscout_for_remote() {
 
   # Replace localhost with machine IP for blockscout
   sed -i.bak 's/^BLOCKSCOUT_API_HOST=.*/BLOCKSCOUT_API_HOST='$MACHINE_IP'/g' .env
+  sed -i.bak 's/^BLOCKSCOUT_L2_HOST=.*/BLOCKSCOUT_L2_HOST='$MACHINE_IP'/g' .env
 
   echo "Successfully updated blockscout launcher to use machine IP: $MACHINE_IP"
 }
