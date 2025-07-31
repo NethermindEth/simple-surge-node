@@ -2,7 +2,8 @@
 
 set -eou pipefail
 
-ARGS="--l1.ws ${L1_ENDPOINT_WS} \
+ARGS="--verbosity 4 \
+    --l1.ws ${L1_ENDPOINT_WS} \
     --l2.ws ws://l2-nethermind-execution-client:"${L2_WS_PORT}" \
     --l1.beacon ${L1_BEACON_HTTP} \
     --l2.auth http://l2-nethermind-execution-client:${L2_ENGINE_API_PORT} \
@@ -13,4 +14,5 @@ ARGS="--l1.ws ${L1_ENDPOINT_WS} \
     --metrics true \
     --metrics.port 6060"
 
+echo "Starting Driver with args: ${ARGS}"
 exec taiko-client driver ${ARGS}

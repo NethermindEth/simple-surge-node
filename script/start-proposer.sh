@@ -3,7 +3,8 @@
 set -eou pipefail
 
 if [ "$ENABLE_PROPOSER" = "true" ]; then
-    ARGS="--l1.ws ${L1_ENDPOINT_WS}
+    ARGS="--verbosity 4
+        --l1.ws ${L1_ENDPOINT_WS}
         --l2.http http://l2-nethermind-execution-client:${L2_HTTP_PORT}
         --l2.auth http://l2-nethermind-execution-client:${L2_ENGINE_API_PORT}
         --taikoInbox ${TAIKO_INBOX}
@@ -16,8 +17,7 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         --taikoWrapper ${TAIKO_WRAPPER}
         --forcedInclusionStore ${FORCED_INCLUSION_STORE}
         --metrics true
-        --metrics.port 6061
-        --verbosity 4"
+        --metrics.port 6061"
 
     if [ -z "$L1_ENDPOINT_WS" ]; then
         echo "Error: L1_ENDPOINT_WS must be non-empty"
