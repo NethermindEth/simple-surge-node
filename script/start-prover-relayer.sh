@@ -3,7 +3,8 @@
 set -eou pipefail
 
 if [ "$ENABLE_PROVER" = "true" ]; then
-    ARGS="--l1.ws ${L1_ENDPOINT_WS}
+    ARGS="--verbosity 4
+        --l1.ws ${L1_ENDPOINT_WS}
         --l2.ws ws://l2-nethermind-execution-client:${L2_WS_PORT}
         --l2.http http://l2-nethermind-execution-client:${L2_HTTP_PORT}
         --taikoInbox ${TAIKO_INBOX}
@@ -13,8 +14,7 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         --prover.sgx.batchSize ${SGX_BATCH_SIZE}
         --prover.zkvm.batchSize ${ZKVM_BATCH_SIZE}
         --metrics true
-        --metrics.port 6062
-        --verbosity 4"
+        --metrics.port 6062"
 
     if [ -z "$SGX_RAIKO_HOST" ]; then
         echo "Error: SGX_RAIKO_HOST must be non-empty"

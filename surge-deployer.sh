@@ -233,10 +233,10 @@ deposit_bond() {
   if [ "$DEPOSIT_BOND" = "true" ]; then 
 
     # Prompt user for BOND_AMOUNT
-    echo "Enter bond amount (in ETH, default: 1): "
+    echo "Enter bond amount (in ETH, default: 1000): "
     read -r bond_amount
 
-    BOND_AMOUNT=${bond_amount:-1}
+    BOND_AMOUNT=${bond_amount:-1000}
     # Convert ETH to wei using bc
     BOND_AMOUNT=$(echo "$BOND_AMOUNT * 1000000000000000000" | bc | cut -d. -f1)
 
