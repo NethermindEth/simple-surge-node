@@ -3,18 +3,18 @@
 set -eou pipefail
 
 if [ "$ENABLE_PROVER" = "true" ]; then
-    ARGS="--l1.ws ${L1_ENDPOINT_WS}
+    ARGS="--verbosity 4
+        --l1.ws ${L1_ENDPOINT_WS}
         --l2.ws ws://l2-nethermind-execution-client:${L2_WS_PORT}
         --l2.http http://l2-nethermind-execution-client:${L2_HTTP_PORT}
-        --taikoL1 ${TAIKO_L1_ADDRESS}
-        --taikoL2 ${TAIKO_L2_ADDRESS}
+        --taikoInbox ${TAIKO_INBOX}
+        --taikoAnchor ${TAIKO_ANCHOR}
         --l1.proverPrivKey ${L1_PROVER_PRIVATE_KEY}
-        --prover.capacity ${PROVER_CAPACITY}
-        --sgxVerifier ${SGX_VERIFIER}
-        --sp1Verifier ${SP1_VERIFIER}
-        --risc0Verifier ${RISC0_VERIFIER}
-        --raiko.host ${SGX_RAIKO_HOST}
-        --metrics true" 
+        --raiko.host.sgx ${SGX_RAIKO_HOST}
+        --prover.sgx.batchSize ${SGX_BATCH_SIZE}
+        --prover.zkvm.batchSize ${ZKVM_BATCH_SIZE}
+        --metrics true
+        --metrics.port 6062"
 
     if [ -z "$SGX_RAIKO_HOST" ]; then
         echo "Error: SGX_RAIKO_HOST must be non-empty"
@@ -35,7 +35,7 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         echo "Error: L1_PROVER_PRIVATE_KEY must be non-empty"
         exit 1
     fi
-
+    
     if [ -n "$RAIKO_HOST_ZKVM" ]; then
         ARGS="${ARGS} --raiko.host.zkvm ${RAIKO_HOST_ZKVM}"
     fi
@@ -44,48 +44,32 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         ARGS="${ARGS} --raiko.requestTimeout ${RAIKO_REQUEST_TIMEOUT}"
     fi
 
-    if [ -n "$RAIKO_SP1_RECURSION" ]; then
-        ARGS="${ARGS} --raiko.sp1Recursion ${RAIKO_SP1_RECURSION}"
-    fi
-
-    if [ -n "$RAIKO_SP1_PROVER" ]; then
-        ARGS="${ARGS} --raiko.sp1Prover ${RAIKO_SP1_PROVER}"
-    fi
-
-    if [ -n "$RAIKO_RISC0_BONSAI" ]; then
-        ARGS="${ARGS} --raiko.risc0Bonsai=${RAIKO_RISC0_BONSAI}"
-    fi
-
-    if [ -n "$RAIKO_RISC0_SNARK" ]; then
-        ARGS="${ARGS} --raiko.risc0Snark=${RAIKO_RISC0_SNARK}"
-    fi
-
-    if [ -n "$RAIKO_RISC0_PROFILE" ]; then
-        ARGS="${ARGS} --raiko.risc0Profile=${RAIKO_RISC0_PROFILE}"
-    fi
-
-    if [ -n "$RAIKO_RISC0_EXECUTION_PO2" ]; then
-        ARGS="${ARGS} --raiko.risc0ExecutionPo2 ${RAIKO_RISC0_EXECUTION_PO2}"
-    fi
-
     if [ -n "$PROVER_SET" ]; then
         ARGS="${ARGS} --proverSet ${PROVER_SET}"
     fi
 
-    if [ -n "$TOKEN_ALLOWANCE" ]; then
-        ARGS="${ARGS} --prover.allowance ${TOKEN_ALLOWANCE}"
-    fi
-
-    if [ -n "$MIN_ETH_BALANCE" ]; then
-        ARGS="${ARGS} --prover.minEthBalance ${MIN_ETH_BALANCE}"
-    fi
-
-    if [ -n "$MIN_TAIKO_BALANCE" ]; then
-        ARGS="${ARGS} --prover.minTaikoTokenBalance ${MIN_TAIKO_BALANCE}"
-    fi
-
     if [ "$PROVE_UNASSIGNED_BLOCKS" = "true" ]; then
         ARGS="${ARGS} --prover.proveUnassignedBlocks"
+    fi
+
+    if [ -n "$FORCE_BATCH_PROVING_INTERVAL" ]; then
+        ARGS="${ARGS} --prover.forceBatchProvingInterval ${FORCE_BATCH_PROVING_INTERVAL}"
+    fi
+
+    if [ -n "$STARTING_BATCH_ID" ]; then
+        ARGS="${ARGS} --prover.startingBatchId ${STARTING_BATCH_ID}"
+    fi
+
+    if [ -n "$LOCAL_PROPOSER_ADDRESSES" ]; then
+        ARGS="${ARGS} --prover.localProposerAddresses ${LOCAL_PROPOSER_ADDRESSES}"
+    fi
+
+    if [ -n "$BLOCK_CONFIRMATIONS" ]; then
+        ARGS="${ARGS} --prover.blockConfirmations ${BLOCK_CONFIRMATIONS}"
+    fi
+
+    if [ -n "$SURGE_PROPOSER_WRAPPER" ]; then
+        ARGS="${ARGS} --surgeProposerWrapper ${SURGE_PROPOSER_WRAPPER}"
     fi
 
     # TXMGR Settings
@@ -133,6 +117,11 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         ARGS="${ARGS} --tx.sendTimeout ${TX_SEND_TIMEOUT}"
     fi
 
+    if [ -n "$PROOF_POLLING_INTERVAL" ]; then
+        ARGS="${ARGS} --prover.proofPollingInterval ${PROOF_POLLING_INTERVAL}"
+    fi
+
+    echo "Starting Prover Relayer with args: ${ARGS}"
     exec taiko-client prover ${ARGS}
 else
     echo "PROVER IS DISABLED"

@@ -2,3 +2,10 @@
 .env*.bak
 
 .idea/
+
+/mysql-data/
+/rabbitmq/
+/execution-data/
+/deployment/*.json
+/configs/*.json
+/blockscout-postgres-data/
