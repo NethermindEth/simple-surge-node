@@ -73,8 +73,8 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         ARGS="${ARGS} --epoch.allowZeroTipInterval ${ALLOW_ZERO_TIP_INTERVAL}"
     fi
 
-    if [ -n "$MAX_TX_LISTS_PER_EPOCH" ]; then
-        ARGS="${ARGS} --txPool.maxTxListsPerEpoch ${MAX_TX_LISTS_PER_EPOCH}"
+    if [ -n "$TX_POOL_MAX_TX_LISTS_PER_EPOCH" ]; then
+        ARGS="${ARGS} --txPool.maxTxListsPerEpoch ${TX_POOL_MAX_TX_LISTS_PER_EPOCH}"
     fi
 
     if [ -n "$PROVER_SET" ]; then
