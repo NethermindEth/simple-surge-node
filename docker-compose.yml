@@ -70,7 +70,7 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - wrapper-deployer
-  
+
   surge-sgx-register:
     image: nethermind.jfrog.io/modular-oci-local-dev/taiko-protocol:main-pacaya-v1.6.1-proposer-wrapper
     container_name: surge-sgx-register
@@ -232,7 +232,7 @@ services:
 
 # L2 stack components
   nethermind_execution_client:
-    image: nethermindeth/nethermind:surge-gas-price-oracle
+    image: nethermindeth/nethermind:surge-nethermind
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
