@@ -2,7 +2,18 @@
 
 set -eou pipefail
 
-ARGS="--config=none \
+if [ "$ENABLE_P2P_SYNC" = "true" ]; then
+    ARGS="--Discovery.Bootnodes=${BOOT_NODES}"
+    # Use base port + 100 to avoid conflicts with bootnode
+    P2P_PORT=$((L2_NETWORK_DISCOVERY_PORT + 100))
+else
+    ARGS=""
+    # Use original port when P2P sync is disabled
+    P2P_PORT=${L2_NETWORK_DISCOVERY_PORT}
+fi
+
+ARGS="${ARGS} \
+    --config=none \
     --datadir=/data/surge \
     --Init.ChainSpecPath=/chainspec.json \
     --Init.GenesisHash=${L2_GENESIS_HASH} \
@@ -16,8 +27,8 @@ ARGS="--config=none \
     --JsonRpc.JwtSecretFile=/tmp/jwt/jwtsecret \
     --JsonRpc.EngineHost=0.0.0.0 \
     --JsonRpc.EnginePort=${L2_ENGINE_API_PORT} \
-    --Network.DiscoveryPort=${L2_NETWORK_DISCOVERY_PORT} \
-    --Network.P2PPort=${L2_NETWORK_DISCOVERY_PORT} \
+    --Network.DiscoveryPort=${P2P_PORT} \
+    --Network.P2PPort=${P2P_PORT} \
     --Network.MaxActivePeers=${MAXPEERS} \
     --Sync.FastSync=false \
     --Sync.SnapSync=false \
