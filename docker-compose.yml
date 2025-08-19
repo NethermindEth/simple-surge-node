@@ -261,16 +261,12 @@ services:
       - /bin/sh
       - -c
       - |
-        echo "DEBUG: WRITE_LOGS_TO_FILE=$${WRITE_LOGS_TO_FILE:-false}"
         if [ "$${WRITE_LOGS_TO_FILE:-false}" = "true" ]; then
           # Ensure log directory exists
           mkdir -p /var/log/surge
           # Create timestamped log file
           TIMESTAMP=$$(date +%Y%m%d_%H%M%S)
           LOG_FILE="/var/log/surge/nethermind_execution_client_$${TIMESTAMP}.log"
-          echo "DEBUG: LOG_FILE=$$LOG_FILE"
-          echo "DEBUG: Directory listing:"
-          ls -la /var/log/surge/ || echo "Directory does not exist"
           echo "$$(date): Starting Nethermind Execution Client..." >> "$$LOG_FILE"
           # Unset any conflicting environment variables
           unset LOGLEVEL NETHERMIND_LOGLEVEL
