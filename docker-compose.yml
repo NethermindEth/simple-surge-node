@@ -245,7 +245,6 @@ services:
       - ${CHAINSPEC_PATH_ON_HOST}:/chainspec.json
       - ./logs:/var/log/surge
       - ./static/NLog.config:/nethermind/NLog.config
-      - ./static/NLog-console.config:/nethermind/NLog-console.config
     networks:
       - surge
     ports:
@@ -268,16 +267,10 @@ services:
           TIMESTAMP=$$(date +%Y%m%d_%H%M%S)
           LOG_FILE="/var/log/surge/nethermind_execution_client_$${TIMESTAMP}.log"
           echo "$$(date): Starting Nethermind Execution Client..." >> "$$LOG_FILE"
-          # Unset any conflicting environment variables
-          unset LOGLEVEL NETHERMIND_LOGLEVEL
-          # Use NLog config that outputs to console (captured by shell redirection)
+          # NLog outputs to console, captured by shell redirection to file
           exec /script/start-nethermind.sh >> "$$LOG_FILE" 2>&1
         else
           echo "$$(date): Starting Nethermind Execution Client..."
-          # Unset any conflicting environment variables
-          unset LOGLEVEL NETHERMIND_LOGLEVEL
-          # Don't use custom NLog config - let Nethermind log to console
-          export USE_CONSOLE_LOGGING=true
           exec /script/start-nethermind.sh
         fi
     extra_hosts:

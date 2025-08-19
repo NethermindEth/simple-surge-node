@@ -24,14 +24,8 @@ ARGS="--config=none \
     --HealthChecks.Enabled=true \
     --Surge.L1EthApiEndpoint=${L1_ENDPOINT_HTTP} \
     --Surge.TaikoInboxAddress=${TAIKO_INBOX} \
-    --log=${NETHERMIND_LOG_LEVEL}"
-
-# Choose appropriate logger config
-if [ "${USE_CONSOLE_LOGGING:-false}" = "true" ]; then
-    ARGS="${ARGS} --logger-config=/nethermind/NLog-console.config"
-else
-    ARGS="${ARGS} --logger-config=/nethermind/NLog.config"
-fi
+    --log=${EL_LOG_LEVEL} \
+    --logger-config=/nethermind/NLog.config"
 
 echo "Starting Nethermind Execution Client with args: ${ARGS}"
 exec ./Nethermind.Runner ${ARGS}
