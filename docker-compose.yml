@@ -48,7 +48,7 @@ services:
       - .env
     environment:
       BROADCAST: ${BROADCAST}
-      GAS_LIMIT: ${GAS_LIMIT}
+      GAS_LIMIT: ${GAS_LIMIT:-100000}
       TAIKO_WRAPPER: ${TAIKO_WRAPPER}
       TAIKO_INBOX: ${TAIKO_INBOX}
       ADMIN: ${DEPLOYER_ADMIN}
