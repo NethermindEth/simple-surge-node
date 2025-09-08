@@ -1,7 +1,7 @@
 services:
 # Deployer
   surge-l1-deployer:
-    image: nethermind/surge-protocol:sha-0e2d394
+    image: nethermind/surge-protocol:sha-48f9ad1
     container_name: surge-l1-deployer
     pull_policy: always
     volumes:
@@ -34,7 +34,7 @@ services:
       - l1-deployer
 
   proposer-wrapper-deployer:
-    image: nethermind/surge-protocol:sha-0e2d394
+    image: nethermind/surge-protocol:sha-48f9ad1
     container_name: proposer-wrapper-deployer
     pull_policy: always
     volumes:
@@ -51,7 +51,7 @@ services:
       GAS_LIMIT: ${GAS_LIMIT:-100000}
       TAIKO_WRAPPER: ${TAIKO_WRAPPER}
       TAIKO_INBOX: ${TAIKO_INBOX}
-      ADMIN: ${DEPLOYER_ADMIN}
+      ADMIN: ${DEPLOYER_ADMIN:-0x3e95dFbBaF6B348396E6674C7871546dCC568e56}
       FOUNDRY_PROFILE: layer1
     networks:
       - surge
@@ -64,7 +64,7 @@ services:
       - wrapper-deployer
 
   surge-sgx-register:
-    image: nethermind/surge-protocol:sha-0e2d394
+    image: nethermind/surge-protocol:sha-48f9ad1
     container_name: surge-sgx-register
     pull_policy: always
     volumes:
@@ -96,7 +96,7 @@ services:
       - sgx-register
 
   surge-risc0-register:
-    image: nethermind/surge-protocol:sha-0e2d394
+    image: nethermind/surge-protocol:sha-48f9ad1
     container_name: surge-risc0-register
     pull_policy: always
     volumes:
@@ -123,7 +123,7 @@ services:
       - risc0-register
 
   surge-sp1-register:
-    image: nethermind/surge-protocol:sha-0e2d394
+    image: nethermind/surge-protocol:sha-48f9ad1
     container_name: surge-sp1-register
     pull_policy: always
     volumes:
@@ -150,7 +150,7 @@ services:
       - sp1-register
 
   surge-bond-depositer:
-    image: nethermind/surge-protocol:sha-0e2d394
+    image: nethermind/surge-protocol:sha-48f9ad1
     container_name: surge-bond-depositer
     pull_policy: always
     volumes:
@@ -177,7 +177,7 @@ services:
       - bond-depositer
 
   surge-l2-deployer:
-    image: nethermind/surge-protocol:sha-0e2d394
+    image: nethermind/surge-protocol:sha-48f9ad1
     container_name: surge-l2-deployer
     pull_policy: always
     volumes:
