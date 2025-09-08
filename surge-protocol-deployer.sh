@@ -10,32 +10,22 @@ if [ -f .env ]; then
   set +a  # disable automatic export
 fi
 
-prepare_blockscout_for_remote() {
-  # Get the machine's IP address using ip command (works on Ubuntu)
-  export MACHINE_IP=$(ip route get 1.1.1.1 | grep -oP 'src \K\S+' | head -n1)
-
-  # Fallback to hostname -I if ip route doesn't work
-  if [ -z "$MACHINE_IP" ]; then
-    MACHINE_IP=$(hostname -I | awk '{print $1}')
+# Helper function to update environment variables in .env file
+update_env_var() {
+  local env_file="$1"
+  local var_name="$2"
+  local var_value="$3"
+  
+  # Check if the variable exists in the file
+  if grep -q "^${var_name}=" "$env_file"; then
+    # Update existing variable
+    sed -i.bak "s|^${var_name}=.*|${var_name}=${var_value}|" "$env_file"
+    echo "Updated ${var_name} in ${env_file}"
+  else
+    # Add new variable if it doesn't exist
+    echo "${var_name}=${var_value}" >> "$env_file"
+    echo "Added ${var_name} to ${env_file}"
   fi
-
-  # Final fallback to parsing ip addr output
-  if [ -z "$MACHINE_IP" ]; then
-    MACHINE_IP=$(ip addr show | grep 'inet ' | grep -v '127.0.0.1' | head -n1 | awk '{print $2}' | cut -d'/' -f1)
-  fi
-
-  if [ -z "$MACHINE_IP" ]; then
-    echo "Error: Could not determine machine IP address"
-    exit 1
-  fi
-
-  echo "Setting Blockscout to use machine IP: $MACHINE_IP"
-
-  # Replace localhost with machine IP for blockscout
-  sed -i.bak 's/^BLOCKSCOUT_API_HOST=.*/BLOCKSCOUT_API_HOST='$MACHINE_IP'/g' .env
-  sed -i.bak 's/^BLOCKSCOUT_L2_HOST=.*/BLOCKSCOUT_L2_HOST='$MACHINE_IP'/g' .env
-
-  echo "Successfully updated blockscout launcher to use machine IP: $MACHINE_IP"
 }
 
 deploy_l1() {
@@ -81,22 +71,29 @@ deploy_l1() {
 
   echo "USE_TIMELOCKED_OWNER: $USE_TIMELOCKED_OWNER"
 
-  # Prompt user for SHOULD_SETUP_VERIFIERS with default to false
-  echo "Should setup prover verifiers? (true/false) [default: false]: "
-  read -r should_setup_verifiers
+  # Prompt user for RUNNING_PROVERS with default to false
+  echo "Running provers? (true/false) [default: false]: "
+  read -r running_provers
 
-  SHOULD_SETUP_VERIFIERS=${should_setup_verifiers:-false}
+  RUNNING_PROVERS=${running_provers:-false}
 
-  echo "SHOULD_SETUP_VERIFIERS: $SHOULD_SETUP_VERIFIERS"
+  echo "RUNNING_PROVERS: $RUNNING_PROVERS"
 
   echo "Running L1 SCs deployment simulation..."
-  BROADCAST=false USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER SHOULD_SETUP_VERIFIERS=false docker compose --profile l1-deployer up
+  BROADCAST=false USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER docker compose --profile l1-deployer up
 
   echo "Extracting L1 deployment results after simulation..."
   extract_l1_deployment_results
 
-  if [ "$SHOULD_SETUP_VERIFIERS" = "true" ]; then
+  if [ "$RUNNING_PROVERS" = "true" ]; then
     generate_prover_chain_spec
+
+    # Prompt user for running SGX GETH
+    echo "Running SGX GETH? (true/false) [default: false]: "
+    read -r running_sgx_geth
+    RUNNING_SGX_GETH=${running_sgx_geth:-false}
+
+    echo "RUNNING_SGX_GETH: $RUNNING_SGX_GETH"
 
     # Prompt user for SGX MR_ENCLAVE
     echo "Enter SGX MR_ENCLAVE (return to skip): "
@@ -141,8 +138,8 @@ deploy_l1() {
   echo "Extracting L1 deployment results after actual deployment..."
   extract_l1_deployment_results
 
-  # Generate prover env vars if setup verifiers is true
-  if [ "$SHOULD_SETUP_VERIFIERS" = "true" ]; then
+  # Generate prover env vars if running provers is true
+  if [ "$RUNNING_PROVERS" = "true" ]; then
     generate_prover_env_vars
   fi
 }
@@ -152,7 +149,8 @@ extract_l1_deployment_results() {
   echo "Extracting L1 deployment results..."
   export TAIKO_INBOX=$(cat ./deployment/deploy_l1.json | jq -r '.taiko')
   export TAIKO_WRAPPER=$(cat ./deployment/deploy_l1.json | jq -r '.taiko_wrapper')
-  export AUTOMATA_DCAP_ATTESTATION=$(cat ./deployment/deploy_l1.json | jq -r '.automata_dcap_attestation')
+  export AUTOMATA_DCAP_ATTESTATION_GETH=$(cat ./deployment/deploy_l1.json | jq -r '.automata_dcap_attestation_geth')
+  export AUTOMATA_DCAP_ATTESTATION_RETH=$(cat ./deployment/deploy_l1.json | jq -r '.automata_dcap_attestation_reth')
   export L1_BRIDGE=$(cat ./deployment/deploy_l1.json | jq -r '.bridge')
   export L1_ERC1155_VAULT=$(cat ./deployment/deploy_l1.json | jq -r '.erc1155_vault')
   export L1_ERC20_VAULT=$(cat ./deployment/deploy_l1.json | jq -r '.erc20_vault')
@@ -166,6 +164,7 @@ extract_l1_deployment_results() {
   export PROOF_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.proof_verifier')
   export RISC0_GROTH16_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.risc0_groth16_verifier')
   export RISC0_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.risc0_reth_verifier')
+  export SGX_GETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sgx_geth_verifier')
   export SGX_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sgx_reth_verifier')
   export SHARED_RESOLVER=$(cat ./deployment/deploy_l1.json | jq -r '.shared_resolver')
   export SIG_VERIFY_LIB=$(cat ./deployment/deploy_l1.json | jq -r '.sig_verify_lib')
@@ -178,7 +177,8 @@ extract_l1_deployment_results() {
 
   echo "TAIKO_INBOX: $TAIKO_INBOX"
   echo "TAIKO_WRAPPER: $TAIKO_WRAPPER"
-  echo "AUTOMATA_DCAP_ATTESTATION: $AUTOMATA_DCAP_ATTESTATION"
+  echo "AUTOMATA_DCAP_ATTESTATION_GETH: $AUTOMATA_DCAP_ATTESTATION_GETH"
+  echo "AUTOMATA_DCAP_ATTESTATION_RETH: $AUTOMATA_DCAP_ATTESTATION_RETH"
   echo "BRIDGE: $L1_BRIDGE"
   echo "ERC1155_VAULT: $L1_ERC1155_VAULT"
   echo "ERC20_VAULT: $L1_ERC20_VAULT"
@@ -189,6 +189,7 @@ extract_l1_deployment_results() {
   echo "PROOF_VERIFIER: $PROOF_VERIFIER"
   echo "RISC0_GROTH16_VERIFIER: $RISC0_GROTH16_VERIFIER"
   echo "RISC0_RETH_VERIFIER: $RISC0_RETH_VERIFIER"
+  echo "SGX_GETH_VERIFIER: $SGX_GETH_VERIFIER"
   echo "SGX_RETH_VERIFIER: $SGX_RETH_VERIFIER"
   echo "SHARED_RESOLVER: $SHARED_RESOLVER"
   echo "SIG_VERIFY_LIB: $SIG_VERIFY_LIB"
@@ -197,7 +198,38 @@ extract_l1_deployment_results() {
   echo "SUCCINCT_VERIFIER: $SUCCINCT_VERIFIER"
   echo "SURGE_TIMELOCK_CONTROLLER: $L1_TIMELOCK_CONTROLLER"
 
-  echo "L1 deployment results extracted successfully"
+  # Update .env file with the extracted values
+  echo "Updating .env with extracted values..."
+  update_env_var ".env" "TAIKO_INBOX" "$TAIKO_INBOX"
+  update_env_var ".env" "TAIKO_WRAPPER" "$TAIKO_WRAPPER"
+  update_env_var ".env" "AUTOMATA_DCAP_ATTESTATION_GETH" "$AUTOMATA_DCAP_ATTESTATION_GETH"
+  update_env_var ".env" "AUTOMATA_DCAP_ATTESTATION_RETH" "$AUTOMATA_DCAP_ATTESTATION_RETH"
+  update_env_var ".env" "BRIDGE" "$L1_BRIDGE"
+  update_env_var ".env" "ERC1155_VAULT" "$L1_ERC1155_VAULT"
+  update_env_var ".env" "ERC20_VAULT" "$L1_ERC20_VAULT"
+  update_env_var ".env" "ERC721_VAULT" "$L1_ERC721_VAULT"
+  update_env_var ".env" "FORCED_INCLUSION_STORE" "$FORCED_INCLUSION_STORE"
+  update_env_var ".env" "L1_OWNER" "$L1_OWNER"
+  update_env_var ".env" "PEM_CERT_CHAIN_LIB" "$PEM_CERT_CHAIN_LIB"
+  update_env_var ".env" "PROOF_VERIFIER" "$PROOF_VERIFIER"
+  update_env_var ".env" "RISC0_GROTH16_VERIFIER" "$RISC0_GROTH16_VERIFIER"
+  update_env_var ".env" "RISC0_RETH_VERIFIER" "$RISC0_RETH_VERIFIER"
+  update_env_var ".env" "SGX_GETH_VERIFIER" "$SGX_GETH_VERIFIER"
+  update_env_var ".env" "SGX_RETH_VERIFIER" "$SGX_RETH_VERIFIER"
+  update_env_var ".env" "SHARED_RESOLVER" "$SHARED_RESOLVER"
+  update_env_var ".env" "SIG_VERIFY_LIB" "$SIG_VERIFY_LIB"
+  update_env_var ".env" "SIGNAL_SERVICE" "$L1_SIGNAL_SERVICE"
+  update_env_var ".env" "SP1_RETH_VERIFIER" "$SP1_RETH_VERIFIER"
+  update_env_var ".env" "SUCCINCT_VERIFIER" "$SUCCINCT_VERIFIER"
+  update_env_var ".env" "SURGE_TIMELOCK_CONTROLLER" "$L1_TIMELOCK_CONTROLLER"
+
+  # Clean up backup file if it exists
+  if [ -f ".env.bak" ]; then
+    rm ".env.bak"
+    echo "Cleaned up backup file .env.bak"
+  fi
+
+  echo "L1 deployment results extracted and .env updated successfully"
 }
 
 deploy_proposer_wrapper() {
@@ -205,6 +237,17 @@ deploy_proposer_wrapper() {
   if [ -f "deployment/proposer_wrappers.json" ]; then
     export SURGE_PROPOSER_WRAPPER=$(cat ./deployment/proposer_wrappers.json | jq -r '.proposer_wrapper')
     echo "Proposer Wrapper deployment already completed (proposer_wrappers.json exists), deployment will be skipped"
+    
+    # Still update the .env file even if deployment was skipped
+    echo "Updating .env with proposer wrapper address..."
+    update_env_var ".env" "SURGE_PROPOSER_WRAPPER" "$SURGE_PROPOSER_WRAPPER"
+    
+    # Clean up backup file if it exists
+    if [ -f ".env.bak" ]; then
+      rm ".env.bak"
+      echo "Cleaned up backup file .env.bak"
+    fi
+    
     return 0
   else
     echo "Deploying Proposer Wrapper..."
@@ -217,7 +260,17 @@ deploy_proposer_wrapper() {
     echo "Run the actual deployment..."
     BROADCAST=true docker compose --profile wrapper-deployer up
 
-    echo "Proposer Wrapper deployed successfully"
+    # Update .env file with the proposer wrapper address
+    echo "Updating .env with proposer wrapper address..."
+    update_env_var ".env" "SURGE_PROPOSER_WRAPPER" "$SURGE_PROPOSER_WRAPPER"
+
+    # Clean up backup file if it exists
+    if [ -f ".env.bak" ]; then
+      rm ".env.bak"
+      echo "Cleaned up backup file .env.bak"
+    fi
+
+    echo "Proposer Wrapper deployed successfully and .env updated"
   fi
 }
 
@@ -238,7 +291,7 @@ deposit_bond() {
 
     BOND_AMOUNT=${bond_amount:-1000}
     # Convert ETH to wei using bc
-    BOND_AMOUNT=$(echo "$BOND_AMOUNT * 1000000000000000000" | bc | cut -d. -f1)
+    export BOND_AMOUNT=$(echo "$BOND_AMOUNT * 1000000000000000000" | bc | cut -d. -f1)
 
     docker compose --profile bond-depositer up
 
@@ -587,8 +640,10 @@ generate_prover_env_vars() {
   echo "GENERATED PROVER ENV VARS"
   echo "=================================================================================="
   echo ""
-  echo "export SGX_INSTANCE_ID=$SGX_INSTANCE_ID"
-  echo "export SGX_VERIFIER_ADDRESS=$SGX_RETH_VERIFIER"
+  echo "export SGX_RETH_INSTANCE_ID=$SGX_INSTANCE_ID"
+  echo "export SGX_RETH_VERIFIER_ADDRESS=$SGX_RETH_VERIFIER"
+  echo "export SGX_GETH_INSTANCE_ID=$SGX_INSTANCE_ID"
+  echo "export SGX_GETH_VERIFIER_ADDRESS=$SGX_RETH_VERIFIER"
   echo "export ATTESTATION_ADDRESS=$AUTOMATA_DCAP_ATTESTATION"
   echo "export PEM_CERTCHAIN_ADDRESS=$PEM_CERT_CHAIN_LIB"
   echo "export GROTH16_VERIFIER_ADDRESS=$RISC0_GROTH16_VERIFIER"
@@ -602,7 +657,21 @@ generate_prover_env_vars() {
   echo "Prover env vars generated successfully"
 }
 
-deploy_surge() {
+deploy_surge_protocol() {
+  # Select which Surge environment to use
+  echo "Select which Surge environment to use (1 for Devnet, 2 for Staging, 3 for Testnet (default: Devnet)): "
+  read -r surge_environment
+
+  SURGE_ENVIRONMENT=${surge_environment:-1}
+
+  if [ "$SURGE_ENVIRONMENT" = "2" ]; then
+    echo "Using Staging Environment, skipping protocol deployment... Please execute surge-stack-deployer.sh directly"
+    return 0
+  elif [ "$SURGE_ENVIRONMENT" = "3" ]; then
+    echo "Using Testnet Environment, skipping protocol deployment... Please execute surge-stack-deployer.sh directly"
+    return 0
+  fi
+
   # Select remote or local
   echo "Select remote or local (0 for local, 1 for remote) [default: local]: "
   read -r remote_or_local
@@ -611,9 +680,6 @@ deploy_surge() {
 
   if [ "$REMOTE_OR_LOCAL" = "1" ]; then
     echo "Using remote environment"
-
-    # Prepare Blockscout for remote
-    prepare_blockscout_for_remote
 
     # Select which devnet machine to use
     echo "Select which devnet machine to use (1 for Devnet 1 (prover), 2 for Devnet 2 (taiko-client), return to skip for others (default: others)): "
@@ -666,17 +732,17 @@ deploy_surge() {
   # Extract L1 deployment results
   extract_l1_deployment_results
 
-  # Deploy Proposer Wrapper
+  # # Deploy Proposer Wrapper
   deploy_proposer_wrapper
 
   # Deposit bond
   deposit_bond
 
-  # Start L2 Stack
-  start_l2_stack
+  # # Start L2 Stack
+  # start_l2_stack
 
-  # Start Relayers
-  start_relayers
+  # # Start Relayers
+  # start_relayers
 }
 
-deploy_surge
+deploy_surge_protocol

@@ -37,22 +37,6 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         ARGS="${ARGS} --allowEmptyBlocks=${ALLOW_EMPTY_BLOCKS}"
     fi
 
-    if [ -n "$SURGE_PROPOSING_BLOCK_GAS" ]; then
-        ARGS="${ARGS} --surge.gasNeededForProposingBlock ${SURGE_PROPOSING_BLOCK_GAS}"
-    fi
-
-    if [ -n "$SURGE_PROVING_BLOCK_GAS" ]; then
-        ARGS="${ARGS} --surge.gasNeededForProvingBlock ${SURGE_PROVING_BLOCK_GAS}"
-    fi
-
-    if [ -n "$SURGE_OFF_CHAIN_COSTS" ]; then
-        ARGS="${ARGS} --surge.offChainCosts ${SURGE_OFF_CHAIN_COSTS}"
-    fi
-
-    if [ -n "$SURGE_PRICE_FLUCTUATION_MODIFIER" ]; then
-        ARGS="${ARGS} --surge.priceFluctuationModifier ${SURGE_PRICE_FLUCTUATION_MODIFIER}"
-    fi
-
     if [ -n "$SURGE_PROPOSER_WRAPPER" ]; then
         ARGS="${ARGS} --surgeProposerWrapper ${SURGE_PROPOSER_WRAPPER}"
     fi
@@ -69,8 +53,8 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         ARGS="${ARGS} --epoch.minProposingInterval ${EPOCH_MIN_PROPOSING_INTERVAL}"
     fi
 
-    if [ -n "$ALLOW_ZERO_TIP_INTERVAL" ]; then
-        ARGS="${ARGS} --epoch.allowZeroTipInterval ${ALLOW_ZERO_TIP_INTERVAL}"
+    if [ -n "$EPOCH_ALLOW_ZERO_TIP_INTERVAL" ]; then
+        ARGS="${ARGS} --epoch.allowZeroTipInterval ${EPOCH_ALLOW_ZERO_TIP_INTERVAL}"
     fi
 
     if [ -n "$TX_POOL_MAX_TX_LISTS_PER_EPOCH" ]; then
@@ -94,7 +78,7 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         ARGS="${ARGS} --l1.fallbackToCalldata"
     fi
 
-    if [ "$REVERT_PROTECTION" == "true" ]; then
+    if [ "$L1_REVERT_PROTECTION" == "true" ]; then
         ARGS="${ARGS} --l1.revertProtection"
     fi
 
@@ -111,8 +95,8 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         ARGS="${ARGS} --tx.gasLimit ${TX_GAS_LIMIT}"
     fi
 
-    if [ -n "$TX_MIN_BASEFEE" ]; then
-        ARGS="${ARGS} --tx.minBaseFee ${TX_MIN_BASEFEE}"
+    if [ -n "$TX_MIN_BASE_FEE" ]; then
+        ARGS="${ARGS} --tx.minBaseFee ${TX_MIN_BASE_FEE}"
     fi
 
     if [ -n "$TX_MIN_TIP_CAP" ]; then
@@ -131,12 +115,12 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         ARGS="${ARGS} --tx.receiptQueryInterval ${TX_RECEIPT_QUERY_INTERVAL}"
     fi
 
-    if [ -n "$TX_RESUBMISSION" ]; then
-        ARGS="${ARGS} --tx.resubmissionTimeout ${TX_RESUBMISSION}"
+    if [ -n "$TX_RESUBMISSION_TIMEOUT" ]; then
+        ARGS="${ARGS} --tx.resubmissionTimeout ${TX_RESUBMISSION_TIMEOUT}"
     fi
 
-    if [ -n "$TX_SAFE_ABORT_NONCE_TOO_LOW" ]; then
-        ARGS="${ARGS} --tx.safeAbortNonceTooLowCount ${TX_SAFE_ABORT_NONCE_TOO_LOW}"
+    if [ -n "$TX_SAFE_ABORT_NONCE_TOO_LOW_COUNT" ]; then
+        ARGS="${ARGS} --tx.safeAbortNonceTooLowCount ${TX_SAFE_ABORT_NONCE_TOO_LOW_COUNT}"
     fi
 
     if [ -n "$TX_SEND_TIMEOUT" ]; then
