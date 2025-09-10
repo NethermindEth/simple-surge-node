@@ -1,0 +1,220 @@
+services:
+  surge-l1-deployer:
+    image: nethermind/surge-protocol:sha-48f9ad1
+    container_name: surge-l1-deployer
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/deploy-surge-l1.sh
+    env_file:
+      - .env
+    environment:
+      FOUNDRY_PROFILE: layer1
+      BROADCAST: ${BROADCAST}
+      USE_TIMELOCKED_OWNER: ${USE_TIMELOCKED_OWNER}
+      FORK_URL: ${L1_ENDPOINT_HTTP}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - l1-deployer
+
+  surge-proposer-wrapper-deployer:
+    image: nethermind/surge-protocol:sha-48f9ad1
+    container_name: surge-proposer-wrapper-deployer
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/deploy-proposer-wrapper.sh
+    env_file:
+      - .env
+    environment:
+      FOUNDRY_PROFILE: layer1
+      BROADCAST: ${BROADCAST}
+      TAIKO_WRAPPER: ${TAIKO_WRAPPER}
+      TAIKO_INBOX: ${TAIKO_INBOX}
+      ADMIN: ${PUBLIC_KEY}
+      FORK_URL: ${L1_ENDPOINT_HTTP}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - proposer-wrapper-deployer
+
+  surge-bond-deposit:
+    image: nethermind/surge-protocol:sha-48f9ad1
+    container_name: surge-bond-deposit
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/deposit-bond.sh
+    env_file:
+      - .env
+    environment:
+      SURGE_PROPOSER_WRAPPER: ${SURGE_PROPOSER_WRAPPER}
+      ADMIN: ${PUBLIC_KEY}
+      BOND_AMOUNT: ${BOND_AMOUNT:-1000}
+      TAIKO_INBOX: ${TAIKO_INBOX}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - bond-deposit
+
+  surge-sgx-verifier-setup:
+    image: nethermind/surge-protocol:sha-48f9ad1
+    container_name: surge-sgx-verifier-setup
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/setup-sgx-verifier.sh
+    env_file:
+      - .env
+    environment:
+      FOUNDRY_PROFILE: layer1
+      BROADCAST: ${BROADCAST}
+      VERIFY_ARG: ${VERIFY_ARG}
+      MR_ENCLAVE: ${MR_ENCLAVE}
+      MR_SIGNER: ${MR_SIGNER}
+      V3_QUOTE_BYTES: ${V3_QUOTE_BYTES}
+      SGX_VERIFIER_ADDRESS: ${SGX_VERIFIER_ADDRESS}
+      AUTOMATA_PROXY_ADDRESS: ${AUTOMATA_PROXY_ADDRESS}
+      PEM_CERT_CHAIN_LIB_ADDRESS: ${PEM_CERT_CHAIN_LIB}
+      NEW_OWNER: ${L1_OWNER}
+      FORK_URL: ${L1_ENDPOINT_HTTP}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - sgx-verifier-setup
+
+  surge-risc0-verifier-setup:
+    image: nethermind/surge-protocol:sha-48f9ad1
+    container_name: surge-risc0-verifier-setup
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/setup-risc0-verifier.sh
+    env_file:
+      - .env
+    environment:
+      FOUNDRY_PROFILE: layer1
+      BROADCAST: ${BROADCAST}
+      RISC0_VERIFIER_ADDRESS: ${RISC0_RETH_VERIFIER}
+      RISC0_AGGREGATION_IMAGE_ID: ${RISC0_AGGREGATION_IMAGE_ID}
+      RISC0_BLOCK_PROVING_IMAGE_ID: ${RISC0_BLOCK_PROVING_IMAGE_ID}
+      NEW_OWNER: ${L1_OWNER}
+      FORK_URL: ${L1_ENDPOINT_HTTP}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - risc0-verifier-setup
+
+  surge-sp1-verifier-setup:
+    image: nethermind/surge-protocol:sha-48f9ad1
+    container_name: surge-sp1-verifier-setup
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/setup-sp1-verifier.sh
+    env_file:
+      - .env
+    environment:
+      FOUNDRY_PROFILE: layer1
+      BROADCAST: ${BROADCAST}
+      SP1_VERIFIER_ADDRESS: ${SP1_RETH_VERIFIER}
+      SP1_BLOCK_PROVING_PROGRAM_VKEY: ${SP1_BLOCK_PROVING_PROGRAM_VKEY}
+      SP1_AGGREGATION_PROGRAM_VKEY: ${SP1_AGGREGATION_PROGRAM_VKEY}
+      NEW_OWNER: ${L1_OWNER}
+      FORK_URL: ${L1_ENDPOINT_HTTP}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - sp1-verifier-setup
+
+  surge-l2-deployer:
+    image: nethermind/surge-protocol:sha-48f9ad1
+    container_name: surge-l2-deployer
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/setup-surge-l2.sh
+    env_file:
+      - .env
+    environment:
+      BROADCAST: ${BROADCAST}
+      L1_BRIDGE: ${BRIDGE}
+      L1_SIGNAL_SERVICE: ${SIGNAL_SERVICE}
+      L1_ERC1155_VAULT: ${ERC1155_VAULT}
+      L1_ERC20_VAULT: ${ERC20_VAULT}
+      L1_ERC721_VAULT: ${ERC721_VAULT}
+      L1_OWNER: ${L1_OWNER}
+      FORK_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
+      FOUNDRY_PROFILE: layer2
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - l2-deployer
+
+networks:
+  surge:
+    name: surge-network

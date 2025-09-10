@@ -2,12 +2,82 @@
 
 set -e
 
+# Select which Surge environment to use
+echo
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║ ⚠️  Select which Surge environment to use:                    ║"
+echo "║  1 for Devnet                                                ║"
+echo "║  2 for Staging                                               ║"
+echo "║  3 for Testnet                                               ║"
+echo "║ [default: Devnet]                                            ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo
+read -r surge_environment
+
+SURGE_ENVIRONMENT=${surge_environment:-1}
+
+if [ "$SURGE_ENVIRONMENT" = "2" ]; then
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║                        ⚠️  WARNING  ⚠️                         ║"
+  echo "║                                                              ║"
+  echo "║  Using Staging Environment, skipping protocol deployment...  ║"
+  echo "║  Please execute surge-stack-deployer.sh directly             ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  echo "┌──────────────────────────────────────────────────────────────┐"
+  echo "│ 🔧 REQUIRED ACTION: Copy the correct env file for staging    │"
+  echo "│                                                              │"
+  echo "│    Run: cp .env.staging .env                                 │"
+  echo "└──────────────────────────────────────────────────────────────┘"
+  echo
+  exit 0
+elif [ "$SURGE_ENVIRONMENT" = "3" ]; then
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║                        ⚠️  WARNING  ⚠️                         ║"
+  echo "║                                                              ║"
+  echo "║  Using Testnet Environment, skipping protocol deployment...  ║"
+  echo "║  Please execute surge-stack-deployer.sh directly             ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  echo "┌──────────────────────────────────────────────────────────────┐"
+  echo "│ 🔧 REQUIRED ACTION: Copy the correct env file for Testnet    │"
+  echo "│                                                              │"
+  echo "│    Run: cp .env.testnet .env                                 │"
+  echo "└──────────────────────────────────────────────────────────────┘"
+  echo
+  exit 0
+fi
+
 # Load environment variables from .env file if it exists
 if [ -f .env ]; then
-  echo "Loading environment variables from .env file..."
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ ✅ Loading environment variables from .env file...           ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  echo ""
   set -a  # automatically export all variables
   source .env
   set +a  # disable automatic export
+else
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ ❌ Error: .env file not found                                ║"
+  echo "║                                                              ║"
+  echo "║ Automatically copying .env.devnet to .env                    ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  cp .env.devnet .env
+  set -a  # automatically export all variables
+  source .env
+  set +a  # disable automatic export
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ ✅ Successfully loaded Devnet environment variables          ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
 fi
 
 # Helper function to update environment variables in .env file
@@ -20,512 +90,18 @@ update_env_var() {
   if grep -q "^${var_name}=" "$env_file"; then
     # Update existing variable
     sed -i.bak "s|^${var_name}=.*|${var_name}=${var_value}|" "$env_file"
-    echo "Updated ${var_name} in ${env_file}"
   else
     # Add new variable if it doesn't exist
     echo "${var_name}=${var_value}" >> "$env_file"
-    echo "Added ${var_name} to ${env_file}"
   fi
-}
-
-deploy_l1() {
-  # Verify if deployment is already running or it's already completed
-  mkdir -p deployment
-  
-  # Check if deployment is already completed
-  if [ -f "deployment/deploy_l1.json" ]; then
-    # Prompt user for starting a new deployment if the deployment results are already present
-    echo "L1 deployment already completed (deploy_l1.json exists). Start a new deployment? (true/false) [default: false]: "
-    read -r start_new_deployment
-    START_NEW_DEPLOYMENT=${start_new_deployment:-false}
-
-    if [ "$START_NEW_DEPLOYMENT" = "true" ]; then
-      echo "Starting a new deployment..."
-      rm -f deployment/*.json
-      ./surge-remover.sh
-    else
-      echo "Using existing deployment..."
-      return 0
-    fi 
-  fi
-
-  # Check if deployment is currently running
-  if [ -f "deployment/deploy_l1.lock" ]; then
-    echo "L1 deployment is already running (lock file exists). Please wait for it to complete or remove the lock file if the previous deployment failed."
-    exit 1
-  fi
-  
-  # Create lock file to indicate deployment is starting
-  touch deployment/deploy_l1.lock
-  
-  # Ensure lock file is removed on script exit (success or failure)
-  trap 'rm -f deployment/deploy_l1.lock' EXIT
-  
-  echo "Preparing Surge L1 SCs deployment..."
-
-  # Prompt user for USE_TIMELOCKED_OWNER with default to false
-  echo "Use timelocked owner? (true/false) [default: false]: "
-  read -r timelocked_owner
-
-  USE_TIMELOCKED_OWNER=${timelocked_owner:-false}
-
-  echo "USE_TIMELOCKED_OWNER: $USE_TIMELOCKED_OWNER"
-
-  # Prompt user for RUNNING_PROVERS with default to false
-  echo "Running provers? (true/false) [default: false]: "
-  read -r running_provers
-
-  RUNNING_PROVERS=${running_provers:-false}
-
-  echo "RUNNING_PROVERS: $RUNNING_PROVERS"
-
-  echo "Running L1 SCs deployment simulation..."
-  BROADCAST=false USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER docker compose --profile l1-deployer up
-
-  echo "Extracting L1 deployment results after simulation..."
-  extract_l1_deployment_results
-
-  if [ "$RUNNING_PROVERS" = "true" ]; then
-    generate_prover_chain_spec
-
-    # Prompt user for running SGX GETH
-    echo "Running SGX GETH? (true/false) [default: false]: "
-    read -r running_sgx_geth
-    RUNNING_SGX_GETH=${running_sgx_geth:-false}
-
-    echo "RUNNING_SGX_GETH: $RUNNING_SGX_GETH"
-
-    # Prompt user for SGX MR_ENCLAVE
-    echo "Enter SGX MR_ENCLAVE (return to skip): "
-    read -r sgx_mr_enclave
-    export MR_ENCLAVE=${sgx_mr_enclave:-3ec57ed7974834005b8df5d80e0edfc69542580a0a305f80fd81199c181ac7cc}
-
-    # Prompt user for SGX MR_SIGNER
-    echo "Enter SGX MR_SIGNER (return to skip): "
-    read -r sgx_mr_signer
-    export MR_SIGNER=${sgx_mr_signer:-ca0583a715534a8c981b914589a7f0dc5d60959d9ae79fb5353299a4231673d5}
-
-    # Prompt user for SGX V3_QUOTE_BYTES
-    echo "Is SGX V3_QUOTE_BYTES file ready (return to continue): "
-    read -r is_v3_quote_bytes_ready
-    export V3_QUOTE_BYTES="$(cat V3_QUOTE_BYTES.txt | tr -d '\n')"
-
-    echo "V3_QUOTE_BYTES: $V3_QUOTE_BYTES"
-
-    # Prompt user for SP1_BLOCK_PROVING_PROGRAM_VKEY
-    echo "Enter SP1_BLOCK_PROVING_PROGRAM_VKEY (return to skip): "
-    read -r sp1_block_proving_program_vkey
-    export SP1_BLOCK_PROVING_PROGRAM_VKEY=${sp1_block_proving_program_vkey:-7551aa7009644e503ffa7fce53f657264a3a1b45516afc5b026ff7e43c10d62a}
-
-    # Prompt user for SP1_BLOCK_PROVING_PROGRAM_VK_HASH
-    echo "Enter SP1_AGGREGATION_PROGRAM_VKEY (return to skip): "
-    read -r sp1_aggregation_program_vkey
-    export SP1_AGGREGATION_PROGRAM_VKEY=${sp1_aggregation_program_vkey:-0x000795db478eeeb7bef37247eb93389ba2a4e6c1cbe59a49afc3bd6ac2ad27ba}
-
-    # Prompt user for RISC0_BLOCK_PROVING_IMAGE_ID
-    echo "Enter RISC0_BLOCK_PROVING_IMAGE_ID (return to skip): "
-    read -r risc0_block_proving_image_id
-    export RISC0_BLOCK_PROVING_IMAGE_ID=${risc0_block_proving_image_id:-0x002eb51e99132ea02f27349345fe7e98c6867beab29a2426d1e4f693e2857bcd}
-
-    # Prompt user for RISC0_AGGREGATION_IMAGE_ID
-    echo "Enter RISC0_AGGREGATION_IMAGE_ID (return to skip): "
-    read -r risc0_aggregation_image_id
-    export RISC0_AGGREGATION_IMAGE_ID=${risc0_aggregation_image_id:-0x00dfdb4cc33bb068dce12585b8ecfcc8c3ae194ffaf6d19e0ebfd3fc33145c7a}
-  fi
-
-  BROADCAST=true USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER SHOULD_SETUP_VERIFIERS=$SHOULD_SETUP_VERIFIERS docker compose --profile l1-deployer up
-
-  echo "Extracting L1 deployment results after actual deployment..."
-  extract_l1_deployment_results
-
-  # Generate prover env vars if running provers is true
-  if [ "$RUNNING_PROVERS" = "true" ]; then
-    generate_prover_env_vars
-  fi
-}
-
-extract_l1_deployment_results() {
-  # Extract L1 deployment results from deploy_l1.json
-  echo "Extracting L1 deployment results..."
-  export TAIKO_INBOX=$(cat ./deployment/deploy_l1.json | jq -r '.taiko')
-  export TAIKO_WRAPPER=$(cat ./deployment/deploy_l1.json | jq -r '.taiko_wrapper')
-  export AUTOMATA_DCAP_ATTESTATION_GETH=$(cat ./deployment/deploy_l1.json | jq -r '.automata_dcap_attestation_geth')
-  export AUTOMATA_DCAP_ATTESTATION_RETH=$(cat ./deployment/deploy_l1.json | jq -r '.automata_dcap_attestation_reth')
-  export L1_BRIDGE=$(cat ./deployment/deploy_l1.json | jq -r '.bridge')
-  export L1_ERC1155_VAULT=$(cat ./deployment/deploy_l1.json | jq -r '.erc1155_vault')
-  export L1_ERC20_VAULT=$(cat ./deployment/deploy_l1.json | jq -r '.erc20_vault')
-  export L1_ERC721_VAULT=$(cat ./deployment/deploy_l1.json | jq -r '.erc721_vault')
-  export FORCED_INCLUSION_STORE=$(cat ./deployment/deploy_l1.json | jq -r '.forced_inclusion_store')
-  
-  # Handle potentially missing fields with jq's alternative operator
-  export L1_OWNER=$(cat ./deployment/deploy_l1.json | jq -r '.l1_owner // "0x0000000000000000000000000000000000000000"')
-  
-  export PEM_CERT_CHAIN_LIB=$(cat ./deployment/deploy_l1.json | jq -r '.pem_cert_chain_lib')
-  export PROOF_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.proof_verifier')
-  export RISC0_GROTH16_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.risc0_groth16_verifier')
-  export RISC0_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.risc0_reth_verifier')
-  export SGX_GETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sgx_geth_verifier')
-  export SGX_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sgx_reth_verifier')
-  export SHARED_RESOLVER=$(cat ./deployment/deploy_l1.json | jq -r '.shared_resolver')
-  export SIG_VERIFY_LIB=$(cat ./deployment/deploy_l1.json | jq -r '.sig_verify_lib')
-  export L1_SIGNAL_SERVICE=$(cat ./deployment/deploy_l1.json | jq -r '.signal_service')
-  export SP1_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sp1_reth_verifier')
-  export SUCCINCT_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.succinct_verifier')
-  
-  # Handle potentially missing field with jq's alternative operator
-  export L1_TIMELOCK_CONTROLLER=$(cat ./deployment/deploy_l1.json | jq -r '.surge_timelock_controller // "0x0000000000000000000000000000000000000000"')
-
-  echo "TAIKO_INBOX: $TAIKO_INBOX"
-  echo "TAIKO_WRAPPER: $TAIKO_WRAPPER"
-  echo "AUTOMATA_DCAP_ATTESTATION_GETH: $AUTOMATA_DCAP_ATTESTATION_GETH"
-  echo "AUTOMATA_DCAP_ATTESTATION_RETH: $AUTOMATA_DCAP_ATTESTATION_RETH"
-  echo "BRIDGE: $L1_BRIDGE"
-  echo "ERC1155_VAULT: $L1_ERC1155_VAULT"
-  echo "ERC20_VAULT: $L1_ERC20_VAULT"
-  echo "ERC721_VAULT: $L1_ERC721_VAULT"
-  echo "FORCED_INCLUSION_STORE: $FORCED_INCLUSION_STORE"
-  echo "L1_OWNER: $L1_OWNER"
-  echo "PEM_CERT_CHAIN_LIB: $PEM_CERT_CHAIN_LIB"
-  echo "PROOF_VERIFIER: $PROOF_VERIFIER"
-  echo "RISC0_GROTH16_VERIFIER: $RISC0_GROTH16_VERIFIER"
-  echo "RISC0_RETH_VERIFIER: $RISC0_RETH_VERIFIER"
-  echo "SGX_GETH_VERIFIER: $SGX_GETH_VERIFIER"
-  echo "SGX_RETH_VERIFIER: $SGX_RETH_VERIFIER"
-  echo "SHARED_RESOLVER: $SHARED_RESOLVER"
-  echo "SIG_VERIFY_LIB: $SIG_VERIFY_LIB"
-  echo "SIGNAL_SERVICE: $L1_SIGNAL_SERVICE"
-  echo "SP1_RETH_VERIFIER: $SP1_RETH_VERIFIER"
-  echo "SUCCINCT_VERIFIER: $SUCCINCT_VERIFIER"
-  echo "SURGE_TIMELOCK_CONTROLLER: $L1_TIMELOCK_CONTROLLER"
-
-  # Update .env file with the extracted values
-  echo "Updating .env with extracted values..."
-  update_env_var ".env" "TAIKO_INBOX" "$TAIKO_INBOX"
-  update_env_var ".env" "TAIKO_WRAPPER" "$TAIKO_WRAPPER"
-  update_env_var ".env" "AUTOMATA_DCAP_ATTESTATION_GETH" "$AUTOMATA_DCAP_ATTESTATION_GETH"
-  update_env_var ".env" "AUTOMATA_DCAP_ATTESTATION_RETH" "$AUTOMATA_DCAP_ATTESTATION_RETH"
-  update_env_var ".env" "BRIDGE" "$L1_BRIDGE"
-  update_env_var ".env" "ERC1155_VAULT" "$L1_ERC1155_VAULT"
-  update_env_var ".env" "ERC20_VAULT" "$L1_ERC20_VAULT"
-  update_env_var ".env" "ERC721_VAULT" "$L1_ERC721_VAULT"
-  update_env_var ".env" "FORCED_INCLUSION_STORE" "$FORCED_INCLUSION_STORE"
-  update_env_var ".env" "L1_OWNER" "$L1_OWNER"
-  update_env_var ".env" "PEM_CERT_CHAIN_LIB" "$PEM_CERT_CHAIN_LIB"
-  update_env_var ".env" "PROOF_VERIFIER" "$PROOF_VERIFIER"
-  update_env_var ".env" "RISC0_GROTH16_VERIFIER" "$RISC0_GROTH16_VERIFIER"
-  update_env_var ".env" "RISC0_RETH_VERIFIER" "$RISC0_RETH_VERIFIER"
-  update_env_var ".env" "SGX_GETH_VERIFIER" "$SGX_GETH_VERIFIER"
-  update_env_var ".env" "SGX_RETH_VERIFIER" "$SGX_RETH_VERIFIER"
-  update_env_var ".env" "SHARED_RESOLVER" "$SHARED_RESOLVER"
-  update_env_var ".env" "SIG_VERIFY_LIB" "$SIG_VERIFY_LIB"
-  update_env_var ".env" "SIGNAL_SERVICE" "$L1_SIGNAL_SERVICE"
-  update_env_var ".env" "SP1_RETH_VERIFIER" "$SP1_RETH_VERIFIER"
-  update_env_var ".env" "SUCCINCT_VERIFIER" "$SUCCINCT_VERIFIER"
-  update_env_var ".env" "SURGE_TIMELOCK_CONTROLLER" "$L1_TIMELOCK_CONTROLLER"
-
-  # Clean up backup file if it exists
-  if [ -f ".env.bak" ]; then
-    rm ".env.bak"
-    echo "Cleaned up backup file .env.bak"
-  fi
-
-  echo "L1 deployment results extracted and .env updated successfully"
-}
-
-deploy_proposer_wrapper() {
-  # Check if deployment is already completed
-  if [ -f "deployment/proposer_wrappers.json" ]; then
-    export SURGE_PROPOSER_WRAPPER=$(cat ./deployment/proposer_wrappers.json | jq -r '.proposer_wrapper')
-    echo "Proposer Wrapper deployment already completed (proposer_wrappers.json exists), deployment will be skipped"
-    
-    # Still update the .env file even if deployment was skipped
-    echo "Updating .env with proposer wrapper address..."
-    update_env_var ".env" "SURGE_PROPOSER_WRAPPER" "$SURGE_PROPOSER_WRAPPER"
-    
-    # Clean up backup file if it exists
-    if [ -f ".env.bak" ]; then
-      rm ".env.bak"
-      echo "Cleaned up backup file .env.bak"
-    fi
-    
-    return 0
-  else
-    echo "Deploying Proposer Wrapper..."
-
-    echo "Run the simulation first..."
-    BROADCAST=false docker compose --profile wrapper-deployer up
-
-    export SURGE_PROPOSER_WRAPPER=$(cat ./deployment/proposer_wrappers.json | jq -r '.proposer_wrapper')
-
-    echo "Run the actual deployment..."
-    BROADCAST=true docker compose --profile wrapper-deployer up
-
-    # Update .env file with the proposer wrapper address
-    echo "Updating .env with proposer wrapper address..."
-    update_env_var ".env" "SURGE_PROPOSER_WRAPPER" "$SURGE_PROPOSER_WRAPPER"
-
-    # Clean up backup file if it exists
-    if [ -f ".env.bak" ]; then
-      rm ".env.bak"
-      echo "Cleaned up backup file .env.bak"
-    fi
-
-    echo "Proposer Wrapper deployed successfully and .env updated"
-  fi
-}
-
-deposit_bond() {
-  echo "Depositing bond..."
-
-  # Prompt user for deposit bond
-  echo "Deposit bond? (true/false) [default: true]: "
-  read -r deposit_bond
-
-  DEPOSIT_BOND=${deposit_bond:-true}
-
-  if [ "$DEPOSIT_BOND" = "true" ]; then 
-
-    # Prompt user for BOND_AMOUNT
-    echo "Enter bond amount (in ETH, default: 1000): "
-    read -r bond_amount
-
-    BOND_AMOUNT=${bond_amount:-1000}
-    # Convert ETH to wei using bc
-    export BOND_AMOUNT=$(echo "$BOND_AMOUNT * 1000000000000000000" | bc | cut -d. -f1)
-
-    docker compose --profile bond-depositer up
-
-    echo "Bond deposited successfully"
-  else
-    return 0
-  fi
-}
-
-start_l2_stack() {
-  echo "Starting L2 stack..."
-
-  # Prompt user for L2_STACK_OPTION
-  echo "Enter L2 stack option (1 for driver only, 2 for proposer only, 3 for proposer and spammer, 4 for prover relayer only, 5 for all except spammer, default: all): "
-  read -r l2_stack_option
-
-  echo "L2 stack option: $l2_stack_option"
-
-  if [ "$l2_stack_option" = "1" ]; then
-    docker compose --profile driver --profile blockscout up -d
-  elif [ "$l2_stack_option" = "2" ]; then
-    docker compose --profile proposer --profile blockscout up -d
-  elif [ "$l2_stack_option" = "3" ]; then
-    docker compose --profile proposer --profile spammer --profile blockscout up -d
-  elif [ "$l2_stack_option" = "4" ]; then
-    docker compose --profile prover --profile blockscout up -d
-  elif [ "$l2_stack_option" = "5" ]; then
-    docker compose --profile driver --profile proposer --profile prover --profile blockscout up -d
-  else
-    docker compose --profile driver --profile proposer --profile spammer --profile prover --profile blockscout up -d
-  fi
-}
-
-deploy_l2() {
-  # Check if deployment is already completed
-  if [ -f "deployment/setup_l2.json" ]; then
-    echo "L2 deployment already completed (setup_l2.json exists), deployment will be skipped"
-    return 0
-  else
-    echo "Deploying L2 SCs..."
-
-    if [ "$L1_TIMELOCK_CONTROLLER" != "0x0000000000000000000000000000000000000000" ]; then
-      echo "Surge timelock controller is set. Starting deployment."
-      L1_OWNER=$L1_TIMELOCK_CONTROLLER
-      BROADCAST=true docker compose --profile l2-deployer up -d
-    else
-      echo "Surge timelock controller is not set. Use L1 owner for timelock controller."
-      BROADCAST=true docker compose --profile l2-deployer up -d
-    fi
-
-    echo "L2 deployment completed successfully"
-  fi
-}
-
-start_relayers() {
-  # Prompt user for START_RELAYERS
-  echo "Start relayers? (true/false) [default: true]: "
-  read -r start_relayers
-
-  START_RELAYERS=${start_relayers:-true}
-
-  if [ "$START_RELAYERS" = "true" ]; then
-    # Deploy L2 SCs first
-    deploy_l2
-
-    echo "Starting relayers..."
-
-    echo "Starting init to prepare DB and queues..."
-    docker compose --profile relayer-init up -d
-
-    # Wait for services to initialize
-    sleep 20
-
-    # Execute migrations
-    echo "Executing migrations..."
-    docker compose --profile relayer-migrations up
-
-    docker compose --profile relayer-l1 --profile relayer-l2 --profile relayer-api up -d
-    echo "Relayers started successfully"
-
-    # Prepare Bridge UI Configs only if relayers are needed
-    prepare_bridge_ui_configs
-  else
-    return 0
-  fi
-}
-
-prepare_bridge_ui_configs() {
-  echo "Preparing Bridge UI configs..."
-
-  # Get chain IDs from environment or use defaults
-  L1_CHAIN_ID=${L1_CHAINID:-3151908}
-  L2_CHAIN_ID=${L2_CHAINID:-763374}
-
-  # Generate configuredBridges.json
-  cat > configs/configuredBridges.json << EOF
-{
-  "configuredBridges": [
-    {
-      "source": "$L1_CHAIN_ID",
-      "destination": "$L2_CHAIN_ID",
-      "addresses": {
-        "bridgeAddress": "$L1_BRIDGE",
-        "erc20VaultAddress": "$L1_ERC20_VAULT",
-        "erc721VaultAddress": "$L1_ERC721_VAULT",
-        "erc1155VaultAddress": "$L1_ERC1155_VAULT",
-        "crossChainSyncAddress": "",
-        "signalServiceAddress": "$L1_SIGNAL_SERVICE",
-        "quotaManagerAddress": ""
-      }
-    },
-    {
-      "source": "$L2_CHAIN_ID",
-      "destination": "$L1_CHAIN_ID",
-      "addresses": {
-        "bridgeAddress": "$L2_BRIDGE",
-        "erc20VaultAddress": "$L2_ERC20_VAULT",
-        "erc721VaultAddress": "$L2_ERC721_VAULT",
-        "erc1155VaultAddress": "$L2_ERC1155_VAULT",
-        "crossChainSyncAddress": "",
-        "signalServiceAddress": "$L2_SIGNAL_SERVICE",
-        "quotaManagerAddress": ""
-      }
-    }
-  ]
-}
-EOF
-
-  # Generate configuredChains.json
-  cat > configs/configuredChains.json << EOF
-{
-  "configuredChains": [
-    {
-      "$L1_CHAIN_ID": {
-        "name": "L1 Devnet",
-        "type": "L1",
-        "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
-        "rpcUrls": {
-          "default": {
-            "http": ["$L1_RPC"]
-          }
-        },
-        "nativeCurrency": {
-          "name": "ETH",
-          "symbol": "ETH",
-          "decimals": 18
-        },
-        "blockExplorers": {
-          "default": {
-            "name": "L1 Devnet Explorer",
-            "url": "$L1_EXPLORER"
-          }
-        }
-      }
-    },
-    {
-      "$L2_CHAIN_ID": {
-        "name": "Surge Devnet",
-        "type": "L2",
-        "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
-        "rpcUrls": {
-          "default": {
-            "http": ["$L2_RPC"]
-          }
-        },
-        "nativeCurrency": {
-          "name": "ETH",
-          "symbol": "ETH",
-          "decimals": 18
-        },
-        "blockExplorers": {
-          "default": {
-            "name": "Surge Explorer",
-            "url": "$L2_EXPLORER"
-          }
-        }
-      }
-    }
-  ]
-}
-EOF
-
-  # Generate configuredRelayer.json
-  cat > configs/configuredRelayer.json << EOF
-{
-  "configuredRelayer": [
-    {
-      "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID],
-      "url": "$L1_RELAYER"
-    },
-    {
-      "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID],
-      "url": "$L2_RELAYER"
-    }
-  ]
-}
-EOF
-
-  # Generate configuredEventIndexer.json
-  cat > configs/configuredEventIndexer.json << EOF
-{
-  "configuredEventIndexer": [
-    {
-      "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID],
-      "url": "$L1_RELAYER"
-    },
-    {
-      "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID],
-      "url": "$L2_RELAYER"
-    }
-  ]
-}
-EOF
-
-  # Generate configuredCustomTokens.json (empty array for now)
-  cat > configs/configuredCustomTokens.json << EOF
-[]
-EOF
-
-  echo "Bridge UI configs generated successfully!"
-  echo "Generated files:"
-  echo "  - configs/configuredBridges.json"
-  echo "  - configs/configuredChains.json"
-  echo "  - configs/configuredRelayer.json"
-  echo "  - configs/configuredEventIndexer.json"
-  echo "  - configs/configuredCustomTokens.json"
 }
 
 generate_prover_chain_spec() {
-  echo "Generating prover chain spec..."
-
-  # Get chain IDs from environment or use defaults
-  L1_CHAIN_ID=${L1_CHAINID:-3151908}
-  L2_CHAIN_ID=${L2_CHAINID:-763374}
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Generating prover chain spec list json...                    ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
 
   GENESIS_TIME=$(curl -s http://localhost:33001/eth/v1/beacon/genesis | jq -r '.data.genesis_time')
 
@@ -534,7 +110,7 @@ generate_prover_chain_spec() {
 [
   {
     "name": "surge_dev_l1",
-    "chain_id": $L1_CHAIN_ID,
+    "chain_id": $L1_CHAINID,
     "max_spec_id": "CANCUN",
     "hard_forks": {
       "FRONTIER": {
@@ -555,8 +131,8 @@ generate_prover_chain_spec() {
     },
     "l1_contract": null,
     "l2_contract": null,
-    "rpc": "$L1_RPC",
-    "beacon_rpc": "$L1_BEACON_RPC",
+    "rpc": "$L1_ENDPOINT_HTTP",
+    "beacon_rpc": "$L1_BEACON_HTTP",
     "verifier_address_forks": {
       "FRONTIER": {
         "SGX": null,
@@ -570,7 +146,7 @@ generate_prover_chain_spec() {
   },
   {
     "name": "surge_dev",
-    "chain_id": $L2_CHAIN_ID,
+    "chain_id": $L2_CHAINID,
     "max_spec_id": "PACAYA",
     "hard_forks": {
       "HEKLA": {
@@ -592,7 +168,7 @@ generate_prover_chain_spec() {
     },
     "l1_contract": "$TAIKO_INBOX",
     "l2_contract": "$TAIKO_ANCHOR",
-    "rpc": "$L2_RPC",
+    "rpc": "$L2_ENDPOINT_HTTP",
     "beacon_rpc": null,
     "verifier_address_forks": {
       "HEKLA": {
@@ -601,6 +177,11 @@ generate_prover_chain_spec() {
         "RISC0": "$RISC0_RETH_VERIFIER"
       },
       "ONTAKE": {
+        "SGX": "$SGX_RETH_VERIFIER",
+        "SP1": "$SP1_RETH_VERIFIER",
+        "RISC0": "$RISC0_RETH_VERIFIER"
+      },
+      "PACAYA": {
         "SGX": "$SGX_RETH_VERIFIER",
         "SP1": "$SP1_RETH_VERIFIER",
         "RISC0": "$RISC0_RETH_VERIFIER"
@@ -613,136 +194,515 @@ generate_prover_chain_spec() {
 ]
 EOF
   
-  echo "Prover chain spec generated successfully"
-  
-  # Print the generated content with clear dividers
-  echo ""
-  echo "=================================================================================="
-  echo "GENERATED CHAIN SPEC LIST (configs/chain_spec_list_default.json)"
-  echo "=================================================================================="
-  echo ""
-  cat configs/chain_spec_list_default.json
-  echo ""
-  echo "=================================================================================="
-  echo "Chain spec generated and saved to: configs/chain_spec_list_default.json"
-  echo "=================================================================================="
-  echo ""
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ ✅ Prover chain spec list json generated successfully,       ║"
+  echo "║ and saved to: configs/chain_spec_list_default.json           ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
 }
 
 generate_prover_env_vars() {
-  echo "Generating prover env vars..."
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Generating prover env vars...                                ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
 
   # Set SGX_INSTANCE_ID from the JSON file
-  export SGX_INSTANCE_ID=$(cat deployment/sgx_instances.json | jq -r '.sgx_instance_id')
+  if [ -f "deployment/sgx_instances.json" ]; then
+    export SGX_INSTANCE_ID=$(cat deployment/sgx_instances.json | jq -r '.sgx_instance_id // "0"')
+  else
+    export SGX_INSTANCE_ID="0"
+  fi
 
-  echo ""
-  echo "=================================================================================="
-  echo "GENERATED PROVER ENV VARS"
-  echo "=================================================================================="
-  echo ""
-  echo "export SGX_RETH_INSTANCE_ID=$SGX_INSTANCE_ID"
-  echo "export SGX_RETH_VERIFIER_ADDRESS=$SGX_RETH_VERIFIER"
-  echo "export SGX_GETH_INSTANCE_ID=$SGX_INSTANCE_ID"
-  echo "export SGX_GETH_VERIFIER_ADDRESS=$SGX_RETH_VERIFIER"
-  echo "export ATTESTATION_ADDRESS=$AUTOMATA_DCAP_ATTESTATION"
-  echo "export PEM_CERTCHAIN_ADDRESS=$PEM_CERT_CHAIN_LIB"
+  echo ">>>>>>"
+  echo "export SGX_INSTANCE_ID=$SGX_INSTANCE_ID"
   echo "export GROTH16_VERIFIER_ADDRESS=$RISC0_GROTH16_VERIFIER"
   echo "export SP1_VERIFIER_ADDRESS=$SUCCINCT_VERIFIER"
-  echo ""
-  echo "=================================================================================="
-  echo "Prover env vars generated, please copy and paste them when you start the provers"
-  echo "=================================================================================="
-  echo ""
+  echo ">>>>>>"
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ ✅ Prover env vars generated successfully,                   ║"
+  echo "║ please copy and paste them when you start the provers        ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+}
 
-  echo "Prover env vars generated successfully"
+deploy_l1() {
+  mkdir -p deployment
+  
+  # Check if deployment is already completed
+  if [ -f "deployment/deploy_l1.json" ]; then
+    # Prompt user for starting a new deployment if the deployment results are already present
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║ ⚠️  Surge L1 deployment already completed                     ║"
+    echo "║ (deploy_l1.json exists)                                      ║"
+    echo "║                                                              ║"
+    echo "║ Start a new deployment? (true/false) [default: false]        ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    read -r start_new_deployment
+    START_NEW_DEPLOYMENT=${start_new_deployment:-false}
+
+    if [ "$START_NEW_DEPLOYMENT" = "true" ]; then
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ Starting a new deployment...                                 ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      rm -f deployment/*.json
+      ./surge-remover.sh
+    else
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ Using existing deployment...                                 ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      return 0
+    fi 
+  fi
+
+  # Check if deployment is currently running
+  if [ -f "deployment/deploy_l1.lock" ]; then
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║ ⚠️  Surge L1 deployment is already running (lock file exists) ║"
+    echo "║                                                              ║"
+    echo "║ Please wait for it to complete or remove the lock file if    ║"
+    echo "║ the previous deployment failed.                              ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    exit 1
+  fi
+  
+  # Create lock file to indicate deployment is starting
+  touch deployment/deploy_l1.lock
+  
+  # Ensure lock file is removed on script exit (success or failure)
+  trap 'rm -f deployment/deploy_l1.lock' EXIT
+  
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Preparing Surge L1 SCs deployment...                         ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+
+  # Prompt user for USE_TIMELOCKED_OWNER with default to false
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Use timelocked owner? (true/false) [default: false]          ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  read -r timelocked_owner
+
+  export USE_TIMELOCKED_OWNER=${timelocked_owner:-false}
+
+  # Update USE_TIMELOCKED_OWNER in env file for other functions and scripts to use
+  update_env_var ".env" "USE_TIMELOCKED_OWNER" "$USE_TIMELOCKED_OWNER"
+
+  # Clean up backup file if it exists
+  if [ -f ".env.bak" ]; then
+    rm ".env.bak"
+  fi
+
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Deploying Surge L1 SCs...                                    ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+
+  BROADCAST=true USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER docker compose -f docker-compose-protocol.yml --profile l1-deployer up
+}
+
+extract_l1_deployment_results() {
+  # Extract L1 deployment results from deploy_l1.json
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Extracting Surge L1 SCs deployment results...                ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  export TAIKO_INBOX=$(cat ./deployment/deploy_l1.json | jq -r '.taiko')
+  export TAIKO_WRAPPER=$(cat ./deployment/deploy_l1.json | jq -r '.taiko_wrapper')
+  export AUTOMATA_DCAP_ATTESTATION_GETH=$(cat ./deployment/deploy_l1.json | jq -r '.automata_dcap_attestation_geth')
+  export AUTOMATA_DCAP_ATTESTATION_RETH=$(cat ./deployment/deploy_l1.json | jq -r '.automata_dcap_attestation_reth')
+  export BRIDGE=$(cat ./deployment/deploy_l1.json | jq -r '.bridge')
+  export ERC1155_VAULT=$(cat ./deployment/deploy_l1.json | jq -r '.erc1155_vault')
+  export ERC20_VAULT=$(cat ./deployment/deploy_l1.json | jq -r '.erc20_vault')
+  export ERC721_VAULT=$(cat ./deployment/deploy_l1.json | jq -r '.erc721_vault')
+  export FORCED_INCLUSION_STORE=$(cat ./deployment/deploy_l1.json | jq -r '.forced_inclusion_store')
+  
+  # Handle potentially missing fields with jq's alternative operator
+  export L1_OWNER=$(cat ./deployment/deploy_l1.json | jq -r '.l1_owner // "0x0000000000000000000000000000000000000000"')
+  
+  export PEM_CERT_CHAIN_LIB=$(cat ./deployment/deploy_l1.json | jq -r '.pem_cert_chain_lib')
+  export PROOF_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.proof_verifier')
+  export RISC0_GROTH16_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.risc0_groth16_verifier')
+  export RISC0_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.risc0_reth_verifier')
+  export SGX_GETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sgx_geth_verifier')
+  export SGX_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sgx_reth_verifier')
+  export SHARED_RESOLVER=$(cat ./deployment/deploy_l1.json | jq -r '.shared_resolver')
+  export SIG_VERIFY_LIB=$(cat ./deployment/deploy_l1.json | jq -r '.sig_verify_lib')
+  export SIGNAL_SERVICE=$(cat ./deployment/deploy_l1.json | jq -r '.signal_service')
+  export SP1_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sp1_reth_verifier')
+  export SUCCINCT_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.succinct_verifier')
+  
+  # Handle potentially missing field with jq's alternative operator
+  export SURGE_TIMELOCK_CONTROLLER=$(cat ./deployment/deploy_l1.json | jq -r '.surge_timelock_controller // "0x0000000000000000000000000000000000000000"')
+
+  echo
+  echo ">>>>>>"
+  echo " TAIKO_INBOX: $TAIKO_INBOX "
+  echo " TAIKO_WRAPPER: $TAIKO_WRAPPER "
+  echo " AUTOMATA_DCAP_ATTESTATION_GETH: $AUTOMATA_DCAP_ATTESTATION_GETH "
+  echo " AUTOMATA_DCAP_ATTESTATION_RETH: $AUTOMATA_DCAP_ATTESTATION_RETH "
+  echo " BRIDGE: $BRIDGE "
+  echo " ERC1155_VAULT: $ERC1155_VAULT "
+  echo " ERC20_VAULT: $ERC20_VAULT "
+  echo " ERC721_VAULT: $ERC721_VAULT "
+  echo " FORCED_INCLUSION_STORE: $FORCED_INCLUSION_STORE "
+  echo " L1_OWNER: $L1_OWNER "
+  echo " PEM_CERT_CHAIN_LIB: $PEM_CERT_CHAIN_LIB "
+  echo " PROOF_VERIFIER: $PROOF_VERIFIER "
+  echo " RISC0_GROTH16_VERIFIER: $RISC0_GROTH16_VERIFIER "
+  echo " RISC0_RETH_VERIFIER: $RISC0_RETH_VERIFIER "
+  echo " SGX_GETH_VERIFIER: $SGX_GETH_VERIFIER "
+  echo " SGX_RETH_VERIFIER: $SGX_RETH_VERIFIER "
+  echo " SHARED_RESOLVER: $SHARED_RESOLVER "
+  echo " SIG_VERIFY_LIB: $SIG_VERIFY_LIB "
+  echo " SIGNAL_SERVICE: $SIGNAL_SERVICE "
+  echo " SP1_RETH_VERIFIER: $SP1_RETH_VERIFIER "
+  echo " SUCCINCT_VERIFIER: $SUCCINCT_VERIFIER "
+  echo " SURGE_TIMELOCK_CONTROLLER: $SURGE_TIMELOCK_CONTROLLER "
+  echo ">>>>>>"
+  echo
+
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Updating .env with extracted values...                       ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  update_env_var ".env" "TAIKO_INBOX" "$TAIKO_INBOX"
+  update_env_var ".env" "TAIKO_WRAPPER" "$TAIKO_WRAPPER"
+  update_env_var ".env" "AUTOMATA_DCAP_ATTESTATION_GETH" "$AUTOMATA_DCAP_ATTESTATION_GETH"
+  update_env_var ".env" "AUTOMATA_DCAP_ATTESTATION_RETH" "$AUTOMATA_DCAP_ATTESTATION_RETH"
+  update_env_var ".env" "BRIDGE" "$BRIDGE"
+  update_env_var ".env" "ERC1155_VAULT" "$ERC1155_VAULT"
+  update_env_var ".env" "ERC20_VAULT" "$ERC20_VAULT"
+  update_env_var ".env" "ERC721_VAULT" "$ERC721_VAULT"
+  update_env_var ".env" "FORCED_INCLUSION_STORE" "$FORCED_INCLUSION_STORE"
+  update_env_var ".env" "L1_OWNER" "$L1_OWNER"
+  update_env_var ".env" "PEM_CERT_CHAIN_LIB" "$PEM_CERT_CHAIN_LIB"
+  update_env_var ".env" "PROOF_VERIFIER" "$PROOF_VERIFIER"
+  update_env_var ".env" "RISC0_GROTH16_VERIFIER" "$RISC0_GROTH16_VERIFIER"
+  update_env_var ".env" "RISC0_RETH_VERIFIER" "$RISC0_RETH_VERIFIER"
+  update_env_var ".env" "SGX_GETH_VERIFIER" "$SGX_GETH_VERIFIER"
+  update_env_var ".env" "SGX_RETH_VERIFIER" "$SGX_RETH_VERIFIER"
+  update_env_var ".env" "SHARED_RESOLVER" "$SHARED_RESOLVER"
+  update_env_var ".env" "SIG_VERIFY_LIB" "$SIG_VERIFY_LIB"
+  update_env_var ".env" "SIGNAL_SERVICE" "$SIGNAL_SERVICE"
+  update_env_var ".env" "SP1_RETH_VERIFIER" "$SP1_RETH_VERIFIER"
+  update_env_var ".env" "SUCCINCT_VERIFIER" "$SUCCINCT_VERIFIER"
+  update_env_var ".env" "SURGE_TIMELOCK_CONTROLLER" "$SURGE_TIMELOCK_CONTROLLER"
+
+  # Clean up backup file if it exists
+  if [ -f ".env.bak" ]; then
+    rm ".env.bak"
+  fi
+}
+
+deploy_proposer_wrapper() {
+  # Check if deployment is already completed
+  if [ -f "deployment/proposer_wrappers.json" ]; then
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║ ⚠️  Proposer Wrapper deployment already completed             ║"
+    echo "║ (proposer_wrappers.json exists)                              ║"
+    echo "║                                                              ║"
+    echo "║ Deployment will be skipped...                                ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    return 0
+  else
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║ Deploying Surge Proposer Wrapper...                          ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+
+    BROADCAST=true docker compose -f docker-compose-protocol.yml --profile proposer-wrapper-deployer up
+  fi
+}
+
+extract_surge_proposer_wrapper() {
+  export SURGE_PROPOSER_WRAPPER=$(cat ./deployment/proposer_wrappers.json | jq -r '.proposer_wrapper')
+
+  echo
+  echo ">>>>>>"
+  echo " SURGE_PROPOSER_WRAPPER: $SURGE_PROPOSER_WRAPPER "
+  echo ">>>>>>"
+  echo
+
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Updating .env with proposer wrapper address...               ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  update_env_var ".env" "SURGE_PROPOSER_WRAPPER" "$SURGE_PROPOSER_WRAPPER"
+
+  # Clean up backup file if it exists
+  if [ -f ".env.bak" ]; then
+    rm ".env.bak"
+  fi
+}
+
+deploy_provers() {
+  # Prompt user for RUNNING_PROVERS with default to false
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Running provers? (true/false) [default: false]               ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  read -r running_provers
+
+  RUNNING_PROVERS=${running_provers:-false}
+
+  # If running provers is true, set up the verifiers
+  if [ "$RUNNING_PROVERS" = "true" ]; then
+    generate_prover_chain_spec
+
+    if [ ! -f "deployment/sgx_verifier_setup.lock" ]; then
+      # Prompt user for running SGX Raiko
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ Running SGX Raiko? (true/false) [default: false]              ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      read -r running_sgx_raiko
+      RUNNING_SGX_RAIKO=${running_sgx_raiko:-false}
+
+      if [ "$RUNNING_SGX_RAIKO" = "true" ]; then
+        if [ "$MR_ENCLAVE" = "" ]; then
+          echo
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║ ❗ SGX MR_ENCLAVE is not set,                                ║"
+          echo "║ please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        fi
+
+        if [ "$MR_SIGNER" = "" ]; then
+          echo
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║ ❗ SGX MR_SIGNER is not set,                                 ║"
+          echo "║ please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        fi
+
+        if [ "$V3_QUOTE_BYTES" = "" ]; then
+          echo
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║ ❗ SGX V3_QUOTE_BYTES is not set,                            ║"
+          echo "║ please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        fi
+
+        SGX_VERIFIER_ADDRESS=${SGX_RETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_RETH} BROADCAST=true docker compose -f docker-compose-protocol.yml --profile sgx-verifier-setup up
+      fi
+    fi
+
+    # if [ ! -f "deployment/sgx_geth_verifier_setup.lock" ]; then
+    #   # Prompt user for running SGX Gaiko
+    #   echo
+    #   echo "╔══════════════════════════════════════════════════════════════╗"
+    #   echo "║ Running SGX Gaiko? (true/false) [default: false]              ║"
+    #   echo "╚══════════════════════════════════════════════════════════════╝"
+    #   echo
+    #   read -r running_sgx_gaiko
+    #   RUNNING_SGX_GAIKO=${running_sgx_gaiko:-false}
+
+    #   if [ "$RUNNING_SGX_GAIKO" = "true" ]; then
+    #     if [ "$GAIKO_MR_ENCLAVE" = "" ]; then
+    #       echo
+    #       echo "╔══════════════════════════════════════════════════════════════╗"
+    #       echo "║ ❗ SGX GAIKO_MR_ENCLAVE is not set,                          ║"
+    #       echo "║ please set it and rerun the script                           ║"
+    #       echo "╚══════════════════════════════════════════════════════════════╝"
+    #       echo
+    #       exit 1
+    #     fi
+
+    #     if [ "$GAIKO_MR_SIGNER" = "" ]; then
+    #       echo
+    #       echo "╔══════════════════════════════════════════════════════════════╗"
+    #       echo "║ ❗ SGX GAIKO_MR_SIGNER is not set,                           ║"
+    #       echo "║ please set it and rerun the script                           ║"
+    #       echo "╚══════════════════════════════════════════════════════════════╝"
+    #       echo
+    #       exit 1
+    #     fi
+
+    #     if [ "$GAIKO_V3_QUOTE_BYTES" = "" ]; then
+    #       echo
+    #       echo "╔══════════════════════════════════════════════════════════════╗"
+    #       echo "║ ❗ SGX GAIKO_V3_QUOTE_BYTES is not set,                      ║"
+    #       echo "║ please set it and rerun the script                           ║"
+    #       echo "╚══════════════════════════════════════════════════════════════╝"
+    #       echo
+    #       exit 1
+    #     fi
+
+    #     docker compose -f docker-compose-protocol.yml --profile sgx-geth-verifier-setup up
+    #   fi
+    # fi
+
+    if [ ! -f "deployment/sp1_verifier_setup.lock" ]; then
+      # Prompt user for running SP1 Raiko
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ Running SP1? (true/false) [default: false]                   ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      read -r running_sp1_raiko
+      RUNNING_SP1_RAIKO=${running_sp1_raiko:-false}
+
+      if [ "$RUNNING_SP1_RAIKO" = "true" ]; then
+        if [ "$SP1_BLOCK_PROVING_PROGRAM_VKEY" = "" ]; then
+          echo
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║ ❗ SP1_BLOCK_PROVING_PROGRAM_VKEY is not set,                ║"
+          echo "║ please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        fi
+
+        if [ "$SP1_AGGREGATION_PROGRAM_VKEY" = "" ]; then
+          echo
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║ ❗ SP1_AGGREGATION_PROGRAM_VKEY is not set                   ║"
+          echo "║ please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        fi
+
+        BROADCAST=true docker compose -f docker-compose-protocol.yml --profile sp1-verifier-setup up
+      fi
+    fi
+
+    if [ ! -f "deployment/risc0_verifier_setup.lock" ]; then
+      # Prompt user for running RISC0 Raiko
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ Running RISC0? (true/false) [default: false]                 ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      read -r running_risc0_raiko
+      RUNNING_RISC0_RAIKO=${running_risc0_raiko:-false}
+
+      if [ "$RUNNING_RISC0_RAIKO" = "true" ]; then
+        if [ "$RISC0_BLOCK_PROVING_IMAGE_ID" = "" ]; then
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║ ❗ RISC0_BLOCK_PROVING_IMAGE_ID is not set,                  ║"
+          echo "║ please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        fi
+
+        if [ "$RISC0_AGGREGATION_IMAGE_ID" = "" ]; then
+          echo
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "║ ❗ RISC0_AGGREGATION_IMAGE_ID is not set,                    ║"
+          echo "║ please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        fi
+
+        BROADCAST=true docker compose -f docker-compose-protocol.yml --profile risc0-verifier-setup up
+      fi
+    fi
+
+    # Generate prover env vars once set up the verifiers
+    generate_prover_env_vars
+  fi
+}
+
+deposit_bond() {
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Depositing bond...                                           ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+
+  # Prompt user for deposit bond
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Deposit bond? (true/false) [default: true]                   ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  read -r deposit_bond
+
+  DEPOSIT_BOND=${deposit_bond:-true}
+
+  if [ "$DEPOSIT_BOND" = "true" ]; then 
+    # Prompt user for BOND_AMOUNT
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║ Enter bond amount (in ETH, default: 1000)                    ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    read -r bond_amount
+
+    BOND_AMOUNT=${bond_amount:-1000}
+
+    # Convert to wei
+    export BOND_AMOUNT=$(echo "$BOND_AMOUNT * 1000000000000000000" | bc | cut -d. -f1)
+
+    docker compose -f docker-compose-protocol.yml --profile bond-deposit up
+  else
+    return 0
+  fi
 }
 
 deploy_surge_protocol() {
-  # Select which Surge environment to use
-  echo "Select which Surge environment to use (1 for Devnet, 2 for Staging, 3 for Testnet (default: Devnet)): "
-  read -r surge_environment
-
-  SURGE_ENVIRONMENT=${surge_environment:-1}
-
-  if [ "$SURGE_ENVIRONMENT" = "2" ]; then
-    echo "Using Staging Environment, skipping protocol deployment... Please execute surge-stack-deployer.sh directly"
-    return 0
-  elif [ "$SURGE_ENVIRONMENT" = "3" ]; then
-    echo "Using Testnet Environment, skipping protocol deployment... Please execute surge-stack-deployer.sh directly"
-    return 0
-  fi
-
-  # Select remote or local
-  echo "Select remote or local (0 for local, 1 for remote) [default: local]: "
-  read -r remote_or_local
-
-  REMOTE_OR_LOCAL=${remote_or_local:-0}
-
-  if [ "$REMOTE_OR_LOCAL" = "1" ]; then
-    echo "Using remote environment"
-
-    # Select which devnet machine to use
-    echo "Select which devnet machine to use (1 for Devnet 1 (prover), 2 for Devnet 2 (taiko-client), return to skip for others (default: others)): "
-    read -r devnet_machine
-
-    DEVNET_MACHINE=${devnet_machine:-3}
-
-    if [ "$devnet_machine" = "1" ]; then
-      echo "Using Devnet 1 (prover)"
-      export L1_RPC="https://devnet-one.surge.wtf/l1-rpc"
-      export L1_BEACON_RPC="https://devnet-one.surge.wtf/l1-beacon"
-      export L1_EXPLORER="https://devnet-one.surge.wtf/l1-block-explorer"
-      export L2_RPC="https://devnet-one.surge.wtf/l2-rpc"
-      export L2_EXPLORER="https://devnet-one.surge.wtf/l2-block-explorer"
-      export L1_RELAYER="https://devnet-one.surge.wtf/l1-relayer"
-      export L2_RELAYER="https://devnet-one.surge.wtf/l2-relayer"
-    elif [ "$devnet_machine" = "2" ]; then
-      echo "Using Devnet 2 (taiko-client)"
-      export L1_RPC="https://devnet-two.surge.wtf/l1-rpc"
-      export L1_BEACON_RPC="https://devnet-two.surge.wtf/l1-beacon"
-      export L1_EXPLORER="https://devnet-two.surge.wtf/l1-block-explorer"
-      export L2_RPC="https://devnet-two.surge.wtf/l2-rpc"
-      export L2_EXPLORER="https://devnet-two.surge.wtf/l2-block-explorer"
-      export L1_RELAYER="https://devnet-two.surge.wtf/l1-relayer"
-      export L2_RELAYER="https://devnet-two.surge.wtf/l2-relayer"
-    else
-      echo "Using others"
-      export L1_RPC="http://$MACHINE_IP:32003"
-      export L1_BEACON_RPC="http://$MACHINE_IP:33001"
-      export L1_EXPLORER="http://$MACHINE_IP:36005"
-      export L2_RPC="http://$MACHINE_IP:${L2_HTTP_PORT:-8547}"
-      export L2_EXPLORER="http://$MACHINE_IP:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
-      export L1_RELAYER="http://$MACHINE_IP:4102"
-      export L2_RELAYER="http://$MACHINE_IP:4103"
-    fi
-  else
-    echo "Using local environment"
-    export L1_RPC="http://localhost:32003"
-    export L1_BEACON_RPC="http://localhost:33001"
-    export L1_EXPLORER="http://localhost:36005"
-    export L2_RPC="http://localhost:${L2_HTTP_PORT:-8547}"
-    export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
-    export L1_RELAYER="http://localhost:4102"
-    export L2_RELAYER="http://localhost:4103"
-  fi
-
   # Deploy L1 SCs
   deploy_l1
 
   # Extract L1 deployment results
   extract_l1_deployment_results
 
-  # # Deploy Proposer Wrapper
+  # Deploy Surge Proposer Wrapper
   deploy_proposer_wrapper
+
+  # Extract Surge Proposer Wrapper address
+  extract_surge_proposer_wrapper
+
+  # Deploy Provers
+  deploy_provers
 
   # Deposit bond
   deposit_bond
 
-  # # Start L2 Stack
-  # start_l2_stack
-
-  # # Start Relayers
-  # start_relayers
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ ✅ Surge Protocol deployment completed successfully          ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║                     🔧 NEXT ACTION: 🔧                       ║"
+  echo "║                                                              ║"
+  echo "║     Run ./surge-stack-deployer.sh to start the L2 stack      ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
 }
 
 deploy_surge_protocol
