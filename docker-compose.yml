@@ -1,7 +1,7 @@
 services:
   # L2 deployer
   surge-l2-deployer:
-    image: nethermind/surge-protocol:sha-48f9ad1
+    image: nethermind/surge-protocol:sha-4c8b2fa
     container_name: surge-l2-deployer
     pull_policy: always
     volumes:
@@ -118,7 +118,7 @@ services:
       - relayer-api
 
   taiko_client_driver:
-    image: nethermind/taiko-client:sha-4206e2b
+    image: nethermind/taiko-client:sha-474093f
     container_name: l2-taiko-consensus-client
     restart: unless-stopped
     pull_policy: always
@@ -161,7 +161,7 @@ services:
       - relayer-api
 
   taiko_client_proposer:
-    image: nethermind/taiko-client:sha-4206e2b
+    image: nethermind/taiko-client:sha-474093f
     container_name: l2-taiko-proposer-client
     restart: unless-stopped
     pull_policy: always
@@ -205,7 +205,7 @@ services:
       - l2-deployer
 
   taiko_client_prover_relayer:
-    image: nethermind/taiko-client:sha-4206e2b
+    image: nethermind/taiko-client:sha-474093f
     container_name: l2-taiko-prover-relayer-client
     restart: unless-stopped
     pull_policy: always
