@@ -97,7 +97,6 @@ deploy_l1() {
 
   if [ "$SHOULD_SETUP_VERIFIERS" = "true" ]; then
     generate_prover_chain_spec
-
     # Prompt user for SGX MR_ENCLAVE
     echo "Enter SGX MR_ENCLAVE (return to skip): "
     read -r sgx_mr_enclave
@@ -114,6 +113,37 @@ deploy_l1() {
     export V3_QUOTE_BYTES="$(cat V3_QUOTE_BYTES.txt | tr -d '\n')"
 
     echo "V3_QUOTE_BYTES: $V3_QUOTE_BYTES"
+
+    # Prompt user for TDX_TRUSTED_PARAMS_BYTES
+    echo "Is TDX_TRUSTED_PARAMS_BYTES file ready (return to continue): "
+    read -r is_tdx_trusted_params_bytes_ready
+    export TDX_TRUSTED_PARAMS_BYTES="$(cat TDX_TRUSTED_PARAMS_BYTES.txt | tr -d '\n')"
+
+    echo "TDX_TRUSTED_PARAMS_BYTES: $TDX_TRUSTED_PARAMS_BYTES"
+
+    # Prompt user for TDX_QUOTE_BYTES
+    echo "Is TDX_QUOTE_BYTES file ready (return to continue): "
+    read -r is_tdx_quote_bytes_ready
+    export TDX_QUOTE_BYTES="$(cat TDX_QUOTE_BYTES.txt | tr -d '\n')"
+
+    echo "TDX_QUOTE_BYTES: $TDX_QUOTE_BYTES"
+
+    # Prompt for TDX DAO addresses if needed for collateral setup
+    echo "Enter TDX_PCS_DAO_ADDRESS (return to skip): "
+    read -r tdx_pcs_dao
+    export TDX_PCS_DAO_ADDRESS=${tdx_pcs_dao:-"0x0000000000000000000000000000000000000000"}
+    
+    echo "Enter TDX_FMSPC_TCB_DAO_ADDRESS (return to skip): "
+    read -r tdx_fmspc_tcb_dao
+    export TDX_FMSPC_TCB_DAO_ADDRESS=${tdx_fmspc_tcb_dao:-"0x0000000000000000000000000000000000000000"}
+    
+    echo "Enter TDX_ENCLAVE_IDENTITY_DAO_ADDRESS (return to skip): "
+    read -r tdx_enclave_identity_dao
+    export TDX_ENCLAVE_IDENTITY_DAO_ADDRESS=${tdx_enclave_identity_dao:-"0x0000000000000000000000000000000000000000"}
+    
+    echo "Enter TDX_ENCLAVE_IDENTITY_HELPER_ADDRESS (return to skip): "
+    read -r tdx_enclave_identity_helper
+    export TDX_ENCLAVE_IDENTITY_HELPER_ADDRESS=${tdx_enclave_identity_helper:-"0x0000000000000000000000000000000000000000"}
 
     # Prompt user for SP1_BLOCK_PROVING_PROGRAM_VKEY
     echo "Enter SP1_BLOCK_PROVING_PROGRAM_VKEY (return to skip): "
@@ -167,6 +197,7 @@ extract_l1_deployment_results() {
   export RISC0_GROTH16_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.risc0_groth16_verifier')
   export RISC0_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.risc0_reth_verifier')
   export SGX_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sgx_reth_verifier')
+  export AZURE_TDX_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.azure_tdx_verifier // "0x0000000000000000000000000000000000000000"')
   export SHARED_RESOLVER=$(cat ./deployment/deploy_l1.json | jq -r '.shared_resolver')
   export SIG_VERIFY_LIB=$(cat ./deployment/deploy_l1.json | jq -r '.sig_verify_lib')
   export L1_SIGNAL_SERVICE=$(cat ./deployment/deploy_l1.json | jq -r '.signal_service')
@@ -190,6 +221,7 @@ extract_l1_deployment_results() {
   echo "RISC0_GROTH16_VERIFIER: $RISC0_GROTH16_VERIFIER"
   echo "RISC0_RETH_VERIFIER: $RISC0_RETH_VERIFIER"
   echo "SGX_RETH_VERIFIER: $SGX_RETH_VERIFIER"
+  echo "AZURE_TDX_VERIFIER: $AZURE_TDX_VERIFIER"
   echo "SHARED_RESOLVER: $SHARED_RESOLVER"
   echo "SIG_VERIFY_LIB: $SIG_VERIFY_LIB"
   echo "SIGNAL_SERVICE: $L1_SIGNAL_SERVICE"
@@ -508,7 +540,8 @@ generate_prover_chain_spec() {
       "FRONTIER": {
         "SGX": null,
         "SP1": null,
-        "RISC0": null
+        "RISC0": null,
+        "TDX": null
       }
     },
     "genesis_time": $GENESIS_TIME,
@@ -545,12 +578,14 @@ generate_prover_chain_spec() {
       "HEKLA": {
         "SGX": "$SGX_RETH_VERIFIER",
         "SP1": "$SP1_RETH_VERIFIER",
-        "RISC0": "$RISC0_RETH_VERIFIER"
+        "RISC0": "$RISC0_RETH_VERIFIER",
+        "TDX": "$AZURE_TDX_VERIFIER"
       },
       "ONTAKE": {
         "SGX": "$SGX_RETH_VERIFIER",
         "SP1": "$SP1_RETH_VERIFIER",
-        "RISC0": "$RISC0_RETH_VERIFIER"
+        "RISC0": "$RISC0_RETH_VERIFIER",
+        "TDX": "$AZURE_TDX_VERIFIER"
       }
     },
     "genesis_time": 0,
