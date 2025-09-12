@@ -1,7 +1,7 @@
 services:
   # L2 deployer
   surge-l2-deployer:
-    image: nethermind/surge-protocol:sha-4c8b2fa
+    image: nethermind/surge-protocol:sha-c9f4503
     container_name: surge-l2-deployer
     pull_policy: always
     volumes:
