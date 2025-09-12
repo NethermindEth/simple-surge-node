@@ -16,7 +16,94 @@ read -r surge_environment
 
 SURGE_ENVIRONMENT=${surge_environment:-1}
 
-if [ "$SURGE_ENVIRONMENT" = "2" ]; then
+if [ "$SURGE_ENVIRONMENT" = "1" ]; then
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ 🚀  Using Devnet Environment                                 ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+
+  # Select remote or local
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Select remote or local:                                      ║"
+  echo "║  0 for local                                                 ║"
+  echo "║  1 for remote                                                ║"
+  echo "║ [default: local]                                             ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  read -r remote_or_local 
+
+REMOTE_OR_LOCAL=${remote_or_local:-0}
+  if [ "$REMOTE_OR_LOCAL" = "1" ]; then
+    # Select which devnet machine to use
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║ Select which devnet machine to use:                          ║"
+    echo "║  1 for Devnet 1 (prover)                                     ║"
+    echo "║  2 for Devnet 2 (taiko-client)                               ║"
+    echo "║ [default: others]                                            ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    read -r devnet_machine
+
+    DEVNET_MACHINE=${devnet_machine:-3}
+
+    if [ "$devnet_machine" = "1" ]; then
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ 🚀  Using Devnet 1 (prover)                                  ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      export L1_RPC="https://devnet-one.surge.wtf/l1-rpc"
+      export L1_BEACON_RPC="https://devnet-one.surge.wtf/l1-beacon"
+      export L1_EXPLORER="https://devnet-one.surge.wtf/l1-block-explorer"
+      export L2_RPC="https://devnet-one.surge.wtf/l2-rpc"
+      export L2_EXPLORER="https://devnet-one.surge.wtf/l2-block-explorer"
+      export L1_RELAYER="https://devnet-one.surge.wtf/l1-relayer"
+      export L2_RELAYER="https://devnet-one.surge.wtf/l2-relayer"
+    elif [ "$devnet_machine" = "2" ]; then
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ 🚀  Using Devnet 2 (taiko-client)                            ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      export L1_RPC="https://devnet-two.surge.wtf/l1-rpc"
+      export L1_BEACON_RPC="https://devnet-two.surge.wtf/l1-beacon"
+      export L1_EXPLORER="https://devnet-two.surge.wtf/l1-block-explorer"
+      export L2_RPC="https://devnet-two.surge.wtf/l2-rpc"
+      export L2_EXPLORER="https://devnet-two.surge.wtf/l2-block-explorer"
+      export L1_RELAYER="https://devnet-two.surge.wtf/l1-relayer"
+      export L2_RELAYER="https://devnet-two.surge.wtf/l2-relayer"
+    else
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ 🚀  Using others                                            ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      export L1_RPC="http://$MACHINE_IP:32003"
+      export L1_BEACON_RPC="http://$MACHINE_IP:33001"
+      export L1_EXPLORER="http://$MACHINE_IP:36005"
+      export L2_RPC="http://$MACHINE_IP:${L2_HTTP_PORT:-8547}"
+      export L2_EXPLORER="http://$MACHINE_IP:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+      export L1_RELAYER="http://$MACHINE_IP:4102"
+      export L2_RELAYER="http://$MACHINE_IP:4103"
+    fi
+  else
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║ 🚀  Using local environment                                  ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    export L1_RPC="http://localhost:32003"
+    export L1_BEACON_RPC="http://localhost:33001"
+    export L1_EXPLORER="http://localhost:36005"
+    export L2_RPC="http://localhost:${L2_HTTP_PORT:-8547}"
+    export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+    export L1_RELAYER="http://localhost:4102"
+    export L2_RELAYER="http://localhost:4103"
+  fi
+elif [ "$SURGE_ENVIRONMENT" = "2" ]; then
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
   echo "║                        ⚠️  WARNING  ⚠️                         ║"
@@ -131,8 +218,8 @@ generate_prover_chain_spec() {
     },
     "l1_contract": null,
     "l2_contract": null,
-    "rpc": "$L1_ENDPOINT_HTTP",
-    "beacon_rpc": "$L1_BEACON_HTTP",
+    "rpc": "$L1_RPC",
+    "beacon_rpc": "$L1_BEACON_RPC",
     "verifier_address_forks": {
       "FRONTIER": {
         "SGX": null,
@@ -168,7 +255,7 @@ generate_prover_chain_spec() {
     },
     "l1_contract": "$TAIKO_INBOX",
     "l2_contract": "$TAIKO_ANCHOR",
-    "rpc": "$L2_ENDPOINT_HTTP",
+    "rpc": "$L2_RPC",
     "beacon_rpc": null,
     "verifier_address_forks": {
       "HEKLA": {
