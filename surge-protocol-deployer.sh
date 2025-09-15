@@ -24,9 +24,6 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 
-  # Disable verification for Devnet
-  export VERIFY=false
-
   # Select remote or local
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
@@ -610,7 +607,7 @@ deploy_provers() {
           exit 1
         fi
 
-        SGX_VERIFIER_ADDRESS=${SGX_RETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_RETH} BROADCAST=true docker compose -f docker-compose-protocol.yml --profile sgx-verifier-setup up
+        SGX_VERIFIER_ADDRESS=${SGX_RETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_RETH} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile sgx-verifier-setup up
       fi
     fi
 
