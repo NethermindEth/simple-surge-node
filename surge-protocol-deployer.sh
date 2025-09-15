@@ -5,10 +5,11 @@ set -e
 # Select which Surge environment to use
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║ ⚠️  Select which Surge environment to use:                    ║"
-echo "║  1 for Devnet                                                ║"
-echo "║  2 for Staging                                               ║"
-echo "║  3 for Testnet                                               ║"
+echo "  ⚠️ Select which Surge environment to use:                     "
+echo "║══════════════════════════════════════════════════════════════║"
+echo "║ 1 for Devnet                                                 ║"
+echo "║ 2 for Staging                                                ║"
+echo "║ 3 for Testnet                                                ║"
 echo "║ [default: Devnet]                                            ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo
@@ -19,16 +20,20 @@ SURGE_ENVIRONMENT=${surge_environment:-1}
 if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ 🚀  Using Devnet Environment                                 ║"
+  echo "  🚀 Using Devnet Environment                                   "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
+
+  # Disable verification for Devnet
+  export VERIFY=false
 
   # Select remote or local
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ Select remote or local:                                      ║"
-  echo "║  0 for local                                                 ║"
-  echo "║  1 for remote                                                ║"
+  echo "  ⚠️ Select remote or local:                                    "
+  echo "║══════════════════════════════════════════════════════════════║"
+  echo "║ 0 for local                                                  ║"
+  echo "║ 1 for remote                                                 ║"
   echo "║ [default: local]                                             ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
@@ -39,9 +44,10 @@ REMOTE_OR_LOCAL=${remote_or_local:-0}
     # Select which devnet machine to use
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ Select which devnet machine to use:                          ║"
-    echo "║  1 for Devnet 1 (prover)                                     ║"
-    echo "║  2 for Devnet 2 (taiko-client)                               ║"
+    echo "  ⚠️ Select which devnet machine to use:                        "
+    echo "║══════════════════════════════════════════════════════════════║"
+    echo "║ 1 for Devnet 1 (prover)                                      ║"
+    echo "║ 2 for Devnet 2 (taiko-client)                                ║"
     echo "║ [default: others]                                            ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
@@ -52,7 +58,7 @@ REMOTE_OR_LOCAL=${remote_or_local:-0}
     if [ "$devnet_machine" = "1" ]; then
       echo
       echo "╔══════════════════════════════════════════════════════════════╗"
-      echo "║ 🚀  Using Devnet 1 (prover)                                  ║"
+      echo "  🚀 Using Devnet 1 (prover)                                    "
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo
       export L1_RPC="https://devnet-one.surge.wtf/l1-rpc"
@@ -65,7 +71,7 @@ REMOTE_OR_LOCAL=${remote_or_local:-0}
     elif [ "$devnet_machine" = "2" ]; then
       echo
       echo "╔══════════════════════════════════════════════════════════════╗"
-      echo "║ 🚀  Using Devnet 2 (taiko-client)                            ║"
+      echo "  🚀 Using Devnet 2 (taiko-client)                              "
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo
       export L1_RPC="https://devnet-two.surge.wtf/l1-rpc"
@@ -77,9 +83,9 @@ REMOTE_OR_LOCAL=${remote_or_local:-0}
       export L2_RELAYER="https://devnet-two.surge.wtf/l2-relayer"
     else
       echo
-      echo "╔══════════════════════════════════════════════════════════════╗"
-      echo "║ 🚀  Using others                                            ║"
-      echo "╚══════════════════════════════════════════════════════════════╝"
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "  🚀 Using others                                               "
+    echo "╚══════════════════════════════════════════════════════════════╝"
       echo
       export L1_RPC="http://$MACHINE_IP:32003"
       export L1_BEACON_RPC="http://$MACHINE_IP:33001"
@@ -92,7 +98,7 @@ REMOTE_OR_LOCAL=${remote_or_local:-0}
   else
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ 🚀  Using local environment                                  ║"
+    echo "  🚀 Using local environment                                    "
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
     export L1_RPC="http://localhost:32003"
@@ -106,33 +112,31 @@ REMOTE_OR_LOCAL=${remote_or_local:-0}
 elif [ "$SURGE_ENVIRONMENT" = "2" ]; then
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║                        ⚠️  WARNING  ⚠️                         ║"
-  echo "║                                                              ║"
-  echo "║  Using Staging Environment, skipping protocol deployment...  ║"
-  echo "║  Please execute surge-stack-deployer.sh directly             ║"
+  echo "  ⚠️ Using Staging Environment, skipping protocol deployment... "
+  echo "║══════════════════════════════════════════════════════════════║"
+  echo "║ Please execute surge-stack-deployer.sh directly              ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
-  echo "┌──────────────────────────────────────────────────────────────┐"
-  echo "│ 🔧 REQUIRED ACTION: Copy the correct env file for staging    │"
-  echo "│                                                              │"
-  echo "│    Run: cp .env.staging .env                                 │"
-  echo "└──────────────────────────────────────────────────────────────┘"
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "  🔧 REQUIRED ACTION: Copy the correct env file for Staging     "
+  echo "║══════════════════════════════════════════════════════════════║"
+  echo "║ Run: cp .env.staging .env                                    ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
   echo
   exit 0
 elif [ "$SURGE_ENVIRONMENT" = "3" ]; then
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║                        ⚠️  WARNING  ⚠️                         ║"
-  echo "║                                                              ║"
-  echo "║  Using Testnet Environment, skipping protocol deployment...  ║"
-  echo "║  Please execute surge-stack-deployer.sh directly             ║"
+  echo "  ⚠️ Using Testnet Environment, skipping protocol deployment... "
+  echo "║══════════════════════════════════════════════════════════════║"
+  echo "║ Please execute surge-stack-deployer.sh directly              ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
-  echo "┌──────────────────────────────────────────────────────────────┐"
-  echo "│ 🔧 REQUIRED ACTION: Copy the correct env file for Testnet    │"
-  echo "│                                                              │"
-  echo "│    Run: cp .env.testnet .env                                 │"
-  echo "└──────────────────────────────────────────────────────────────┘"
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "  🔧 REQUIRED ACTION: Copy the correct env file for Testnet     "
+  echo "║══════════════════════════════════════════════════════════════║"
+  echo "║ Run: cp .env.testnet .env                                    ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
   echo
   exit 0
 fi
@@ -141,7 +145,7 @@ fi
 if [ -f .env ]; then
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ ✅ Loading environment variables from .env file...           ║"
+  echo "  ✅ Loading environment variables from .env file...            "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
   echo ""
@@ -151,8 +155,8 @@ if [ -f .env ]; then
 else
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ ❌ Error: .env file not found                                ║"
-  echo "║                                                              ║"
+  echo "  ❌ Error: .env file not found                                 "
+  echo "║══════════════════════════════════════════════════════════════║"
   echo "║ Automatically copying .env.devnet to .env                    ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
@@ -162,7 +166,7 @@ else
   set +a  # disable automatic export
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ ✅ Successfully loaded Devnet environment variables          ║"
+  echo "  ✅ Successfully loaded Devnet environment variables           "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 fi
@@ -283,8 +287,8 @@ EOF
   
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ ✅ Prover chain spec list json generated successfully,       ║"
-  echo "║ and saved to: configs/chain_spec_list_default.json           ║"
+  echo "  ✅ Prover chain spec list json generated successfully,        "
+  echo "  and saved to: configs/chain_spec_list_default.json            "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 }
@@ -305,13 +309,15 @@ generate_prover_env_vars() {
 
   echo ">>>>>>"
   echo "export SGX_INSTANCE_ID=$SGX_INSTANCE_ID"
+  echo "export SGX_ONTAKE_INSTANCE_ID=${SGX_INSTANCE_ID}"
+  echo "export SGX_PACAYA_INSTANCE_ID=${SGX_INSTANCE_ID}"
   echo "export GROTH16_VERIFIER_ADDRESS=$RISC0_GROTH16_VERIFIER"
   echo "export SP1_VERIFIER_ADDRESS=$SUCCINCT_VERIFIER"
   echo ">>>>>>"
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ ✅ Prover env vars generated successfully,                   ║"
-  echo "║ please copy and paste them when you start the provers        ║"
+  echo "  ✅ Prover env vars generated successfully,                    "
+  echo "  please copy and paste them when you start the provers         "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 }
@@ -324,9 +330,9 @@ deploy_l1() {
     # Prompt user for starting a new deployment if the deployment results are already present
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ⚠️  Surge L1 deployment already completed                     ║"
-    echo "║ (deploy_l1.json exists)                                      ║"
-    echo "║                                                              ║"
+    echo "  ⚠️ Surge L1 deployment already completed                      "
+    echo "  (deploy_l1.json exists)                                       "
+    echo "║══════════════════════════════════════════════════════════════║"
     echo "║ Start a new deployment? (true/false) [default: false]        ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
@@ -355,8 +361,9 @@ deploy_l1() {
   if [ -f "deployment/deploy_l1.lock" ]; then
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ⚠️  Surge L1 deployment is already running (lock file exists) ║"
-    echo "║                                                              ║"
+    echo "  ⚠️ Surge L1 deployment is already running                    "
+    echo "  (deploy_l1.lock exists)                                       "
+    echo "║══════════════════════════════════════════════════════════════║"
     echo "║ Please wait for it to complete or remove the lock file if    ║"
     echo "║ the previous deployment failed.                              ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
@@ -504,9 +511,9 @@ deploy_proposer_wrapper() {
   if [ -f "deployment/proposer_wrappers.json" ]; then
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ⚠️  Proposer Wrapper deployment already completed             ║"
-    echo "║ (proposer_wrappers.json exists)                              ║"
-    echo "║                                                              ║"
+    echo "  ⚠️  Proposer Wrapper deployment already completed              "
+    echo "  (proposer_wrappers.json exists)                               "
+    echo "║══════════════════════════════════════════════════════════════║"
     echo "║ Deployment will be skipped...                                ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
@@ -573,8 +580,9 @@ deploy_provers() {
         if [ "$MR_ENCLAVE" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║ ❗ SGX MR_ENCLAVE is not set,                                ║"
-          echo "║ please set it and rerun the script                           ║"
+          echo "  ❗ SGX MR_ENCLAVE is not set                                  "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
@@ -583,8 +591,9 @@ deploy_provers() {
         if [ "$MR_SIGNER" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║ ❗ SGX MR_SIGNER is not set,                                 ║"
-          echo "║ please set it and rerun the script                           ║"
+          echo "  ❗ SGX MR_SIGNER is not set                                   "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
@@ -593,8 +602,9 @@ deploy_provers() {
         if [ "$V3_QUOTE_BYTES" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║ ❗ SGX V3_QUOTE_BYTES is not set,                            ║"
-          echo "║ please set it and rerun the script                           ║"
+          echo "  ❗ SGX V3_QUOTE_BYTES is not set                              "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
@@ -604,50 +614,7 @@ deploy_provers() {
       fi
     fi
 
-    # if [ ! -f "deployment/sgx_geth_verifier_setup.lock" ]; then
-    #   # Prompt user for running SGX Gaiko
-    #   echo
-    #   echo "╔══════════════════════════════════════════════════════════════╗"
-    #   echo "║ Running SGX Gaiko? (true/false) [default: false]              ║"
-    #   echo "╚══════════════════════════════════════════════════════════════╝"
-    #   echo
-    #   read -r running_sgx_gaiko
-    #   RUNNING_SGX_GAIKO=${running_sgx_gaiko:-false}
-
-    #   if [ "$RUNNING_SGX_GAIKO" = "true" ]; then
-    #     if [ "$GAIKO_MR_ENCLAVE" = "" ]; then
-    #       echo
-    #       echo "╔══════════════════════════════════════════════════════════════╗"
-    #       echo "║ ❗ SGX GAIKO_MR_ENCLAVE is not set,                          ║"
-    #       echo "║ please set it and rerun the script                           ║"
-    #       echo "╚══════════════════════════════════════════════════════════════╝"
-    #       echo
-    #       exit 1
-    #     fi
-
-    #     if [ "$GAIKO_MR_SIGNER" = "" ]; then
-    #       echo
-    #       echo "╔══════════════════════════════════════════════════════════════╗"
-    #       echo "║ ❗ SGX GAIKO_MR_SIGNER is not set,                           ║"
-    #       echo "║ please set it and rerun the script                           ║"
-    #       echo "╚══════════════════════════════════════════════════════════════╝"
-    #       echo
-    #       exit 1
-    #     fi
-
-    #     if [ "$GAIKO_V3_QUOTE_BYTES" = "" ]; then
-    #       echo
-    #       echo "╔══════════════════════════════════════════════════════════════╗"
-    #       echo "║ ❗ SGX GAIKO_V3_QUOTE_BYTES is not set,                      ║"
-    #       echo "║ please set it and rerun the script                           ║"
-    #       echo "╚══════════════════════════════════════════════════════════════╝"
-    #       echo
-    #       exit 1
-    #     fi
-
-    #     docker compose -f docker-compose-protocol.yml --profile sgx-geth-verifier-setup up
-    #   fi
-    # fi
+    # TODO: Add support for SGX Gaiko
 
     if [ ! -f "deployment/sp1_verifier_setup.lock" ]; then
       # Prompt user for running SP1 Raiko
@@ -663,8 +630,9 @@ deploy_provers() {
         if [ "$SP1_BLOCK_PROVING_PROGRAM_VKEY" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║ ❗ SP1_BLOCK_PROVING_PROGRAM_VKEY is not set,                ║"
-          echo "║ please set it and rerun the script                           ║"
+          echo "  ❗ SP1_BLOCK_PROVING_PROGRAM_VKEY is not set                  "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
@@ -673,8 +641,9 @@ deploy_provers() {
         if [ "$SP1_AGGREGATION_PROGRAM_VKEY" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║ ❗ SP1_AGGREGATION_PROGRAM_VKEY is not set                   ║"
-          echo "║ please set it and rerun the script                           ║"
+          echo "  ❗ SP1_AGGREGATION_PROGRAM_VKEY is not set                    "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
@@ -697,8 +666,9 @@ deploy_provers() {
       if [ "$RUNNING_RISC0_RAIKO" = "true" ]; then
         if [ "$RISC0_BLOCK_PROVING_IMAGE_ID" = "" ]; then
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║ ❗ RISC0_BLOCK_PROVING_IMAGE_ID is not set,                  ║"
-          echo "║ please set it and rerun the script                           ║"
+          echo "  ❗ RISC0_BLOCK_PROVING_IMAGE_ID is not set                    "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
@@ -707,8 +677,9 @@ deploy_provers() {
         if [ "$RISC0_AGGREGATION_IMAGE_ID" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "║ ❗ RISC0_AGGREGATION_IMAGE_ID is not set,                    ║"
-          echo "║ please set it and rerun the script                           ║"
+          echo "  ❗ RISC0_AGGREGATION_IMAGE_ID is not set                      "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
@@ -781,13 +752,13 @@ deploy_surge_protocol() {
 
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ ✅ Surge Protocol deployment completed successfully          ║"
+  echo "  ✅ Surge Protocol deployment completed successfully           "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║                     🔧 NEXT ACTION: 🔧                       ║"
-  echo "║                                                              ║"
-  echo "║     Run ./surge-stack-deployer.sh to start the L2 stack      ║"
+  echo "  🔧 NEXT ACTION:                                               "
+  echo "║══════════════════════════════════════════════════════════════║"
+  echo "║ Run ./surge-stack-deployer.sh to start the L2 stack          ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 }

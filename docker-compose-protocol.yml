@@ -1,6 +1,6 @@
 services:
   surge-l1-deployer:
-    image: nethermind/surge-protocol:sha-48f9ad1
+    image: nethermind/surge-protocol:sha-93f0d57
     container_name: surge-l1-deployer
     pull_policy: always
     volumes:
@@ -28,7 +28,7 @@ services:
       - l1-deployer
 
   surge-proposer-wrapper-deployer:
-    image: nethermind/surge-protocol:sha-48f9ad1
+    image: nethermind/surge-protocol:sha-93f0d57
     container_name: surge-proposer-wrapper-deployer
     pull_policy: always
     volumes:
@@ -58,7 +58,7 @@ services:
       - proposer-wrapper-deployer
 
   surge-bond-deposit:
-    image: nethermind/surge-protocol:sha-48f9ad1
+    image: nethermind/surge-protocol:sha-93f0d57
     container_name: surge-bond-deposit
     pull_policy: always
     volumes:
@@ -86,7 +86,7 @@ services:
       - bond-deposit
 
   surge-sgx-verifier-setup:
-    image: nethermind/surge-protocol:sha-48f9ad1
+    image: nethermind/surge-protocol:sha-93f0d57
     container_name: surge-sgx-verifier-setup
     pull_policy: always
     volumes:
@@ -101,6 +101,7 @@ services:
     environment:
       FOUNDRY_PROFILE: layer1
       BROADCAST: ${BROADCAST}
+      VERIFY: ${VERIFY}
       VERIFY_ARG: ${VERIFY_ARG}
       MR_ENCLAVE: ${MR_ENCLAVE}
       MR_SIGNER: ${MR_SIGNER}
@@ -121,7 +122,7 @@ services:
       - sgx-verifier-setup
 
   surge-risc0-verifier-setup:
-    image: nethermind/surge-protocol:sha-48f9ad1
+    image: nethermind/surge-protocol:sha-93f0d57
     container_name: surge-risc0-verifier-setup
     pull_policy: always
     volumes:
@@ -152,7 +153,7 @@ services:
       - risc0-verifier-setup
 
   surge-sp1-verifier-setup:
-    image: nethermind/surge-protocol:sha-48f9ad1
+    image: nethermind/surge-protocol:sha-93f0d57
     container_name: surge-sp1-verifier-setup
     pull_policy: always
     volumes:
@@ -183,7 +184,7 @@ services:
       - sp1-verifier-setup
 
   surge-l2-deployer:
-    image: nethermind/surge-protocol:sha-48f9ad1
+    image: nethermind/surge-protocol:sha-93f0d57
     container_name: surge-l2-deployer
     pull_policy: always
     volumes:

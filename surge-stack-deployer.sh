@@ -6,7 +6,7 @@ check_env_file() {
   if [ -f .env ]; then
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ✅ Loading environment variables from .env file...           ║"
+    echo "  ✅ Loading environment variables from .env file...            "
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
     echo ""
@@ -16,20 +16,55 @@ check_env_file() {
   else
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ❌ Error: .env file not found                                ║"
+    echo "  ❌ Error: .env file not found                                 "
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
     exit 1
   fi
 }
 
+prepare_blockscout_for_remote() {
+  # Get the machine's IP address using ip command (works on Ubuntu)
+  export MACHINE_IP=$(ip route get 1.1.1.1 | grep -oP 'src \K\S+' | head -n1)
+
+  # Fallback to hostname -I if ip route doesn't work
+  if [ -z "$MACHINE_IP" ]; then
+    MACHINE_IP=$(hostname -I | awk '{print $1}')
+  fi
+
+  # Final fallback to parsing ip addr output
+  if [ -z "$MACHINE_IP" ]; then
+    MACHINE_IP=$(ip addr show | grep 'inet ' | grep -v '127.0.0.1' | head -n1 | awk '{print $2}' | cut -d'/' -f1)
+  fi
+
+  if [ -z "$MACHINE_IP" ]; then
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "  ❌ Error: Could not determine machine IP address              "
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    exit 1
+  fi
+
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Setting Blockscout to use machine IP: $MACHINE_IP            ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+
+  # Replace localhost with machine IP for blockscout
+  sed -i.bak 's/^BLOCKSCOUT_API_HOST=.*/BLOCKSCOUT_API_HOST='$MACHINE_IP'/g' .env
+  sed -i.bak 's/^BLOCKSCOUT_L2_HOST=.*/BLOCKSCOUT_L2_HOST='$MACHINE_IP'/g' .env
+}
+
 # Select which Surge environment to use
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║ ⚠️  Select which Surge environment to use:                    ║"
-echo "║  1 for Devnet                                                ║"
-echo "║  2 for Staging                                               ║"
-echo "║  3 for Testnet                                               ║"
+echo "  ⚠️ Select which Surge environment to use:                     "
+echo "║══════════════════════════════════════════════════════════════║"
+echo "║ 1 for Devnet                                                 ║"
+echo "║ 2 for Staging                                                ║"
+echo "║ 3 for Testnet                                                ║"
 echo "║ [default: Devnet]                                            ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo
@@ -40,7 +75,8 @@ SURGE_ENVIRONMENT=${surge_environment:-1}
 # Select remote or local
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║ Select remote or local:                                      ║"
+echo "  ⚠️ Select remote or local:                                    "
+echo "║══════════════════════════════════════════════════════════════║"
 echo "║  0 for local                                                 ║"
 echo "║  1 for remote                                                ║"
 echo "║ [default: local]                                             ║"
@@ -62,7 +98,7 @@ fi
 if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ 🚀  Using Devnet Environment                                 ║"
+  echo "  🚀 Using Devnet Environment                                   "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 
@@ -70,9 +106,10 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
     # Select which devnet machine to use
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ Select which devnet machine to use:                          ║"
-    echo "║  1 for Devnet 1 (prover)                                     ║"
-    echo "║  2 for Devnet 2 (taiko-client)                               ║"
+    echo "  ⚠️ Select which devnet machine to use:                        "
+    echo "║══════════════════════════════════════════════════════════════║"
+    echo "║ 1 for Devnet 1 (prover)                                     ║"
+    echo "║ 2 for Devnet 2 (taiko-client)                               ║"
     echo "║ [default: others]                                            ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
@@ -83,7 +120,7 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
     if [ "$devnet_machine" = "1" ]; then
       echo
       echo "╔══════════════════════════════════════════════════════════════╗"
-      echo "║ 🚀  Using Devnet 1 (prover)                                  ║"
+      echo "  🚀 Using Devnet 1 (prover)                                    "
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo
       export L1_RPC="https://devnet-one.surge.wtf/l1-rpc"
@@ -96,7 +133,7 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
     elif [ "$devnet_machine" = "2" ]; then
       echo
       echo "╔══════════════════════════════════════════════════════════════╗"
-      echo "║ 🚀  Using Devnet 2 (taiko-client)                            ║"
+      echo "  🚀 Using Devnet 2 (taiko-client)                             "
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo
       export L1_RPC="https://devnet-two.surge.wtf/l1-rpc"
@@ -109,7 +146,7 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
     else
       echo
       echo "╔══════════════════════════════════════════════════════════════╗"
-      echo "║ 🚀  Using others                                            ║"
+      echo "  🚀 Using others                                              "
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo
       export L1_RPC="http://$MACHINE_IP:32003"
@@ -123,7 +160,7 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   else
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ 🚀  Using local environment                                  ║"
+    echo "  🚀 Using local environment                                    "
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
     export L1_RPC="http://localhost:32003"
@@ -138,52 +175,18 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
 elif [ "$SURGE_ENVIRONMENT" = "2" ]; then
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ 🚀  Using Staging Environment                                ║"
+  echo "  🚀 Using Staging Environment                                  "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
   check_env_file
 elif [ "$SURGE_ENVIRONMENT" = "3" ]; then
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ 🚀  Using Testnet Environment                                ║"
+  echo "  🚀 Using Testnet Environment                                  "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
   check_env_file
 fi
-
-prepare_blockscout_for_remote() {
-  # Get the machine's IP address using ip command (works on Ubuntu)
-  export MACHINE_IP=$(ip route get 1.1.1.1 | grep -oP 'src \K\S+' | head -n1)
-
-  # Fallback to hostname -I if ip route doesn't work
-  if [ -z "$MACHINE_IP" ]; then
-    MACHINE_IP=$(hostname -I | awk '{print $1}')
-  fi
-
-  # Final fallback to parsing ip addr output
-  if [ -z "$MACHINE_IP" ]; then
-    MACHINE_IP=$(ip addr show | grep 'inet ' | grep -v '127.0.0.1' | head -n1 | awk '{print $2}' | cut -d'/' -f1)
-  fi
-
-  if [ -z "$MACHINE_IP" ]; then
-    echo
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ❌ Error: Could not determine machine IP address             ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo
-    exit 1
-  fi
-
-  echo
-  echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ Setting Blockscout to use machine IP: $MACHINE_IP            ║"
-  echo "╚══════════════════════════════════════════════════════════════╝"
-  echo
-
-  # Replace localhost with machine IP for blockscout
-  sed -i.bak 's/^BLOCKSCOUT_API_HOST=.*/BLOCKSCOUT_API_HOST='$MACHINE_IP'/g' .env
-  sed -i.bak 's/^BLOCKSCOUT_L2_HOST=.*/BLOCKSCOUT_L2_HOST='$MACHINE_IP'/g' .env
-}
 
 start_l2_stack() {
   echo
@@ -201,7 +204,7 @@ start_l2_stack() {
   echo "║ 3 for driver + proposer + spammer                            ║"
   echo "║ 4 for driver + proposer + prover + spammer                   ║"
   echo "║ 5 for all except spammer                                     ║"
-  echo "║ default: all                                                 ║"
+  echo "║ [default: all]                                               ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
   read -r l2_stack_option
@@ -226,9 +229,9 @@ deploy_l2() {
   if [ -f "deployment/setup_l2.json" ]; then
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ⚠️  Surge L2 deployment already completed                    ║"
-    echo "║ (setup_l2.json exists)                                       ║"
-    echo "║                                                              ║"
+    echo "  ⚠️ Surge L2 deployment already completed                     "
+    echo "  (setup_l2.json exists)                                        "
+    echo "║══════════════════════════════════════════════════════════════║"
     echo "║ Deployment will be skipped...                                ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
@@ -290,7 +293,7 @@ start_relayers() {
 
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ✅ Relayers started successfully                             ║"
+    echo "  ✅ Relayers started successfully                              "
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 
@@ -435,12 +438,12 @@ EOF
 
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ ✅ Bridge UI configs generated successfully                  ║"
+  echo "  ✅ Bridge UI configs generated successfully                   "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ Generated files:                                             ║"
-  echo "║                                                              ║"
+  echo " 💡 Generated files:                                            "
+  echo "║══════════════════════════════════════════════════════════════║"
   echo "║  - configs/configuredBridges.json                            ║"
   echo "║  - configs/configuredChains.json                             ║"
   echo "║  - configs/configuredRelayer.json                            ║"

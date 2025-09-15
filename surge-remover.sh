@@ -17,7 +17,7 @@ remove_l2_stack() {
 
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ✅ L2 stack and relayers removed successfully                ║"
+    echo "  ✅ L2 stack and relayers removed successfully                 "
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 }
@@ -37,7 +37,7 @@ remove_relayers() {
 
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ✅ Relayers removed successfully                             ║"
+    echo "  ✅ Relayers removed successfully                              "
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 }
@@ -57,7 +57,7 @@ remove_db() {
 
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ✅ Database removed successfully                             ║"
+    echo "  ✅ Database removed successfully                              "
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 }
@@ -75,7 +75,7 @@ remove_configs() {
 
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ✅ Configs removed successfully                              ║"
+    echo "  ✅ Configs removed successfully                               "
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 }
@@ -92,7 +92,7 @@ remove_env_file() {
 
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ ✅ Env file removed successfully                             ║"
+    echo "  ✅ Env file removed successfully                              "
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 }
@@ -101,10 +101,10 @@ remove_l2_stack
 remove_relayers
 remove_db
 remove_configs
-remove_env_file
+# remove_env_file
 
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║ ✅ Surge removed successfully                                ║"
+echo "  ✅ Surge removed successfully                                 "
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo
