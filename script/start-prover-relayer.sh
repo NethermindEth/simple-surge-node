@@ -13,6 +13,7 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         --raiko.host.sgx ${SGX_RAIKO_HOST}
         --prover.sgx.batchSize ${SGX_BATCH_SIZE}
         --prover.zkvm.batchSize ${ZKVM_BATCH_SIZE}
+        --prover.tdx.batchSize ${TDX_BATCH_SIZE}
         --metrics true
         --metrics.port 6062"
 
@@ -34,6 +35,10 @@ if [ "$ENABLE_PROVER" = "true" ]; then
     if [ -z "$L1_PROVER_PRIVATE_KEY" ]; then
         echo "Error: L1_PROVER_PRIVATE_KEY must be non-empty"
         exit 1
+    fi
+
+    if [ -n "$RAIKO_HOST_TDX" ]; then
+        ARGS="${ARGS} --raiko.host.tdx ${RAIKO_HOST_TDX}"
     fi
     
     if [ -n "$RAIKO_HOST_ZKVM" ]; then
