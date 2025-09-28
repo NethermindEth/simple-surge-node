@@ -1,6 +1,6 @@
 services:
   surge-l1-deployer:
-    image: nethermind/surge-protocol:sha-93f0d57
+    image: nethermind/surge-protocol:sha-efd2322
     container_name: surge-l1-deployer
     pull_policy: always
     volumes:
@@ -15,6 +15,8 @@ services:
     environment:
       FOUNDRY_PROFILE: layer1
       BROADCAST: ${BROADCAST}
+      VERIFY: ${VERIFY}
+      VERIFY_ARG: ${VERIFY_ARG}
       USE_TIMELOCKED_OWNER: ${USE_TIMELOCKED_OWNER}
       FORK_URL: ${L1_ENDPOINT_HTTP}
     networks:
@@ -28,7 +30,7 @@ services:
       - l1-deployer
 
   surge-proposer-wrapper-deployer:
-    image: nethermind/surge-protocol:sha-93f0d57
+    image: nethermind/surge-protocol:sha-efd2322
     container_name: surge-proposer-wrapper-deployer
     pull_policy: always
     volumes:
@@ -43,6 +45,8 @@ services:
     environment:
       FOUNDRY_PROFILE: layer1
       BROADCAST: ${BROADCAST}
+      VERIFY: ${VERIFY}
+      VERIFY_ARG: ${VERIFY_ARG}
       TAIKO_WRAPPER: ${TAIKO_WRAPPER}
       TAIKO_INBOX: ${TAIKO_INBOX}
       ADMIN: ${PUBLIC_KEY}
@@ -58,7 +62,7 @@ services:
       - proposer-wrapper-deployer
 
   surge-bond-deposit:
-    image: nethermind/surge-protocol:sha-93f0d57
+    image: nethermind/surge-protocol:sha-efd2322
     container_name: surge-bond-deposit
     pull_policy: always
     volumes:
@@ -86,7 +90,7 @@ services:
       - bond-deposit
 
   surge-sgx-verifier-setup:
-    image: nethermind/surge-protocol:sha-93f0d57
+    image: nethermind/surge-protocol:sha-efd2322
     container_name: surge-sgx-verifier-setup
     pull_policy: always
     volumes:
@@ -122,7 +126,7 @@ services:
       - sgx-verifier-setup
 
   surge-risc0-verifier-setup:
-    image: nethermind/surge-protocol:sha-93f0d57
+    image: nethermind/surge-protocol:sha-efd2322
     container_name: surge-risc0-verifier-setup
     pull_policy: always
     volumes:
@@ -137,6 +141,8 @@ services:
     environment:
       FOUNDRY_PROFILE: layer1
       BROADCAST: ${BROADCAST}
+      VERIFY: ${VERIFY}
+      VERIFY_ARG: ${VERIFY_ARG}
       RISC0_VERIFIER_ADDRESS: ${RISC0_RETH_VERIFIER}
       RISC0_AGGREGATION_IMAGE_ID: ${RISC0_AGGREGATION_IMAGE_ID}
       RISC0_BLOCK_PROVING_IMAGE_ID: ${RISC0_BLOCK_PROVING_IMAGE_ID}
@@ -153,7 +159,7 @@ services:
       - risc0-verifier-setup
 
   surge-sp1-verifier-setup:
-    image: nethermind/surge-protocol:sha-93f0d57
+    image: nethermind/surge-protocol:sha-efd2322
     container_name: surge-sp1-verifier-setup
     pull_policy: always
     volumes:
@@ -168,6 +174,8 @@ services:
     environment:
       FOUNDRY_PROFILE: layer1
       BROADCAST: ${BROADCAST}
+      VERIFY: ${VERIFY}
+      VERIFY_ARG: ${VERIFY_ARG}
       SP1_VERIFIER_ADDRESS: ${SP1_RETH_VERIFIER}
       SP1_BLOCK_PROVING_PROGRAM_VKEY: ${SP1_BLOCK_PROVING_PROGRAM_VKEY}
       SP1_AGGREGATION_PROGRAM_VKEY: ${SP1_AGGREGATION_PROGRAM_VKEY}
@@ -184,7 +192,7 @@ services:
       - sp1-verifier-setup
 
   surge-l2-deployer:
-    image: nethermind/surge-protocol:sha-93f0d57
+    image: nethermind/surge-protocol:sha-efd2322
     container_name: surge-l2-deployer
     pull_policy: always
     volumes:
