@@ -272,7 +272,7 @@ services:
       - spammer
 
   blockscout-postgres:
-    image: postgres:alpine
+    image: postgres:13.22
     container_name: l2-blockscout-postgres
     restart: unless-stopped
     pull_policy: always
