@@ -418,7 +418,7 @@ deploy_l1() {
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 
-  BROADCAST=true USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER docker compose -f docker-compose-protocol.yml --profile l1-deployer up
+  BROADCAST=true USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER docker compose -f docker-compose-protocol.yml --env-file .env.docker-compose --profile l1-deployer up
 }
 
 extract_l1_deployment_results() {
@@ -539,7 +539,7 @@ deploy_proposer_wrapper() {
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 
-    BROADCAST=true docker compose -f docker-compose-protocol.yml --profile proposer-wrapper-deployer up
+    BROADCAST=true docker compose -f docker-compose-protocol.yml --env-file .env.docker-compose --profile proposer-wrapper-deployer up
   fi
 }
 
@@ -624,7 +624,7 @@ deploy_provers() {
           exit 1
         fi
 
-        SGX_VERIFIER_ADDRESS=${SGX_RETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_RETH} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile sgx-verifier-setup up
+        SGX_VERIFIER_ADDRESS=${SGX_RETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_RETH} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --env-file .env.docker-compose --profile sgx-verifier-setup up
       fi
     fi
 
@@ -661,7 +661,7 @@ deploy_provers() {
           echo
         fi
 
-        TDX_VERIFIER_ADDRESS=${AZURE_TDX_VERIFIER} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile tdx-verifier-setup up
+        TDX_VERIFIER_ADDRESS=${AZURE_TDX_VERIFIER} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --env-file .env.docker-compose --profile tdx-verifier-setup up
       fi
     fi
 
@@ -698,7 +698,7 @@ deploy_provers() {
           exit 1
         fi
 
-        BROADCAST=true docker compose -f docker-compose-protocol.yml --profile sp1-verifier-setup up
+        BROADCAST=true docker compose -f docker-compose-protocol.yml --env-file .env.docker-compose --profile sp1-verifier-setup up
       fi
     fi
 
@@ -734,7 +734,7 @@ deploy_provers() {
           exit 1
         fi
 
-        BROADCAST=true docker compose -f docker-compose-protocol.yml --profile risc0-verifier-setup up
+        BROADCAST=true docker compose -f docker-compose-protocol.yml --env-file .env.docker-compose --profile risc0-verifier-setup up
       fi
     fi
 
@@ -774,7 +774,7 @@ deposit_bond() {
     # Convert to wei
     export BOND_AMOUNT=$(echo "$BOND_AMOUNT * 1000000000000000000" | bc | cut -d. -f1)
 
-    docker compose -f docker-compose-protocol.yml --profile bond-deposit up
+    docker compose -f docker-compose-protocol.yml --env-file .env.docker-compose --profile bond-deposit up
   else
     return 0
   fi
