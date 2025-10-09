@@ -41,4 +41,4 @@ echo "║ ✅ SGX verifier setup successfully                           ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo
 
-touch /deployment/sgx_verifier_setup.lock
+touch /deployment/sgx_reth_verifier_setup.lock

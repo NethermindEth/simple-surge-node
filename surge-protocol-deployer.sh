@@ -319,6 +319,42 @@ generate_prover_env_vars() {
   echo
 }
 
+retrieve_guest_data() {
+  if [ "$1" = "sgx" ]; then
+    if [ "$SGX_RAIKO_HOST" != "" ]; then
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "  Retrieving guest data for SGX - $SGX_RAIKO_HOST              "
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      export MR_ENCLAVE=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.[0].mr_enclave')
+      export MR_SIGNER=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.[0].mr_signer')
+      export V3_QUOTE_BYTES=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.[0].quote')
+    fi
+  elif [ "$1" = "sp1" ]; then
+    if [ "$RAIKO_HOST_ZKVM" != "" ]; then
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "  Retrieving guest data for SP1 - $RAIKO_HOST_ZKVM              "
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      export SP1_BLOCK_PROVING_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].sp1.block_program_hash')
+      export SP1_AGGREGATION_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].sp1.aggregation_program_hash')
+    fi
+  elif [ "$1" = "risc0" ]; then
+    if [ "$RAIKO_HOST_ZKVM" != "" ]; then
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "  Retrieving guest data for RISC0 - $RAIKO_HOST_ZKVM            "
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      export RISC0_AGGREGATION_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].risc0.aggregation_program_hash')
+      export RISC0_BLOCK_PROVING_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].risc0.block_program_hash')
+    fi
+  fi
+  echo
+}
+
 deploy_l1() {
   mkdir -p deployment
   
@@ -404,7 +440,7 @@ deploy_l1() {
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 
-  BROADCAST=true USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER docker compose -f docker-compose-protocol.yml --profile l1-deployer up
+  BROADCAST=true USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER VERIFY=false docker compose -f docker-compose-protocol.yml --profile l1-deployer up
 }
 
 extract_l1_deployment_results() {
@@ -522,7 +558,7 @@ deploy_proposer_wrapper() {
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 
-    BROADCAST=true docker compose -f docker-compose-protocol.yml --profile proposer-wrapper-deployer up
+    BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile proposer-wrapper-deployer up
   fi
 }
 
@@ -563,7 +599,7 @@ deploy_provers() {
   if [ "$RUNNING_PROVERS" = "true" ]; then
     generate_prover_chain_spec
 
-    if [ ! -f "deployment/sgx_verifier_setup.lock" ]; then
+    if [ ! -f "deployment/sgx_reth_verifier_setup.lock" ]; then
       # Prompt user for running SGX Raiko
       echo
       echo "╔══════════════════════════════════════════════════════════════╗"
@@ -574,44 +610,107 @@ deploy_provers() {
       RUNNING_SGX_RAIKO=${running_sgx_raiko:-false}
 
       if [ "$RUNNING_SGX_RAIKO" = "true" ]; then
-        if [ "$MR_ENCLAVE" = "" ]; then
+        # Retrieve guest data from prover endpoint
+        retrieve_guest_data sgx
+        if [ "$MR_ENCLAVE_RETH" = "" ] && [ "$MR_ENCLAVE" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "  ❗ SGX MR_ENCLAVE is not set                                  "
+          echo "  ❗ SGX RETH MR_ENCLAVE is not set                             "
           echo "║══════════════════════════════════════════════════════════════║"
           echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
+        else
+          export MR_ENCLAVE=$MR_ENCLAVE_RETH
         fi
 
-        if [ "$MR_SIGNER" = "" ]; then
+        if [ "$MR_SIGNER_RETH" = "" ] && [ "$MR_SIGNER" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "  ❗ SGX MR_SIGNER is not set                                   "
+          echo "  ❗ SGX RETH MR_SIGNER is not set                              "
           echo "║══════════════════════════════════════════════════════════════║"
           echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
+        else
+          export MR_SIGNER=$MR_SIGNER_RETH
         fi
 
-        if [ "$V3_QUOTE_BYTES" = "" ]; then
+        if [ "$V3_QUOTE_BYTES_RETH" = "" ] && [ "$V3_QUOTE_BYTES" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "  ❗ SGX V3_QUOTE_BYTES is not set                              "
+          echo "  ❗ SGX RETH V3_QUOTE_BYTES is not set                         "
           echo "║══════════════════════════════════════════════════════════════║"
           echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
+        else
+          export V3_QUOTE_BYTES=$V3_QUOTE_BYTES_RETH
         fi
 
-        SGX_VERIFIER_ADDRESS=${SGX_RETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_RETH} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile sgx-verifier-setup up
+        SGX_VERIFIER_ADDRESS=${SGX_RETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_RETH} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile sgx-reth-verifier-setup up
       fi
     fi
 
     # TODO: Add support for SGX Gaiko
+
+    if [ ! -f "deployment/sgx_geth_verifier_setup.lock" ]; then
+      # Prompt user for running SGX Gaiko
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ Running SGX Gaiko? (true/false) [default: false]              ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      read -r running_sgx_gaiko
+      RUNNING_SGX_GAIKO=${running_sgx_gaiko:-false}
+
+      if [ "$RUNNING_SGX_GAIKO" = "true" ]; then
+        retrieve_guest_data sgx
+        if [ "$MR_ENCLAVE_GETH" = "" ] && [ "$MR_ENCLAVE" = "" ]; then
+          echo
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "  ❗ SGX GETH MR_ENCLAVE is not set                             "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        else
+          export MR_ENCLAVE=$MR_ENCLAVE_GETH
+        fi
+
+        if [ "$MR_SIGNER_GETH" = "" ] && [ "$MR_SIGNER" = "" ]; then
+          echo
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "  ❗ SGX GETH MR_SIGNER is not set                              "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        else
+          export MR_SIGNER=$MR_SIGNER_GETH
+        fi
+
+        if [ "$V3_QUOTE_BYTES_GETH" = "" ] && [ "$V3_QUOTE_BYTES" = "" ]; then
+          echo
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "  ❗ SGX GETH V3_QUOTE_BYTES is not set                         "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        else
+          export V3_QUOTE_BYTES=$V3_QUOTE_BYTES_GETH
+        fi
+
+        SGX_VERIFIER_ADDRESS=${SGX_GETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_GETH} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile sgx-geth-verifier-setup up
+      fi
+    fi
 
     if [ ! -f "deployment/sp1_verifier_setup.lock" ]; then
       # Prompt user for running SP1 Raiko
@@ -624,6 +723,7 @@ deploy_provers() {
       RUNNING_SP1_RAIKO=${running_sp1_raiko:-false}
 
       if [ "$RUNNING_SP1_RAIKO" = "true" ]; then
+        retrieve_guest_data sp1
         if [ "$SP1_BLOCK_PROVING_PROGRAM_VKEY" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
