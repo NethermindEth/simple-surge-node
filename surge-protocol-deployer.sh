@@ -34,7 +34,7 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   echo "║ [default: local]                                             ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
-  read -r remote_or_local 
+  read -r remote_or_local
 
 REMOTE_OR_LOCAL=${remote_or_local:-0}
   if [ "$REMOTE_OR_LOCAL" = "1" ]; then
@@ -173,7 +173,7 @@ update_env_var() {
   local env_file="$1"
   local var_name="$2"
   local var_value="$3"
-  
+
   # Check if the variable exists in the file
   if grep -q "^${var_name}=" "$env_file"; then
     # Update existing variable
@@ -281,7 +281,7 @@ generate_prover_chain_spec() {
   }
 ]
 EOF
-  
+
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
   echo "  ✅ Prover chain spec list json generated successfully,        "
@@ -357,7 +357,7 @@ retrieve_guest_data() {
 
 deploy_l1() {
   mkdir -p deployment
-  
+
   # Check if deployment is already completed
   if [ -f "deployment/deploy_l1.json" ]; then
     # Prompt user for starting a new deployment if the deployment results are already present
@@ -387,7 +387,7 @@ deploy_l1() {
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo
       return 0
-    fi 
+    fi
   fi
 
   # Check if deployment is currently running
@@ -403,13 +403,13 @@ deploy_l1() {
     echo
     exit 1
   fi
-  
+
   # Create lock file to indicate deployment is starting
   touch deployment/deploy_l1.lock
-  
+
   # Ensure lock file is removed on script exit (success or failure)
   trap 'rm -f deployment/deploy_l1.lock' EXIT
-  
+
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
   echo "║ Preparing Surge L1 SCs deployment...                         ║"
@@ -459,10 +459,10 @@ extract_l1_deployment_results() {
   export ERC20_VAULT=$(cat ./deployment/deploy_l1.json | jq -r '.erc20_vault')
   export ERC721_VAULT=$(cat ./deployment/deploy_l1.json | jq -r '.erc721_vault')
   export FORCED_INCLUSION_STORE=$(cat ./deployment/deploy_l1.json | jq -r '.forced_inclusion_store')
-  
+
   # Handle potentially missing fields with jq's alternative operator
   export L1_OWNER=$(cat ./deployment/deploy_l1.json | jq -r '.l1_owner // "0x0000000000000000000000000000000000000000"')
-  
+
   export PEM_CERT_CHAIN_LIB=$(cat ./deployment/deploy_l1.json | jq -r '.pem_cert_chain_lib')
   export PROOF_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.proof_verifier')
   export RISC0_GROTH16_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.risc0_groth16_verifier')
@@ -474,7 +474,7 @@ extract_l1_deployment_results() {
   export SIGNAL_SERVICE=$(cat ./deployment/deploy_l1.json | jq -r '.signal_service')
   export SP1_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sp1_reth_verifier')
   export SUCCINCT_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.succinct_verifier')
-  
+
   # Handle potentially missing field with jq's alternative operator
   export SURGE_TIMELOCK_CONTROLLER=$(cat ./deployment/deploy_l1.json | jq -r '.surge_timelock_controller // "0x0000000000000000000000000000000000000000"')
 
@@ -761,6 +761,7 @@ deploy_provers() {
       RUNNING_RISC0_RAIKO=${running_risc0_raiko:-false}
 
       if [ "$RUNNING_RISC0_RAIKO" = "true" ]; then
+        retrieve_guest_data risc0
         if [ "$RISC0_BLOCK_PROVING_IMAGE_ID" = "" ]; then
           echo "╔══════════════════════════════════════════════════════════════╗"
           echo "  ❗ RISC0_BLOCK_PROVING_IMAGE_ID is not set                    "
@@ -808,7 +809,7 @@ deposit_bond() {
 
   DEPOSIT_BOND=${deposit_bond:-true}
 
-  if [ "$DEPOSIT_BOND" = "true" ]; then 
+  if [ "$DEPOSIT_BOND" = "true" ]; then
     # Prompt user for BOND_AMOUNT
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
