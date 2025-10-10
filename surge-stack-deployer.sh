@@ -173,6 +173,7 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   fi
 
 elif [ "$SURGE_ENVIRONMENT" = "2" ]; then
+  docker network create surge-network
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
   echo "  🚀 Using Staging Environment                                  "
@@ -180,6 +181,7 @@ elif [ "$SURGE_ENVIRONMENT" = "2" ]; then
   echo
   check_env_file
 elif [ "$SURGE_ENVIRONMENT" = "3" ]; then
+  docker network create surge-network
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
   echo "  🚀 Using Testnet Environment                                  "
