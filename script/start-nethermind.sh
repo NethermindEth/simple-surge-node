@@ -33,6 +33,7 @@ ARGS="${ARGS} \
     --Sync.FastSync=false \
     --Sync.SnapSync=false \
     --HealthChecks.Enabled=true \
+    --Pruning.PruningBoundary=1000 \
     --Surge.L1EthApiEndpoint=${L1_ENDPOINT_HTTP} \
     --Surge.TaikoInboxAddress=${TAIKO_INBOX} \
     --log=${EL_LOG_LEVEL} \
