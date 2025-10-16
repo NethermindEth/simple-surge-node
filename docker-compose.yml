@@ -272,28 +272,23 @@ services:
       - spammer
 
   blockscout-postgres:
-    image: postgres:13.22
+    image: postgres:alpine
     container_name: l2-blockscout-postgres
     restart: unless-stopped
     pull_policy: always
     volumes:
-      - ./blockscout-postgres-data:/var/lib/postgresql/data
+      - ./blockscout-postgres-data:/var/lib/postgresql
     ports:
       - ${POSTGRES_PORT}:${POSTGRES_PORT}
     environment:
       POSTGRES_DB: blockscout
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: MyPassword1!
-      PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-      GOSU_VERSION: 1.17
-      PG_MAJOR: 17
-      PG_VERSION: 17.5
-      PG_SHA256: fcb7ab38e23b264d1902cb25e6adafb4525a6ebcbd015434aeef9eda80f528d8
-      DOCKER_PG_LLVM_DEPS: llvm19-dev \t\tclang19
       PGDATA: /var/lib/postgresql/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command:
+      - "postgres"
       - "-c"
       - "max_connections=1000"
     networks:

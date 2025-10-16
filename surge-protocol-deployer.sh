@@ -2,6 +2,8 @@
 
 set -e
 
+git submodule update --init --recursive
+
 # Select which Surge environment to use
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
@@ -200,17 +202,7 @@ generate_prover_chain_spec() {
     "name": "surge_dev_l1",
     "chain_id": $L1_CHAINID,
     "max_spec_id": "CANCUN",
-    "hard_forks": {
-      "FRONTIER": {
-        "Block": 0
-      },
-      "SHANGHAI": {
-        "Timestamp": 0
-      },
-      "CANCUN": {
-        "Timestamp": 0
-      }
-    },
+    "hard_forks": {},
     "eip_1559_constants": {
       "base_fee_change_denominator": "0x8",
       "base_fee_max_increase_denominator": "0x8",
@@ -221,13 +213,7 @@ generate_prover_chain_spec() {
     "l2_contract": null,
     "rpc": "$L1_RPC",
     "beacon_rpc": "$L1_BEACON_RPC",
-    "verifier_address_forks": {
-      "FRONTIER": {
-        "SGX": null,
-        "SP1": null,
-        "RISC0": null
-      }
-    },
+    "verifier_address_forks": {},
     "genesis_time": $GENESIS_TIME,
     "seconds_per_slot": 12,
     "is_taiko": false
@@ -237,16 +223,12 @@ generate_prover_chain_spec() {
     "chain_id": $L2_CHAINID,
     "max_spec_id": "PACAYA",
     "hard_forks": {
-      "HEKLA": {
-        "Block": 0
-      },
-      "ONTAKE": {
-        "Block": 1
-      },
-      "PACAYA": {
-        "Block": 1
-      },
-      "CANCUN": "TBD"
+        "ONTAKE": {
+            "Block": 1
+        },
+        "PACAYA": {
+            "Block": 1
+        }
     },
     "eip_1559_constants": {
       "base_fee_change_denominator": "0x8",
@@ -259,18 +241,9 @@ generate_prover_chain_spec() {
     "rpc": "$L2_RPC",
     "beacon_rpc": null,
     "verifier_address_forks": {
-      "HEKLA": {
-        "SGX": "$SGX_RETH_VERIFIER",
-        "SP1": "$SP1_RETH_VERIFIER",
-        "RISC0": "$RISC0_RETH_VERIFIER"
-      },
       "ONTAKE": {
         "SGX": "$SGX_RETH_VERIFIER",
-        "SP1": "$SP1_RETH_VERIFIER",
-        "RISC0": "$RISC0_RETH_VERIFIER"
-      },
-      "PACAYA": {
-        "SGX": "$SGX_RETH_VERIFIER",
+        "SGXGETH": "$SGX_GETH_VERIFIER",
         "SP1": "$SP1_RETH_VERIFIER",
         "RISC0": "$RISC0_RETH_VERIFIER"
       }

@@ -302,6 +302,21 @@ services:
     profiles:
       - relayer-l2
 
+  bridge-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.bridge-ui
+    container_name: bridge-ui
+    restart: always
+    ports:
+      - 3002:3000
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - bridge-ui
+
 networks:
   surge:
     name: surge-network
