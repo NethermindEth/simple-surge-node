@@ -2,6 +2,8 @@
 
 set -e
 
+git submodule update --init --recursive
+
 check_env_file() {
   if [ -f .env ]; then
     echo
@@ -319,14 +321,7 @@ prepare_bridge_ui_configs() {
   echo "║ Preparing Bridge UI configs...                               ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
-
-  echo $L1_CHAINID
-  echo $L2_CHAINID
-  echo $BRIDGE
-  echo $ERC20_VAULT
-  echo $ERC721_VAULT
-  echo $ERC1155_VAULT
-  echo $SIGNAL_SERVICE
+  
   # Generate configuredBridges.json
   cat > configs/configuredBridges.json << EOF
 {

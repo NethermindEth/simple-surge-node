@@ -2,6 +2,8 @@
 
 set -e
 
+git submodule update --init --recursive
+
 # Select which Surge environment to use
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
