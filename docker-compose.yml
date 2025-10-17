@@ -58,6 +58,8 @@ services:
       - ./execution-data:/data/surge
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ${CHAINSPEC_PATH_ON_HOST:-./static/hoodi/chainspec.json}:/chainspec.json
+      - ./script:/script
+      - ./NLog.config:/nethermind/NLog.config
     networks:
       - surge
     ports:
@@ -67,32 +69,14 @@ services:
       - ${L2_HTTP_PORT}:${L2_HTTP_PORT}
       - ${L2_WS_PORT}:${L2_WS_PORT}
       - ${L2_ENGINE_API_PORT}:${L2_ENGINE_API_PORT}
+    env_file:
+      - .env
     environment:
       TAIKO_INBOX: ${TAIKO_INBOX}
-    command:
-      - --config=none
-      - --datadir=/data/surge
-      - --Init.ChainSpecPath=/chainspec.json
-      - --Init.GenesisHash=${L2_GENESIS_HASH}
-      - --Init.DiscoveryEnabled=false
-      - --Metrics.Enabled=true
-      - --Metrics.ExposePort=${L2_METRICS_PORT}
-      - --JsonRpc.Enabled=true
-      - --JsonRpc.EnabledModules=[debug,eth,net,web3,txpool,rpc,subscribe,trace,personal,proof,parity,health]
-      - --JsonRpc.Host=0.0.0.0
-      - --JsonRpc.Port=${L2_HTTP_PORT}
-      - --JsonRpc.WebSocketsPort=${L2_WS_PORT}
-      - --JsonRpc.JwtSecretFile=/tmp/jwt/jwtsecret
-      - --JsonRpc.EngineHost=0.0.0.0
-      - --JsonRpc.EnginePort=${L2_ENGINE_API_PORT}
-      - --Network.DiscoveryPort=${L2_NETWORK_DISCOVERY_PORT}
-      - --Network.P2PPort=${L2_NETWORK_DISCOVERY_PORT}
-      - --Sync.FastSync=false
-      - --Sync.SnapSync=false
-      - --HealthChecks.Enabled=true
-      - --Surge.L1EthApiEndpoint=${L1_ENDPOINT_HTTP}
-      - --Surge.TaikoInboxAddress=${TAIKO_INBOX}
-      - --log=${NETHERMIND_LOG_LEVEL}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "/script/start-nethermind.sh"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     labels:
