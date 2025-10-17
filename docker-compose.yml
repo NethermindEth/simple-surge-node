@@ -242,7 +242,7 @@ services:
       - prover
 
   tx-spammer:
-    image: ethpandaops/spamoor:latest
+    image: ethpandaops/spamoor:master
     container_name: l2-tx-spammer
     restart: unless-stopped
     pull_policy: always
@@ -262,7 +262,7 @@ services:
     command:
       - "--rpchost=http://l2-nethermind-execution-client:${L2_HTTP_PORT}"
       - "--startup-spammer=/config/scenario-configs.yml"
-      - "--privkey=0x94eb3102993b41ec55c241060f47daa0f6372e2e3ad7e91612ae36c364042e44"
+      - "--privkey=${PRIVATE_KEY}"
     networks:
       - surge
     labels:
