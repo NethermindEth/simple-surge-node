@@ -2,16 +2,13 @@
 
 set -e
 
-setup_l2() {
+./script/layer2/surge/setup_surge_l2.sh
 
-    echo "Deploying Surge L2 SCs..."
-    ./script/layer2/surge/setup_surge_l2.sh
+# Copy deployment results to /deployment
+cp /app/deployments/setup_l2.json /deployment/setup_l2.json
 
-    echo "Copying deployment results to /deployment..."
-
-    cp /app/deployments/setup_l2.json /deployment/setup_l2.json
-
-    echo "Deployment completed successfully"
-}
-
-setup_l2
+echo
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║ ✅ Surge L2 SCs deployment completed successfully            ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo

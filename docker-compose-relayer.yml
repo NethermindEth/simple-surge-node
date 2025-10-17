@@ -1,0 +1,323 @@
+services:
+# Relayer infrastructure services
+  relayer-db:
+    image: mysql:8.0
+    container_name: relayer-db
+    cap_add:
+      - SYS_NICE
+    restart: always
+    env_file:
+      - .env
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    networks:
+      - surge
+    profiles:
+      - relayer-init
+
+  relayer-migrations:
+    image: ghcr.io/kukymbr/goose-docker:latest
+    container_name: relayer-migrations
+    environment:
+      GOOSE_DRIVER: mysql
+      GOOSE_DBSTRING: ${MYSQL_USER}:${MYSQL_PASSWORD}@tcp(relayer-db:3306)/${MYSQL_DATABASE}
+    volumes:
+      - ./migrations:/migrations
+    networks:
+      - surge
+    profiles:
+      - relayer-migrations
+
+  relayer-rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: relayer-rabbitmq
+    env_file:
+      - .env
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - ${RABBITMQ_PORT}:${RABBITMQ_PORT}
+      - 15672:15672
+      - 15692:15692
+    volumes:
+      - ./rabbitmq/data/:/var/lib/rabbitmq/
+      - ./rabbitmq/log/:/var/log/rabbitmq
+    networks:
+      - surge
+    profiles:
+      - relayer-init
+
+  relayer-l1-processor:
+    image: nethermind/surge-relayer:sha-4206e2b
+    container_name: relayer-l1-processor
+    restart: always
+    entrypoint: ["/usr/local/bin/relayer"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - 6063:6063
+    command:
+      - processor
+      - --queue.prefetch=${QUEUE_PREFETCH}
+      - --db.host=relayer-db
+      - --db.maxIdleConns=${MYSQL_MAX_IDLE_CONNS}
+      - --db.maxOpenConns=${MYSQL_MAX_OPEN_CONNS}
+      - --db.name=${MYSQL_DATABASE}
+      - --db.password=${MYSQL_PASSWORD}
+      - --db.username=${MYSQL_USER}
+      - --queue.host=relayer-rabbitmq
+      - --queue.password=${RABBITMQ_PASSWORD}
+      - --queue.port=${RABBITMQ_PORT}
+      - --queue.username=${RABBITMQ_USER}
+      - --processorPrivateKey=${PROCESSOR_PRIVATE_KEY}
+      - --srcSignalServiceAddress=${SIGNAL_SERVICE}
+      - --srcRpcUrl=http://host.docker.internal:32003
+      - --destBridgeAddress=${L2_BRIDGE}
+      - --destERC20VaultAddress=${L2_ERC20_VAULT}
+      - --destERC721Address=${L2_ERC721_VAULT}
+      - --destERC1155Address=${L2_ERC1155_VAULT}
+      - --destTaikoAddress=${TAIKO_ANCHOR}
+      - --destRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
+      - --confirmations=${CONFIRMATIONS_BEFORE_PROCESSING:-0}
+      - --headerSyncInterval=${HEADER_SYNC_INTERVAL_IN_SECONDS:-2}
+      - --profitableOnly=${PROFITABLE_ONLY:-false}
+      - --tx.minTipCap=${TX_MIN_TIP_CAP:-0.01}
+      - --metrics.port=6063
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6063"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - relayer-l1
+
+  relayer-l1-indexer:
+    image: nethermind/surge-relayer:sha-4206e2b
+    container_name: relayer-l1-indexer
+    restart: always
+    env_file:
+      - .env
+    entrypoint: ["/usr/local/bin/relayer"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - 6064:6064
+    command:
+      - indexer
+      - --db.host=relayer-db
+      - --db.connMaxLifetime=${MYSQL_CONN_MAX_LIFETIME}
+      - --db.maxIdleConns=${MYSQL_MAX_IDLE_CONNS}
+      - --db.maxOpenConns=${MYSQL_MAX_OPEN_CONNS}
+      - --db.name=${MYSQL_DATABASE}
+      - --db.password=${MYSQL_PASSWORD}
+      - --db.username=${MYSQL_USER}
+      - --queue.host=relayer-rabbitmq
+      - --queue.password=${RABBITMQ_PASSWORD}
+      - --queue.port=${RABBITMQ_PORT}
+      - --queue.username=${RABBITMQ_USER}
+      - --srcBridgeAddress=${BRIDGE}
+      - --srcTaikoAddress=${TAIKO_INBOX}
+      - --srcSignalServiceAddress=${SIGNAL_SERVICE}
+      - --srcRpcUrl=http://host.docker.internal:32003
+      - --destBridgeAddress=${L2_BRIDGE}
+      - --destRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
+      - --maxNumGoroutines=${NUM_GOROUTINES}
+      - --blockBatchSize=${BLOCK_BATCH_SIZE}
+      - --event=MessageSent
+      - --confirmations=${CONFIRMATIONS_BEFORE_PROCESSING:-0}
+      - --metrics.port=6064
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6064"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - relayer-l1
+
+  relayer-l1-api:
+    image: nethermind/surge-relayer:sha-4206e2b
+    container_name: relayer-l1-api
+    restart: always
+    env_file:
+      - .env
+    entrypoint: ["/usr/local/bin/relayer"]
+    ports:
+      - 4102:4102
+      - 6065:6065
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - api
+      - --db.host=relayer-db
+      - --db.connMaxLifetime=${MYSQL_CONN_MAX_LIFETIME}
+      - --db.maxIdleConns=${MYSQL_MAX_IDLE_CONNS}
+      - --db.maxOpenConns=${MYSQL_MAX_OPEN_CONNS}
+      - --db.name=${MYSQL_DATABASE}
+      - --db.password=${MYSQL_PASSWORD}
+      - --db.username=${MYSQL_USER}
+      - --srcRpcUrl=http://host.docker.internal:32003
+      - --destRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
+      - --destTaikoAddress=${TAIKO_ANCHOR}
+      - --processingFeeMultiplier=${PROCESSING_FEE_MULTIPLIER}
+      - --metrics.port=6065
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6065"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - relayer-api
+
+  relayer-l2-api:
+    image: nethermind/surge-relayer:sha-4206e2b
+    container_name: relayer-l2-api
+    restart: always
+    entrypoint: ["/usr/local/bin/relayer"]
+    ports:
+      - 4103:4103
+      - 6066:6066
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - api
+      - --db.host=relayer-db
+      - --db.connMaxLifetime=${MYSQL_CONN_MAX_LIFETIME}
+      - --db.maxIdleConns=${MYSQL_MAX_IDLE_CONNS}
+      - --db.maxOpenConns=${MYSQL_MAX_OPEN_CONNS}
+      - --db.name=${MYSQL_DATABASE}
+      - --db.password=${MYSQL_PASSWORD}
+      - --db.username=${MYSQL_USER}
+      - --srcRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
+      - --destRpcUrl=http://host.docker.internal:32003
+      - --destTaikoAddress=${TAIKO_INBOX}
+      - --processingFeeMultiplier=${PROCESSING_FEE_MULTIPLIER}
+      - --metrics.port=6066
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6066"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - relayer-api
+
+  relayer-l2-processor:
+    image: nethermind/surge-relayer:sha-4206e2b
+    container_name: relayer-l2-processor
+    restart: always
+    entrypoint: ["/usr/local/bin/relayer"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - 6067:6067
+    command:
+      - processor
+      - --queue.prefetch=100
+      - --db.host=relayer-db
+      - --db.maxIdleConns=${MYSQL_MAX_IDLE_CONNS}
+      - --db.maxOpenConns=${MYSQL_MAX_OPEN_CONNS}
+      - --db.name=${MYSQL_DATABASE}
+      - --db.password=${MYSQL_PASSWORD}
+      - --db.username=${MYSQL_USER}
+      - --queue.host=relayer-rabbitmq
+      - --queue.password=${RABBITMQ_PASSWORD}
+      - --queue.port=${RABBITMQ_PORT}
+      - --queue.username=${RABBITMQ_USER}
+      - --processorPrivateKey=${PROCESSOR_PRIVATE_KEY}
+      - --srcSignalServiceAddress=${L2_SIGNAL_SERVICE}
+      - --srcRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
+      - --destBridgeAddress=${BRIDGE}
+      - --destERC20VaultAddress=${ERC20_VAULT}
+      - --destERC721Address=${ERC721_VAULT}
+      - --destERC1155Address=${ERC1155_VAULT}
+      - --destTaikoAddress=${TAIKO_INBOX}
+      - --destRpcUrl=http://host.docker.internal:32003
+      - --confirmations=${CONFIRMATIONS_BEFORE_PROCESSING:-0}
+      - --headerSyncInterval=${HEADER_SYNC_INTERVAL_IN_SECONDS:-2}
+      - --profitableOnly=${PROFITABLE_ONLY:-false}
+      - --tx.minTipCap=${TX_MIN_TIP_CAP:-0.01}
+      - --metrics.port=6067
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6067"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - relayer-l2
+
+  relayer-l2-indexer:
+    image: nethermind/surge-relayer:sha-4206e2b
+    container_name: relayer-l2-indexer
+    restart: always
+    entrypoint: ["/usr/local/bin/relayer"]
+    ports:
+      - 6068:6068
+    command:
+      - indexer
+      - --db.host=relayer-db
+      - --db.connMaxLifetime=${MYSQL_CONN_MAX_LIFETIME}
+      - --db.maxIdleConns=${MYSQL_MAX_IDLE_CONNS}
+      - --db.maxOpenConns=${MYSQL_MAX_OPEN_CONNS}
+      - --db.name=${MYSQL_DATABASE}
+      - --db.password=${MYSQL_PASSWORD}
+      - --db.username=${MYSQL_USER}
+      - --queue.host=relayer-rabbitmq
+      - --queue.password=${RABBITMQ_PASSWORD}
+      - --queue.port=${RABBITMQ_PORT}
+      - --queue.username=${RABBITMQ_USER}
+      - --srcBridgeAddress=${L2_BRIDGE}
+      - --srcSignalServiceAddress=${L2_SIGNAL_SERVICE}
+      - --srcRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
+      - --destBridgeAddress=${BRIDGE}
+      - --destRpcUrl=http://host.docker.internal:32003
+      - --maxNumGoroutines=${NUM_GOROUTINES}
+      - --blockBatchSize=${BLOCK_BATCH_SIZE}
+      - --event=MessageSent
+      - --confirmations=${CONFIRMATIONS_BEFORE_PROCESSING:-0}
+      - --metrics.port=6068
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.metrics_enabled: "true"
+      com.kurtosistech.custom.metrics_port: "6068"
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - relayer-l2
+
+  bridge-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.bridge-ui
+    container_name: bridge-ui
+    restart: always
+    ports:
+      - 3002:3000
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - bridge-ui
+
+networks:
+  surge:
+    name: surge-network
+    external: true

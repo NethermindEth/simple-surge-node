@@ -1,0 +1,4 @@
+[submodule "surge-taiko-mono"]
+	path = surge-taiko-mono
+	url = https://github.com/NethermindEth/surge-taiko-mono.git
+	branch = main

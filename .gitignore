@@ -7,5 +7,6 @@
 /rabbitmq/
 /execution-data/
 /deployment/*.json
+/deployment/*.lock
 /configs/*.json
 /blockscout-postgres-data/

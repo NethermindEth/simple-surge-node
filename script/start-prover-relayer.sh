@@ -85,8 +85,8 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         ARGS="${ARGS} --tx.gasLimit ${TX_GAS_LIMIT}"
     fi
 
-    if [ -n "$TX_MIN_BASEFEE" ]; then
-        ARGS="${ARGS} --tx.minBaseFee ${TX_MIN_BASEFEE}"
+    if [ -n "$TX_MIN_BASE_FEE" ]; then
+        ARGS="${ARGS} --tx.minBaseFee ${TX_MIN_BASE_FEE}"
     fi
 
     if [ -n "$TX_MIN_TIP_CAP" ]; then
@@ -105,12 +105,12 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         ARGS="${ARGS} --tx.receiptQueryInterval ${TX_RECEIPT_QUERY_INTERVAL}"
     fi
 
-    if [ -n "$TX_RESUBMISSION" ]; then
-        ARGS="${ARGS} --tx.resubmissionTimeout ${TX_RESUBMISSION}"
+    if [ -n "$TX_RESUBMISSION_TIMEOUT" ]; then
+        ARGS="${ARGS} --tx.resubmissionTimeout ${TX_RESUBMISSION_TIMEOUT}"
     fi
 
-    if [ -n "$TX_SAFE_ABORT_NONCE_TOO_LOW" ]; then
-        ARGS="${ARGS} --tx.safeAbortNonceTooLowCount ${TX_SAFE_ABORT_NONCE_TOO_LOW}"
+    if [ -n "$TX_SAFE_ABORT_NONCE_TOO_LOW_COUNT" ]; then
+        ARGS="${ARGS} --tx.safeAbortNonceTooLowCount ${TX_SAFE_ABORT_NONCE_TOO_LOW_COUNT}"
     fi
 
     if [ -n "$TX_SEND_TIMEOUT" ]; then
