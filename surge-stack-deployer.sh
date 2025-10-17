@@ -4,6 +4,11 @@ set -e
 
 git submodule update --init --recursive
 
+NON_INTERACTIVE=false
+if [ "$1" = "--devnet-non-interactive" ]; then
+  NON_INTERACTIVE=true
+fi
+
 check_env_file() {
   if [ -f .env ]; then
     echo
@@ -63,34 +68,39 @@ prepare_blockscout_for_remote() {
   sed -i.bak 's/^BLOCKSCOUT_L2_HOST=.*/BLOCKSCOUT_L2_HOST='$MACHINE_IP'/g' .env
 }
 
-# Select which Surge environment to use
-echo
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "  ⚠️ Select which Surge environment to use:                     "
-echo "║══════════════════════════════════════════════════════════════║"
-echo "║ 1 for Devnet                                                 ║"
-echo "║ 2 for Staging                                                ║"
-echo "║ 3 for Testnet                                                ║"
-echo "║ [default: Devnet]                                            ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
-echo
-read -r surge_environment
+if [ "$NON_INTERACTIVE" = "true" ]; then
+  SURGE_ENVIRONMENT=1
+  REMOTE_OR_LOCAL=0
+else
+  # Select which Surge environment to use
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "  ⚠️ Select which Surge environment to use:                     "
+  echo "║══════════════════════════════════════════════════════════════║"
+  echo "║ 1 for Devnet                                                 ║"
+  echo "║ 2 for Staging                                                ║"
+  echo "║ 3 for Testnet                                                ║"
+  echo "║ [default: Devnet]                                            ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  read -r surge_environment
 
-SURGE_ENVIRONMENT=${surge_environment:-1}
+  SURGE_ENVIRONMENT=${surge_environment:-1}
 
-# Select remote or local
-echo
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "  ⚠️ Select remote or local:                                    "
-echo "║══════════════════════════════════════════════════════════════║"
-echo "║  0 for local                                                 ║"
-echo "║  1 for remote                                                ║"
-echo "║ [default: local]                                             ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
-echo
-read -r remote_or_local 
+  # Select remote or local
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "  ⚠️ Select remote or local:                                    "
+  echo "║══════════════════════════════════════════════════════════════║"
+  echo "║  0 for local                                                 ║"
+  echo "║  1 for remote                                                ║"
+  echo "║ [default: local]                                             ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  read -r remote_or_local
 
-REMOTE_OR_LOCAL=${remote_or_local:-0}
+  REMOTE_OR_LOCAL=${remote_or_local:-0}
+fi
 
 if [ "$REMOTE_OR_LOCAL" = "1" ]; then
   echo
@@ -208,19 +218,23 @@ start_l2_stack() {
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 
-  # Prompt user for L2_STACK_OPTION
-  echo
-  echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ Enter L2 stack option:                                       ║"
-  echo "║ 1 for driver only                                            ║"
-  echo "║ 2 for driver + proposer                                      ║"
-  echo "║ 3 for driver + proposer + spammer                            ║"
-  echo "║ 4 for driver + proposer + prover + spammer                   ║"
-  echo "║ 5 for all except spammer                                     ║"
-  echo "║ [default: all]                                               ║"
-  echo "╚══════════════════════════════════════════════════════════════╝"
-  echo
-  read -r l2_stack_option
+  if [ "$NON_INTERACTIVE" = "true" ]; then
+    l2_stack_option=""
+  else
+    # Prompt user for L2_STACK_OPTION
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║ Enter L2 stack option:                                       ║"
+    echo "║ 1 for driver only                                            ║"
+    echo "║ 2 for driver + proposer                                      ║"
+    echo "║ 3 for driver + proposer + spammer                            ║"
+    echo "║ 4 for driver + proposer + prover + spammer                   ║"
+    echo "║ 5 for all except spammer                                     ║"
+    echo "║ [default: all]                                               ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    read -r l2_stack_option
+  fi
 
   if [ "$l2_stack_option" = "1" ]; then
     docker compose --profile driver --profile blockscout up -d --remove-orphans
@@ -261,15 +275,19 @@ deploy_l2() {
 }
 
 start_relayers() {
-  # Prompt user for START_RELAYERS
-  echo
-  echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ Start relayers? (true/false) [default: true]                 ║"
-  echo "╚══════════════════════════════════════════════════════════════╝"
-  echo
-  read -r start_relayers
+  if [ "$NON_INTERACTIVE" = "true" ]; then
+    START_RELAYERS=true
+  else
+    # Prompt user for START_RELAYERS
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║ Start relayers? (true/false) [default: true]                 ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    read -r start_relayers
 
-  START_RELAYERS=${start_relayers:-true}
+    START_RELAYERS=${start_relayers:-true}
+  fi
 
   if [ "$START_RELAYERS" = "true" ]; then
     if [ "$SURGE_ENVIRONMENT" = "1" ]; then

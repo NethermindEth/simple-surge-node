@@ -2,6 +2,11 @@
 
 set -e
 
+NON_INTERACTIVE=false
+if [ "$1" = "--devnet-non-interactive" ]; then
+  NON_INTERACTIVE=true
+fi
+
 remove_l2_stack() {
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
@@ -49,11 +54,17 @@ remove_db() {
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 
-    # Remove DB
-    rm -rf ./execution-data
-    rm -rf ./blockscout-postgres-data
-    rm -rf ./mysql-data
-    rm -rf ./rabbitmq
+    # Remove DB contents but preserve directory structure with .gitkeep
+    rm -rf ./execution-data/*
+    rm -rf ./blockscout-postgres-data/*
+    rm -rf ./mysql-data/*
+    rm -rf ./rabbitmq/*
+
+    # Recreate .gitkeep files
+    touch ./execution-data/.gitkeep
+    touch ./blockscout-postgres-data/.gitkeep
+    touch ./mysql-data/.gitkeep
+    touch ./rabbitmq/.gitkeep
 
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
