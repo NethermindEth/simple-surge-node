@@ -2,6 +2,8 @@
 blockscout-postgres-data/
 execution-data/
 blockscout-db-data/
+mysql-data/
+rabbitmq/
 
 # Exclude git directory
 .git/
@@ -20,3 +22,6 @@ docker-compose*.yml
 # Exclude any other data directories
 *-data/
 data/
+
+# Exclude temporary files
+tmp/
