@@ -40,15 +40,6 @@ else
     print_error "Cleanup failed"
     exit 1
 fi
-
-# Initialize data directories with correct permissions
-print_info "Initializing data directories with current user permissions"
-if ./script/init-data-directories.sh; then
-    print_success "Data directories initialized"
-else
-    print_error "Failed to initialize data directories"
-    exit 1
-fi
 echo
 
 # Step 2: Ensure .env file exists
@@ -117,9 +108,30 @@ print_info "Checking running containers"
 docker compose ps
 echo
 
-# Step 7: Wait for L2 execution client to be ready
+print_info "Checking critical containers are healthy..."
+# Check L2 execution client container
+if docker compose ps | grep "l2-nethermind-execution-client" | grep -q "(healthy)"; then
+    print_success "L2 execution client container is healthy"
+else
+    print_error "L2 execution client container is not healthy"
+    exit 1
+fi
+
+# Check other critical containers are running
+CRITICAL_CONTAINERS=("l2-taiko-consensus-client" "l2-taiko-proposer-client" "relayer-l1-indexer" "relayer-l2-indexer")
+for container in "${CRITICAL_CONTAINERS[@]}"; do
+    if docker compose ps | grep "$container" | grep -q "Up"; then
+        print_success "$container is running"
+    else
+        print_error "$container is not running"
+        exit 1
+    fi
+done
+echo
+
+# Step 7: Health check L2 RPC endpoints
 echo "=========================================="
-echo "Step 7: Health check L2 execution client"
+echo "Step 7: Health check L2 RPC endpoints"
 echo "=========================================="
 print_info "Waiting 30 seconds for services to stabilize..."
 sleep 30
@@ -127,10 +139,20 @@ sleep 30
 print_info "Testing L2 RPC endpoint at http://localhost:8547"
 if curl -f http://localhost:8547 -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null; then
     echo
-    print_success "L2 execution client is healthy"
+    print_success "L2 execution client RPC is responding"
 else
     echo
-    print_error "L2 execution client health check failed"
+    print_error "L2 execution client RPC health check failed"
+    exit 1
+fi
+
+print_info "Testing L2 WebSocket endpoint at ws://localhost:8548"
+if curl -f http://localhost:8548 -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null; then
+    echo
+    print_success "L2 WebSocket endpoint is responding"
+else
+    echo
+    print_error "L2 WebSocket endpoint health check failed"
     exit 1
 fi
 echo
