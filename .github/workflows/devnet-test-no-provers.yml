@@ -10,7 +10,7 @@ on:
     paths:
       - 'docker-compose*.yml'
       - 'surge-*.sh'
-      - 'script/devnet-e2e-provision-check.sh'
+      - 'script/devnet-provision-check.sh'
       - 'script/devnet-provision-check-ci.sh'
       - 'script/util/common.sh'
       - '.github/workflows/devnet-test-no-provers.yml'
