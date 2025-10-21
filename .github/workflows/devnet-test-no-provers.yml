@@ -1,4 +1,4 @@
-name: Devnet Test (No Provers)
+name: Devnet Provision Check (No Provers)
 
 on:
   schedule:
@@ -11,6 +11,8 @@ on:
       - 'docker-compose*.yml'
       - 'surge-*.sh'
       - 'script/devnet-e2e-provision-check.sh'
+      - 'script/devnet-provision-check-ci.sh'
+      - 'script/util/common.sh'
       - '.github/workflows/devnet-test-no-provers.yml'
 
 env:
@@ -18,8 +20,8 @@ env:
   SURGE_ETHEREUM_PACKAGE_REF: 'main'
 
 jobs:
-  devnet-test-no-provers:
-    name: Devnet Test (No Provers)
+  devnet-provision-check-no-provers:
+    name: Devnet Provision Check (No Provers)
     runs-on: ubuntu-22.04
     timeout-minutes: 45
 
@@ -57,108 +59,17 @@ jobs:
           docker compose version
           docker info
 
-      - name: Update provision check script with L1 deployment paths
+      - name: Run Devnet Provision Check (No Provers)
         working-directory: simple-surge-node
+        env:
+          L1_PACKAGE_DIR: ../surge-ethereum-package
+          L1_ENVIRONMENT: local
+          L1_MODE: silence
+          L1_RPC_URL: http://localhost:32003
+          L1_STABILIZE_WAIT: 20
+          ENABLE_PROVER: false
         run: |
-          # Create a wrapper script that handles L1 deployment
-          cat > script/devnet-e2e-provision-check-ci.sh << 'EOF'
-          #!/bin/bash
-
-          set -e
-
-          echo "Starting CI Devnet Provision Health Check"
-          echo
-
-          print_success() {
-              echo "[SUCCESS] $1"
-          }
-
-          print_error() {
-              echo "[ERROR] $1"
-          }
-
-          print_info() {
-              echo "[INFO] $1"
-          }
-
-          # Navigate to project root
-          cd "$(dirname "$0")/.."
-
-          # Step 0: Deploy L1 Devnet
-          echo "Step 0: Deploy L1 Devnet"
-          L1_PACKAGE_DIR="../surge-ethereum-package"
-
-          if [ -d "$L1_PACKAGE_DIR" ]; then
-              print_info "Running L1 deployment from surge-ethereum-package"
-              cd "$L1_PACKAGE_DIR"
-              if ./deploy-surge-devnet-l1.sh --environment local --mode silence; then
-                  cd -
-                  print_success "L1 deployment completed"
-              else
-                  cd -
-                  print_error "L1 deployment failed"
-                  exit 1
-              fi
-          else
-              print_error "surge-ethereum-package directory not found at $L1_PACKAGE_DIR"
-              print_info "Current directory: $(pwd)"
-              print_info "Looking for: $L1_PACKAGE_DIR"
-              ls -la ../
-              exit 1
-          fi
-          echo
-
-          # Step 0.5: Wait for L1 to be ready
-          echo "Step 0.5: Verify L1 is ready"
-          print_info "Waiting 20 seconds for L1 to stabilize..."
-          sleep 20
-
-          print_info "Testing L1 RPC endpoint at http://localhost:32003"
-          max_retries=10
-          retry_count=0
-
-          while [ $retry_count -lt $max_retries ]; do
-              if curl -f http://localhost:32003 -X POST -H "Content-Type: application/json" \
-                  --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null; then
-                  echo
-                  print_success "L1 RPC is responding"
-                  break
-              else
-                  retry_count=$((retry_count + 1))
-                  if [ $retry_count -eq $max_retries ]; then
-                      echo
-                      print_error "L1 RPC failed to respond after $max_retries retries"
-                      exit 1
-                  fi
-                  print_info "Retry $retry_count/$max_retries - waiting 10s..."
-                  sleep 10
-              fi
-          done
-          echo
-
-          # Step 0.6: Disable provers for faster CI testing
-          echo "Step 0.6: Configure environment for no-prover testing"
-          print_info "Disabling provers in .env.devnet"
-          if [ -f ".env.devnet" ]; then
-              sed -i 's/^ENABLE_PROVER=true/ENABLE_PROVER=false/' .env.devnet
-              print_success "Provers disabled"
-          else
-              print_error ".env.devnet not found"
-              exit 1
-          fi
-          echo
-
-          # Run the actual provision check
-          echo "Running Devnet Provision Check"
-          ./script/devnet-e2e-provision-check.sh
-          EOF
-
-          chmod +x script/devnet-e2e-provision-check-ci.sh
-
-      - name: Run Devnet Test (No Provers)
-        working-directory: simple-surge-node
-        run: |
-          ./script/devnet-e2e-provision-check-ci.sh
+          ./script/devnet-provision-check-ci.sh
 
       - name: Collect Docker logs on failure
         if: failure()
@@ -181,7 +92,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: devnet-test-no-provers-logs
+          name: devnet-provision-check-no-provers-logs
           path: |
             simple-surge-node/deployment/*.json
             simple-surge-node/*.log
@@ -196,7 +107,7 @@ jobs:
             github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: 'Nightly Devnet Test (No Provers) Failed',
-              body: 'The nightly devnet test (no provers) failed on ' + new Date().toISOString() + '\n\nWorkflow run: ' + context.serverUrl +'/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId,
-              labels: ['bug', 'devnet', 'test-no-provers', 'automated']
+              title: 'Nightly Devnet Provision Check (No Provers) Failed',
+              body: 'The nightly devnet provision check (no provers) failed on ' + new Date().toISOString() + '\n\nWorkflow run: ' + context.serverUrl +'/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId,
+              labels: ['bug', 'devnet', 'provision-check', 'automated']
             })
