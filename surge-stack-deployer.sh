@@ -184,6 +184,7 @@ elif [ "$SURGE_ENVIRONMENT" = "2" ]; then
   echo "  🚀 Using Staging Environment                                  "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
+  cp .env.staging .env
   check_env_file
 elif [ "$SURGE_ENVIRONMENT" = "3" ]; then
   if [ ! docker network ls | grep -q "surge-network" ]; then
@@ -194,6 +195,7 @@ elif [ "$SURGE_ENVIRONMENT" = "3" ]; then
   echo "  🚀 Using Testnet Environment                                  "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
+  cp .env.hoodi .env
   check_env_file
 fi
 
