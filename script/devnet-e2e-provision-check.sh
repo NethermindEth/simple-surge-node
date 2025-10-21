@@ -1,177 +1,232 @@
-#!/bin/bash
+name: Devnet E2E Test (No Provers)
 
-set -e
+on:
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual trigger
+  pull_request:
+    paths:
+      - 'docker-compose*.yml'
+      - 'surge-*.sh'
+      - 'script/devnet-e2e-provision-check.sh'
+      - '.github/workflows/devnet-e2e-test.yml'
 
-echo "=========================================="
-echo "Starting Local Devnet Health Check"
-echo "=========================================="
-echo
+env:
+  SURGE_ETHEREUM_PACKAGE_REPO: 'NethermindEth/surge-ethereum-package'
+  SURGE_ETHEREUM_PACKAGE_REF: 'main'
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+jobs:
+  devnet-e2e-test:
+    name: Devnet E2E Test (No Provers)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
 
-# Function to print colored output
-print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
-}
+    steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 30720
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
 
-print_error() {
-    echo -e "${RED}✗ $1${NC}"
-}
+      - name: Checkout simple-surge-node
+        uses: actions/checkout@v4
+        with:
+          path: simple-surge-node
 
-print_info() {
-    echo -e "${YELLOW}ℹ $1${NC}"
-}
+      - name: Checkout surge-ethereum-package
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SURGE_ETHEREUM_PACKAGE_REPO }}
+          ref: ${{ env.SURGE_ETHEREUM_PACKAGE_REF }}
+          path: surge-ethereum-package
 
-# Ensure we're in the project root
-cd "$(dirname "$0")/.."
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-# Step 1: Clean up any existing deployment
-#echo "=========================================="
-#echo "Step 1: Cleanup existing deployment"
-#echo "=========================================="
-#print_info "Running surge-remover.sh --devnet-non-interactive"
-#if ./surge-remover.sh --devnet-non-interactive; then
-#    print_success "Cleanup completed"
-#else
-#    print_error "Cleanup failed"
-#    exit 1
-#fi
-#echo
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq
 
-# Step 2: Ensure .env file exists
-echo "=========================================="
-echo "Step 2: Prepare environment"
-echo "=========================================="
-if [ ! -f .env ]; then
-    print_info "Copying .env.devnet to .env"
-    cp .env.devnet .env
-    print_success ".env file created"
-else
-    print_info ".env file already exists"
-fi
-echo
+      - name: Install Kurtosis CLI
+        run: |
+          echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
+          sudo apt-get update
+          sudo apt-get install -y kurtosis-cli
+          kurtosis version
 
-# Step 3: Deploy protocol
-echo "=========================================="
-echo "Step 3: Deploy protocol (L1 contracts)"
-echo "=========================================="
-print_info "Running surge-protocol-deployer.sh --devnet-non-interactive"
-if ./surge-protocol-deployer.sh --devnet-non-interactive; then
-    print_success "Protocol deployment completed"
-else
-    print_error "Protocol deployment failed"
-    exit 1
-fi
-echo
+      - name: Verify Docker installation
+        run: |
+          docker --version
+          docker compose version
+          docker info
 
-# Step 4: Verify protocol deployment artifacts
-echo "=========================================="
-echo "Step 4: Verify protocol deployment"
-echo "=========================================="
-if [ ! -f "deployment/deploy_l1.json" ]; then
-    print_error "deploy_l1.json not found"
-    exit 1
-else
-    print_success "deploy_l1.json found"
-fi
+      - name: Update e2e script with L1 deployment paths
+        working-directory: simple-surge-node
+        run: |
+          # Create a wrapper script that handles L1 deployment
+          cat > script/devnet-e2e-provision-check-ci.sh << 'EOF'
+          #!/bin/bash
 
-if [ ! -f "deployment/proposer_wrappers.json" ]; then
-    print_error "proposer_wrappers.json not found"
-    exit 1
-else
-    print_success "proposer_wrappers.json found"
-fi
-echo
+          set -e
 
-# Step 5: Deploy stack
-echo "=========================================="
-echo "Step 5: Deploy L2 stack"
-echo "=========================================="
-print_info "Running surge-stack-deployer.sh --devnet-non-interactive"
-if ./surge-stack-deployer.sh --devnet-non-interactive; then
-    print_success "Stack deployment completed"
-else
-    print_error "Stack deployment failed"
-    exit 1
-fi
-echo
+          echo "Starting CI Devnet E2E Health Check"
+          echo
 
-# Step 6: Verify services are running
-echo "=========================================="
-echo "Step 6: Verify services"
-echo "=========================================="
-print_info "Checking running containers"
-docker compose ps
-echo
+          print_success() {
+              echo "[SUCCESS] $1"
+          }
 
-print_info "Checking critical containers are healthy..."
-# Check L2 execution client container
-if docker compose ps | grep "l2-nethermind-execution-client" | grep -q "(healthy)"; then
-    print_success "L2 execution client container is healthy"
-else
-    print_error "L2 execution client container is not healthy"
-    exit 1
-fi
+          print_error() {
+              echo "[ERROR] $1"
+          }
 
-# Check other critical containers are running
-CRITICAL_CONTAINERS=("l2-taiko-consensus-client" "l2-taiko-proposer-client" "relayer-l1-indexer" "relayer-l2-indexer")
-for container in "${CRITICAL_CONTAINERS[@]}"; do
-    if docker compose ps | grep "$container" | grep -q "Up"; then
-        print_success "$container is running"
-    else
-        print_error "$container is not running"
-        exit 1
-    fi
-done
-echo
+          print_info() {
+              echo "[INFO] $1"
+          }
 
-# Step 7: Health check L2 RPC endpoints
-echo "=========================================="
-echo "Step 7: Health check L2 RPC endpoints"
-echo "=========================================="
-print_info "Waiting 30 seconds for services to stabilize..."
-sleep 30
+          # Navigate to project root
+          cd "$(dirname "$0")/.."
 
-print_info "Testing L2 RPC endpoint at http://localhost:8547"
-if curl -f http://localhost:8547 -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null; then
-    echo
-    print_success "L2 execution client RPC is responding"
-else
-    echo
-    print_error "L2 execution client RPC health check failed"
-    exit 1
-fi
+          # Step 0: Deploy L1 Devnet
+          echo "Step 0: Deploy L1 Devnet"
+          L1_PACKAGE_DIR="../surge-ethereum-package"
 
-echo
+          if [ -d "$L1_PACKAGE_DIR" ]; then
+              print_info "Running L1 deployment from surge-ethereum-package"
+              cd "$L1_PACKAGE_DIR"
+              if ./deploy-surge-devnet-l1.sh --environment local --mode silence; then
+                  cd -
+                  print_success "L1 deployment completed"
+              else
+                  cd -
+                  print_error "L1 deployment failed"
+                  exit 1
+              fi
+          else
+              print_error "surge-ethereum-package directory not found at $L1_PACKAGE_DIR"
+              print_info "Current directory: $(pwd)"
+              print_info "Looking for: $L1_PACKAGE_DIR"
+              ls -la ../
+              exit 1
+          fi
+          echo
 
-# Step 8: Optional - Check container logs for errors
-echo "=========================================="
-echo "Step 8: Check for errors in logs"
-echo "=========================================="
-print_info "Checking for errors in container logs (last 50 lines)"
-if docker compose logs --tail=50 | grep -i "error\|fatal\|panic" | grep -v "error_code" | head -20; then
-    print_info "Found some errors in logs (review above)"
-else
-    print_success "No critical errors found in recent logs"
-fi
-echo
+          # Step 0.5: Wait for L1 to be ready
+          echo "Step 0.5: Verify L1 is ready"
+          print_info "Waiting 20 seconds for L1 to stabilize..."
+          sleep 20
 
-# Final summary
-echo "=========================================="
-echo "Health Check Summary"
-echo "=========================================="
-print_success "All health checks passed!"
-echo
-print_info "Services are running. You can now:"
-echo "  - Access L2 RPC: http://localhost:8547"
-echo "  - Access L2 Blockscout: http://localhost:3000"
-echo "  - Access L1 RPC: http://localhost:32003"
-echo "  - View logs: docker compose logs -f"
-echo
-print_info "To clean up when done:"
-echo "  ./surge-remover.sh --devnet-non-interactive"
-echo
+          print_info "Testing L1 RPC endpoint at http://localhost:32003"
+          max_retries=10
+          retry_count=0
+
+          while [ $retry_count -lt $max_retries ]; do
+              if curl -f http://localhost:32003 -X POST -H "Content-Type: application/json" \
+                  --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null; then
+                  echo
+                  print_success "L1 RPC is responding"
+                  break
+              else
+                  retry_count=$((retry_count + 1))
+                  if [ $retry_count -eq $max_retries ]; then
+                      echo
+                      print_error "L1 RPC failed to respond after $max_retries retries"
+                      exit 1
+                  fi
+                  print_info "Retry $retry_count/$max_retries - waiting 10s..."
+                  sleep 10
+              fi
+          done
+          echo
+
+          # Step 0.6: Disable provers for faster CI testing
+          echo "Step 0.6: Configure environment for no-prover testing"
+          print_info "Disabling provers in .env.devnet"
+          if [ -f ".env.devnet" ]; then
+              sed -i 's/^ENABLE_PROVER=true/ENABLE_PROVER=false/' .env.devnet
+              print_success "Provers disabled"
+          else
+              print_error ".env.devnet not found"
+              exit 1
+          fi
+          echo
+
+          # Run the actual e2e provision check
+          echo "Running E2E Provision Check"
+          ./script/devnet-e2e-provision-check.sh
+          EOF
+
+          chmod +x script/devnet-e2e-provision-check-ci.sh
+
+      - name: Run E2E Devnet Test
+        working-directory: simple-surge-node
+        run: |
+          ./script/devnet-e2e-provision-check-ci.sh
+
+      - name: Collect Docker logs on failure
+        if: failure()
+        working-directory: simple-surge-node
+        run: |
+          echo "Docker Compose Services Status"
+          docker compose ps || true
+
+          echo "Docker Compose Logs (last 100 lines)"
+          docker compose logs --tail=100 || true
+
+          echo "Kurtosis Enclaves"
+          kurtosis enclave ls || true
+
+          echo "Kurtosis Services (surge-devnet)"
+          kurtosis enclave inspect surge-devnet || true
+
+      - name: Cleanup - Stop L2 services
+        if: always()
+        working-directory: simple-surge-node
+        run: |
+          ./surge-remover.sh --devnet-non-interactive || true
+
+      - name: Cleanup - Stop L1 devnet
+        if: always()
+        run: |
+          cd surge-ethereum-package && ./remove-surge-devnet-l1.sh --force || true
+
+      - name: Cleanup - Kurtosis
+        if: always()
+        run: |
+          kurtosis clean -a || true
+
+      - name: Cleanup - Docker
+        if: always()
+        run: |
+          docker system prune -af --volumes || true
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: devnet-e2e-logs
+          path: |
+            simple-surge-node/deployment/*.json
+            simple-surge-node/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Notify on failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Nightly Devnet E2E Test (No Provers) Failed',
+              body: 'The nightly devnet E2E test (no provers) failed on ' + new Date().toISOString() + '\n\nWorkflow run: ' + context.serverUr
+l + '/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId,
+              labels: ['bug', 'devnet', 'e2e-test', 'automated']
+            })
