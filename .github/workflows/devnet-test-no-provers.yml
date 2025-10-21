@@ -1,4 +1,4 @@
-name: Devnet E2E Test
+name: Devnet Test (No Provers)
 
 on:
   schedule:
@@ -11,17 +11,17 @@ on:
       - 'docker-compose*.yml'
       - 'surge-*.sh'
       - 'script/devnet-e2e-provision-check.sh'
-      - '.github/workflows/devnet-e2e-test.yml'
+      - '.github/workflows/devnet-test-no-provers.yml'
 
 env:
   SURGE_ETHEREUM_PACKAGE_REPO: 'NethermindEth/surge-ethereum-package'
   SURGE_ETHEREUM_PACKAGE_REF: 'main'
 
 jobs:
-  devnet-e2e-test:
-    name: Full Devnet E2E Test
+  devnet-test-no-provers:
+    name: Devnet Test (No Provers)
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 45
 
     steps:
       - name: Checkout simple-surge-node
@@ -57,7 +57,7 @@ jobs:
           docker compose version
           docker info
 
-      - name: Update e2e script with L1 deployment paths
+      - name: Update provision check script with L1 deployment paths
         working-directory: simple-surge-node
         run: |
           # Create a wrapper script that handles L1 deployment
@@ -66,7 +66,7 @@ jobs:
 
           set -e
 
-          echo "Starting CI Devnet E2E Health Check"
+          echo "Starting CI Devnet Provision Health Check"
           echo
 
           print_success() {
@@ -136,14 +136,26 @@ jobs:
           done
           echo
 
-          # Run the actual e2e provision check
-          echo "Running E2E Provision Check"
+          # Step 0.6: Disable provers for faster CI testing
+          echo "Step 0.6: Configure environment for no-prover testing"
+          print_info "Disabling provers in .env.devnet"
+          if [ -f ".env.devnet" ]; then
+              sed -i 's/^ENABLE_PROVER=true/ENABLE_PROVER=false/' .env.devnet
+              print_success "Provers disabled"
+          else
+              print_error ".env.devnet not found"
+              exit 1
+          fi
+          echo
+
+          # Run the actual provision check
+          echo "Running Devnet Provision Check"
           ./script/devnet-e2e-provision-check.sh
           EOF
 
           chmod +x script/devnet-e2e-provision-check-ci.sh
 
-      - name: Run E2E Devnet Test
+      - name: Run Devnet Test (No Provers)
         working-directory: simple-surge-node
         run: |
           ./script/devnet-e2e-provision-check-ci.sh
@@ -169,7 +181,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: devnet-e2e-logs
+          name: devnet-test-no-provers-logs
           path: |
             simple-surge-node/deployment/*.json
             simple-surge-node/*.log
@@ -184,7 +196,7 @@ jobs:
             github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: 'Nightly Devnet E2E Test Failed',
-              body: 'The nightly devnet E2E test failed on ' + new Date().toISOString() + '\n\nWorkflow run: ' + context.serverUrl + '/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId,
-              labels: ['bug', 'devnet', 'e2e-test', 'automated']
+              title: 'Nightly Devnet Test (No Provers) Failed',
+              body: 'The nightly devnet test (no provers) failed on ' + new Date().toISOString() + '\n\nWorkflow run: ' + context.serverUrl +'/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId,
+              labels: ['bug', 'devnet', 'test-no-provers', 'automated']
             })
