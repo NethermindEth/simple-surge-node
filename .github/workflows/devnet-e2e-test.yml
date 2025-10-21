@@ -95,20 +95,23 @@ jobs:
 
           # Step 0: Deploy L1 Devnet
           echo "Step 0: Deploy L1 Devnet"
-          L1_DEPLOY_SCRIPT="../surge-ethereum-package/deploy-surge-devnet-l1.sh"
+          L1_PACKAGE_DIR="../surge-ethereum-package"
 
-          if [ -f "$L1_DEPLOY_SCRIPT" ]; then
+          if [ -d "$L1_PACKAGE_DIR" ]; then
               print_info "Running L1 deployment from surge-ethereum-package"
-              if "$L1_DEPLOY_SCRIPT" --environment local --mode silence; then
+              cd "$L1_PACKAGE_DIR"
+              if ./deploy-surge-devnet-l1.sh --environment local --mode silence; then
+                  cd -
                   print_success "L1 deployment completed"
               else
+                  cd -
                   print_error "L1 deployment failed"
                   exit 1
               fi
           else
-              print_error "L1 deployment script not found at $L1_DEPLOY_SCRIPT"
+              print_error "surge-ethereum-package directory not found at $L1_PACKAGE_DIR"
               print_info "Current directory: $(pwd)"
-              print_info "Looking for: $L1_DEPLOY_SCRIPT"
+              print_info "Looking for: $L1_PACKAGE_DIR"
               ls -la ../
               exit 1
           fi
@@ -179,8 +182,7 @@ jobs:
       - name: Cleanup - Stop L1 devnet
         if: always()
         run: |
-          ../surge-ethereum-package/remove-surge-devnet-l1.sh --force || true
-        working-directory: simple-surge-node
+          cd surge-ethereum-package && ./remove-surge-devnet-l1.sh --force || true
 
       - name: Cleanup - Kurtosis
         if: always()
@@ -212,6 +214,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: 'Nightly Devnet E2E Test Failed',
-              body: `The nightly devnet E2E test failed on ${new Date().toISOString()}\n\nWorkflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              body: `The nightly devnet E2E test failed on ${new Date().toISOString()}\n\nWorkflow run: ${context.serverUrl}/${context.repo.o
+wner}/${context.repo.repo}/actions/runs/${context.runId}`,
               labels: ['bug', 'devnet', 'e2e-test', 'automated']
             })
