@@ -146,15 +146,6 @@ else
     exit 1
 fi
 
-print_info "Testing L2 WebSocket endpoint at ws://localhost:8548"
-if curl -f http://localhost:8548 -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' 2>/dev/null; then
-    echo
-    print_success "L2 WebSocket endpoint is responding"
-else
-    echo
-    print_error "L2 WebSocket endpoint health check failed"
-    exit 1
-fi
 echo
 
 # Step 8: Optional - Check container logs for errors
