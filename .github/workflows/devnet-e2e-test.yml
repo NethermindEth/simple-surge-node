@@ -164,26 +164,6 @@ jobs:
           echo "Kurtosis Services (surge-devnet)"
           kurtosis enclave inspect surge-devnet || true
 
-      - name: Cleanup - Stop L2 services
-        if: always()
-        working-directory: simple-surge-node
-        run: |
-          ./surge-remover.sh --devnet-non-interactive || true
-
-      - name: Cleanup - Stop L1 devnet
-        if: always()
-        run: |
-          cd surge-ethereum-package && ./remove-surge-devnet-l1.sh --force || true
-
-      - name: Cleanup - Kurtosis
-        if: always()
-        run: |
-          kurtosis clean -a || true
-
-      - name: Cleanup - Docker
-        if: always()
-        run: |
-          docker system prune -af --volumes || true
 
       - name: Upload test artifacts
         if: failure()
