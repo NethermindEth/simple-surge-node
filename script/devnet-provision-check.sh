@@ -22,12 +22,16 @@ echo
 
 # Step 1: Clean up any existing deployment
 echo "Step 1: Cleanup existing deployment"
-print_info "Running surge-remover.sh --devnet-non-interactive"
-if ./surge-remover.sh --devnet-non-interactive; then
-    print_success "Cleanup completed"
+if [ -f "deployment/deploy_l1.json" ] || docker compose ps --services 2>/dev/null | grep -q .; then
+    print_info "Found existing deployment, running cleanup"
+    if ./surge-remover.sh --devnet-non-interactive; then
+        print_success "Cleanup completed"
+    else
+        print_error "Cleanup failed"
+        exit 1
+    fi
 else
-    print_error "Cleanup failed"
-    exit 1
+    print_info "No existing deployment found, skipping cleanup"
 fi
 echo
 
