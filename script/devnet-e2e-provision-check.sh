@@ -30,17 +30,17 @@ print_info() {
 cd "$(dirname "$0")/.."
 
 # Step 1: Clean up any existing deployment
-echo "=========================================="
-echo "Step 1: Cleanup existing deployment"
-echo "=========================================="
-print_info "Running surge-remover.sh --devnet-non-interactive"
-if ./surge-remover.sh --devnet-non-interactive; then
-    print_success "Cleanup completed"
-else
-    print_error "Cleanup failed"
-    exit 1
-fi
-echo
+#echo "=========================================="
+#echo "Step 1: Cleanup existing deployment"
+#echo "=========================================="
+#print_info "Running surge-remover.sh --devnet-non-interactive"
+#if ./surge-remover.sh --devnet-non-interactive; then
+#    print_success "Cleanup completed"
+#else
+#    print_error "Cleanup failed"
+#    exit 1
+#fi
+#echo
 
 # Step 2: Ensure .env file exists
 echo "=========================================="
