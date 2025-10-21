@@ -214,7 +214,6 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: 'Nightly Devnet E2E Test Failed',
-              body: `The nightly devnet E2E test failed on ${new Date().toISOString()}\n\nWorkflow run: ${context.serverUrl}/${context.repo.o
-wner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              body: 'The nightly devnet E2E test failed on ' + new Date().toISOString() + '\n\nWorkflow run: ' + context.serverUrl + '/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId,
               labels: ['bug', 'devnet', 'e2e-test', 'automated']
             })
