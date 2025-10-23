@@ -50,6 +50,7 @@ remove_db() {
     echo
 
     # Remove DB
+    rm -rf ./blobindexer-mysql
     rm -rf ./execution-data
     rm -rf ./blockscout-postgres-data
     rm -rf ./mysql-data
@@ -106,7 +107,7 @@ remove_network() {
 remove_l2_stack
 remove_relayers
 remove_db
-remove_configs
+# remove_configs
 # remove_env_file
 remove_network
 

@@ -14,6 +14,7 @@ ARGS="${ARGS} \
     --l2.ws ws://l2-nethermind-execution-client:"${L2_WS_PORT}" \
     --l1.beacon ${L1_BEACON_HTTP} \
     --l2.auth http://l2-nethermind-execution-client:${L2_ENGINE_API_PORT} \
+    --blob.server http://l2-taiko-blob-indexer:${BLOB_INDEXER_PORT} \
     --taikoInbox ${TAIKO_INBOX} \
     --taikoAnchor ${TAIKO_ANCHOR} \
     --jwtSecret /tmp/jwt/jwtsecret \
