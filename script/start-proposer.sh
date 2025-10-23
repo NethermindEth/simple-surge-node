@@ -12,7 +12,6 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         --jwtSecret /tmp/jwt/jwtsecret
         --l1.proposerPrivKey ${L1_PROPOSER_PRIVATE_KEY}
         --l2.suggestedFeeRecipient ${L2_SUGGESTED_FEE_RECIPIENT}
-        --inbox ${L1_SIGNAL_SERVICE}
         --bridge ${L1_BRIDGE}
         --taikoWrapper ${TAIKO_WRAPPER}
         --forcedInclusionStore ${FORCED_INCLUSION_STORE}
