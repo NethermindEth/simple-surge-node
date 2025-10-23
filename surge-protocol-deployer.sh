@@ -226,7 +226,8 @@ generate_prover_chain_spec() {
         "SGX": null,
         "SP1": null,
         "RISC0": null,
-        "TDX": null
+        "TDX": null,
+        "AZURE_TDX": null
       }
     },
     "genesis_time": $GENESIS_TIME,
@@ -264,19 +265,22 @@ generate_prover_chain_spec() {
         "SGX": "$SGX_RETH_VERIFIER",
         "SP1": "$SP1_RETH_VERIFIER",
         "RISC0": "$RISC0_RETH_VERIFIER",
-        "TDX": "$AZURE_TDX_VERIFIER"
+        "TDX": "$TDX_NETHERMIND_VERIFIER",
+        "AZURE_TDX": "$AZURE_TDX_NETHERMIND_VERIFIER"
       },
       "ONTAKE": {
         "SGX": "$SGX_RETH_VERIFIER",
         "SP1": "$SP1_RETH_VERIFIER",
         "RISC0": "$RISC0_RETH_VERIFIER",
-        "TDX": "$AZURE_TDX_VERIFIER"
+        "TDX": "$TDX_NETHERMIND_VERIFIER",
+        "AZURE_TDX": "$AZURE_TDX_NETHERMIND_VERIFIER"
       },
       "PACAYA": {
         "SGX": "$SGX_RETH_VERIFIER",
         "SP1": "$SP1_RETH_VERIFIER",
         "RISC0": "$RISC0_RETH_VERIFIER",
-        "TDX": "$AZURE_TDX_VERIFIER"
+        "TDX": "$TDX_NETHERMIND_VERIFIER",
+        "AZURE_TDX": "$AZURE_TDX_NETHERMIND_VERIFIER"
       }
     },
     "genesis_time": 0,
@@ -447,7 +451,8 @@ extract_l1_deployment_results() {
   export RISC0_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.risc0_reth_verifier')
   export SGX_GETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sgx_geth_verifier')
   export SGX_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sgx_reth_verifier')
-  export AZURE_TDX_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.azure_tdx_verifier')
+  export AZURE_TDX_NETHERMIND_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.azure_tdx_nethermind_verifier')
+  export TDX_NETHERMIND_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.tdx_nethermind_verifier')
   export SHARED_RESOLVER=$(cat ./deployment/deploy_l1.json | jq -r '.shared_resolver')
   export SIG_VERIFY_LIB=$(cat ./deployment/deploy_l1.json | jq -r '.sig_verify_lib')
   export SIGNAL_SERVICE=$(cat ./deployment/deploy_l1.json | jq -r '.signal_service')
@@ -475,7 +480,8 @@ extract_l1_deployment_results() {
   echo " RISC0_RETH_VERIFIER: $RISC0_RETH_VERIFIER "
   echo " SGX_GETH_VERIFIER: $SGX_GETH_VERIFIER "
   echo " SGX_RETH_VERIFIER: $SGX_RETH_VERIFIER "
-  echo " AZURE_TDX_VERIFIER: $AZURE_TDX_VERIFIER "
+  echo " AZURE_TDX_NETHERMIND_VERIFIER: $AZURE_TDX_NETHERMIND_VERIFIER "
+  echo " TDX_NETHERMIND_VERIFIER: $TDX_NETHERMIND_VERIFIER "
   echo " SHARED_RESOLVER: $SHARED_RESOLVER "
   echo " SIG_VERIFY_LIB: $SIG_VERIFY_LIB "
   echo " SIGNAL_SERVICE: $SIGNAL_SERVICE "
@@ -506,7 +512,8 @@ extract_l1_deployment_results() {
   update_env_var ".env" "RISC0_RETH_VERIFIER" "$RISC0_RETH_VERIFIER"
   update_env_var ".env" "SGX_GETH_VERIFIER" "$SGX_GETH_VERIFIER"
   update_env_var ".env" "SGX_RETH_VERIFIER" "$SGX_RETH_VERIFIER"
-  update_env_var ".env" "AZURE_TDX_VERIFIER" "$AZURE_TDX_VERIFIER"
+  update_env_var ".env" "AZURE_TDX_NETHERMIND_VERIFIER" "$AZURE_TDX_NETHERMIND_VERIFIER"
+  update_env_var ".env" "TDX_NETHERMIND_VERIFIER" "$TDX_NETHERMIND_VERIFIER"
   update_env_var ".env" "SHARED_RESOLVER" "$SHARED_RESOLVER"
   update_env_var ".env" "SIG_VERIFY_LIB" "$SIG_VERIFY_LIB"
   update_env_var ".env" "SIGNAL_SERVICE" "$SIGNAL_SERVICE"
@@ -661,7 +668,42 @@ deploy_provers() {
           echo
         fi
 
-        TDX_VERIFIER_ADDRESS=${AZURE_TDX_VERIFIER} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile tdx-verifier-setup up
+        TDX_NETHERMIND_VERIFIER_ADDRESS=${TDX_NETHERMIND_VERIFIER} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile tdx-verifier-setup up
+      fi
+    fi
+
+    if [ ! -f "deployment/azure_tdx_verifier_setup.lock" ]; then
+      # Prompt user for running TDX Raiko
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ Running Azure TDX Raiko? (true/false) [default: false]       ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      read -r running_azure_tdx_raiko
+      RUNNING_AZURE_TDX_RAIKO=${running_azure_tdx_raiko:-false}
+
+      if [ "$RUNNING_AZURE_TDX_RAIKO" = "true" ]; then
+        if [ "$AZURE_TDX_TRUSTED_PARAMS_BYTES" = "" ]; then
+          echo
+          echo "╔═══════════════════════════════════════════════════════════════╗"
+          echo "  ⚠️ AZURE_TDX_TRUSTED_PARAMS_BYTES is not set                  "
+          echo "║═══════════════════════════════════════════════════════════════║"
+          echo "║ Optional: You can continue without it or set and rerun        ║"
+          echo "╚═══════════════════════════════════════════════════════════════╝"
+          echo
+        fi
+
+        if [ "$AZURE_TDX_QUOTE_BYTES" = "" ]; then
+          echo
+          echo "╔════════════════════════════════════════════════════════════════╗"
+          echo "  ⚠️ AZURE_TDX_QUOTE_BYTES is not set                            ║"
+          echo "║════════════════════════════════════════════════════════════════║"
+          echo "║ Optional: You can continue without it or set and rerun         ║"
+          echo "╚════════════════════════════════════════════════════════════════╝"
+          echo
+        fi
+
+        AZURE_TDX_NETHERMIND_VERIFIER_ADDRESS=${AZURE_TDX_NETHERMIND_VERIFIER} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile azure-tdx-verifier-setup up
       fi
     fi
 
