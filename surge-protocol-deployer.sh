@@ -134,7 +134,7 @@ elif [ "$SURGE_ENVIRONMENT" = "3" ]; then
   echo "╔══════════════════════════════════════════════════════════════╗"
   echo "  🔧 REQUIRED ACTION: Copy the correct env file for Testnet     "
   echo "║══════════════════════════════════════════════════════════════║"
-  echo "║ Run: cp .env.testnet .env                                    ║"
+  echo "║ Run: cp .env.hoodi .env                                    ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
   exit 0
