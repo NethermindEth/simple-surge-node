@@ -48,7 +48,7 @@ services:
 
 # L2 stack components
   nethermind_execution_client:
-    image: nethermindeth/nethermind:surge-nethermind
+    image: nethermindeth/nethermind:v25.0.0-surge
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
