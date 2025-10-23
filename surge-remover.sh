@@ -97,11 +97,18 @@ remove_env_file() {
     echo
 }
 
+remove_network() {
+    if docker network ls | grep -q "surge-network"; then
+        docker network rm surge-network
+    fi
+}
+
 remove_l2_stack
 remove_relayers
 remove_db
 remove_configs
 # remove_env_file
+remove_network
 
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"

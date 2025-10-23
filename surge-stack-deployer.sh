@@ -2,6 +2,8 @@
 
 set -e
 
+git submodule update --init --recursive
+
 check_env_file() {
   if [ -f .env ]; then
     echo
@@ -101,6 +103,7 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   echo "  🚀 Using Devnet Environment                                   "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
+  check_env_file
 
   if [ "$REMOTE_OR_LOCAL" = "1" ]; then
     # Select which devnet machine to use
@@ -173,18 +176,26 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   fi
 
 elif [ "$SURGE_ENVIRONMENT" = "2" ]; then
+  if [ ! docker network ls | grep -q "surge-network" ]; then
+    docker network create surge-network
+  fi
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
   echo "  🚀 Using Staging Environment                                  "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
+  cp .env.staging .env
   check_env_file
 elif [ "$SURGE_ENVIRONMENT" = "3" ]; then
+  if [ ! docker network ls | grep -q "surge-network" ]; then
+    docker network create surge-network
+  fi
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
   echo "  🚀 Using Testnet Environment                                  "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
+  cp .env.hoodi .env
   check_env_file
 fi
 
@@ -299,6 +310,8 @@ start_relayers() {
 
     # Prepare Bridge UI Configs only if relayers are needed
     prepare_bridge_ui_configs
+
+    docker compose -f docker-compose-relayer.yml --profile bridge-ui up -d --build
   else
     return 0
   fi
@@ -310,7 +323,7 @@ prepare_bridge_ui_configs() {
   echo "║ Preparing Bridge UI configs...                               ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
-
+  
   # Generate configuredBridges.json
   cat > configs/configuredBridges.json << EOF
 {

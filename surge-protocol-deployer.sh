@@ -2,6 +2,8 @@
 
 set -e
 
+git submodule update --init --recursive
+
 # Select which Surge environment to use
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
@@ -34,7 +36,7 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   echo "║ [default: local]                                             ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
-  read -r remote_or_local 
+  read -r remote_or_local
 
 REMOTE_OR_LOCAL=${remote_or_local:-0}
   if [ "$REMOTE_OR_LOCAL" = "1" ]; then
@@ -173,7 +175,7 @@ update_env_var() {
   local env_file="$1"
   local var_name="$2"
   local var_value="$3"
-  
+
   # Check if the variable exists in the file
   if grep -q "^${var_name}=" "$env_file"; then
     # Update existing variable
@@ -200,17 +202,7 @@ generate_prover_chain_spec() {
     "name": "surge_dev_l1",
     "chain_id": $L1_CHAINID,
     "max_spec_id": "CANCUN",
-    "hard_forks": {
-      "FRONTIER": {
-        "Block": 0
-      },
-      "SHANGHAI": {
-        "Timestamp": 0
-      },
-      "CANCUN": {
-        "Timestamp": 0
-      }
-    },
+    "hard_forks": {},
     "eip_1559_constants": {
       "base_fee_change_denominator": "0x8",
       "base_fee_max_increase_denominator": "0x8",
@@ -221,15 +213,7 @@ generate_prover_chain_spec() {
     "l2_contract": null,
     "rpc": "$L1_RPC",
     "beacon_rpc": "$L1_BEACON_RPC",
-    "verifier_address_forks": {
-      "FRONTIER": {
-        "SGX": null,
-        "SP1": null,
-        "RISC0": null,
-        "TDX": null,
-        "AZURE_TDX": null
-      }
-    },
+    "verifier_address_forks": {},
     "genesis_time": $GENESIS_TIME,
     "seconds_per_slot": 12,
     "is_taiko": false
@@ -239,16 +223,12 @@ generate_prover_chain_spec() {
     "chain_id": $L2_CHAINID,
     "max_spec_id": "PACAYA",
     "hard_forks": {
-      "HEKLA": {
-        "Block": 0
-      },
-      "ONTAKE": {
-        "Block": 1
-      },
-      "PACAYA": {
-        "Block": 1
-      },
-      "CANCUN": "TBD"
+        "ONTAKE": {
+            "Block": 1
+        },
+        "PACAYA": {
+            "Block": 1
+        }
     },
     "eip_1559_constants": {
       "base_fee_change_denominator": "0x8",
@@ -261,22 +241,9 @@ generate_prover_chain_spec() {
     "rpc": "$L2_RPC",
     "beacon_rpc": null,
     "verifier_address_forks": {
-      "HEKLA": {
-        "SGX": "$SGX_RETH_VERIFIER",
-        "SP1": "$SP1_RETH_VERIFIER",
-        "RISC0": "$RISC0_RETH_VERIFIER",
-        "TDX": "$TDX_NETHERMIND_VERIFIER",
-        "AZURE_TDX": "$AZURE_TDX_NETHERMIND_VERIFIER"
-      },
       "ONTAKE": {
         "SGX": "$SGX_RETH_VERIFIER",
-        "SP1": "$SP1_RETH_VERIFIER",
-        "RISC0": "$RISC0_RETH_VERIFIER",
-        "TDX": "$TDX_NETHERMIND_VERIFIER",
-        "AZURE_TDX": "$AZURE_TDX_NETHERMIND_VERIFIER"
-      },
-      "PACAYA": {
-        "SGX": "$SGX_RETH_VERIFIER",
+        "SGXGETH": "$SGX_GETH_VERIFIER",
         "SP1": "$SP1_RETH_VERIFIER",
         "RISC0": "$RISC0_RETH_VERIFIER",
         "TDX": "$TDX_NETHERMIND_VERIFIER",
@@ -289,7 +256,7 @@ generate_prover_chain_spec() {
   }
 ]
 EOF
-  
+
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
   echo "  ✅ Prover chain spec list json generated successfully,        "
@@ -337,9 +304,56 @@ generate_prover_env_vars() {
   echo
 }
 
+retrieve_guest_data() {
+  if [ "$1" = "sgx_reth" ]; then
+    if [ "$SGX_RAIKO_HOST" != "" ]; then
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "  Retrieving guest data for SGX - $SGX_RAIKO_HOST               "
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      export MR_ENCLAVE=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_reth.mr_enclave')
+      export MR_SIGNER=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_reth.mr_signer')
+      export V3_QUOTE_BYTES=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_reth.quote')
+    fi
+  elif [ "$1" = "sgx_geth" ]; then
+    if [ "$SGX_RAIKO_HOST" != "" ]; then
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "  Retrieving guest data for SGXGETH - $SGX_RAIKO_HOST           "
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      export MR_ENCLAVE_GETH=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_geth.mr_enclave')
+      export MR_SIGNER_GETH=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_geth.mr_signer')
+      export V3_QUOTE_BYTES_GETH=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_geth.quote')
+    fi
+  elif [ "$1" = "sp1" ]; then
+    if [ "$RAIKO_HOST_ZKVM" != "" ]; then
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "  Retrieving guest data for SP1 - $RAIKO_HOST_ZKVM              "
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      export SP1_BLOCK_PROVING_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].sp1.block_program_hash')
+      export SP1_AGGREGATION_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].sp1.aggregation_program_hash')
+    fi
+  elif [ "$1" = "risc0" ]; then
+    if [ "$RAIKO_HOST_ZKVM" != "" ]; then
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "  Retrieving guest data for RISC0 - $RAIKO_HOST_ZKVM            "
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      export RISC0_AGGREGATION_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].risc0.aggregation_program_hash')
+      export RISC0_BLOCK_PROVING_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].risc0.block_program_hash')
+    fi
+  fi
+  echo
+}
+
 deploy_l1() {
   mkdir -p deployment
-  
+
   # Check if deployment is already completed
   if [ -f "deployment/deploy_l1.json" ]; then
     # Prompt user for starting a new deployment if the deployment results are already present
@@ -369,7 +383,7 @@ deploy_l1() {
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo
       return 0
-    fi 
+    fi
   fi
 
   # Check if deployment is currently running
@@ -385,13 +399,13 @@ deploy_l1() {
     echo
     exit 1
   fi
-  
+
   # Create lock file to indicate deployment is starting
   touch deployment/deploy_l1.lock
-  
+
   # Ensure lock file is removed on script exit (success or failure)
   trap 'rm -f deployment/deploy_l1.lock' EXIT
-  
+
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
   echo "║ Preparing Surge L1 SCs deployment...                         ║"
@@ -422,7 +436,7 @@ deploy_l1() {
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 
-  BROADCAST=true USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER docker compose -f docker-compose-protocol.yml --profile l1-deployer up
+  BROADCAST=true USE_TIMELOCKED_OWNER=$USE_TIMELOCKED_OWNER VERIFY=false docker compose -f docker-compose-protocol.yml --profile l1-deployer up
 }
 
 extract_l1_deployment_results() {
@@ -441,10 +455,10 @@ extract_l1_deployment_results() {
   export ERC20_VAULT=$(cat ./deployment/deploy_l1.json | jq -r '.erc20_vault')
   export ERC721_VAULT=$(cat ./deployment/deploy_l1.json | jq -r '.erc721_vault')
   export FORCED_INCLUSION_STORE=$(cat ./deployment/deploy_l1.json | jq -r '.forced_inclusion_store')
-  
+
   # Handle potentially missing fields with jq's alternative operator
   export L1_OWNER=$(cat ./deployment/deploy_l1.json | jq -r '.l1_owner // "0x0000000000000000000000000000000000000000"')
-  
+
   export PEM_CERT_CHAIN_LIB=$(cat ./deployment/deploy_l1.json | jq -r '.pem_cert_chain_lib')
   export PROOF_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.proof_verifier')
   export RISC0_GROTH16_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.risc0_groth16_verifier')
@@ -458,7 +472,7 @@ extract_l1_deployment_results() {
   export SIGNAL_SERVICE=$(cat ./deployment/deploy_l1.json | jq -r '.signal_service')
   export SP1_RETH_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.sp1_reth_verifier')
   export SUCCINCT_VERIFIER=$(cat ./deployment/deploy_l1.json | jq -r '.succinct_verifier')
-  
+
   # Handle potentially missing field with jq's alternative operator
   export SURGE_TIMELOCK_CONTROLLER=$(cat ./deployment/deploy_l1.json | jq -r '.surge_timelock_controller // "0x0000000000000000000000000000000000000000"')
 
@@ -546,7 +560,7 @@ deploy_proposer_wrapper() {
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 
-    BROADCAST=true docker compose -f docker-compose-protocol.yml --profile proposer-wrapper-deployer up
+    BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile proposer-wrapper-deployer up
   fi
 }
 
@@ -587,7 +601,7 @@ deploy_provers() {
   if [ "$RUNNING_PROVERS" = "true" ]; then
     generate_prover_chain_spec
 
-    if [ ! -f "deployment/sgx_verifier_setup.lock" ]; then
+    if [ ! -f "deployment/sgx_reth_verifier_setup.lock" ]; then
       # Prompt user for running SGX Raiko
       echo
       echo "╔══════════════════════════════════════════════════════════════╗"
@@ -598,44 +612,105 @@ deploy_provers() {
       RUNNING_SGX_RAIKO=${running_sgx_raiko:-false}
 
       if [ "$RUNNING_SGX_RAIKO" = "true" ]; then
-        if [ "$MR_ENCLAVE" = "" ]; then
+        # Retrieve guest data from prover endpoint
+        retrieve_guest_data sgx_reth
+        if [ "$MR_ENCLAVE_RETH" = "" ] && [ "$MR_ENCLAVE" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "  ❗ SGX MR_ENCLAVE is not set                                  "
+          echo "  ❗ SGX RETH MR_ENCLAVE is not set                             "
           echo "║══════════════════════════════════════════════════════════════║"
           echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
+        else
+          export MR_ENCLAVE=$MR_ENCLAVE_RETH
         fi
 
-        if [ "$MR_SIGNER" = "" ]; then
+        if [ "$MR_SIGNER_RETH" = "" ] && [ "$MR_SIGNER" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "  ❗ SGX MR_SIGNER is not set                                   "
+          echo "  ❗ SGX RETH MR_SIGNER is not set                              "
           echo "║══════════════════════════════════════════════════════════════║"
           echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
+        else
+          export MR_SIGNER=$MR_SIGNER_RETH
         fi
 
-        if [ "$V3_QUOTE_BYTES" = "" ]; then
+        if [ "$V3_QUOTE_BYTES_RETH" = "" ] && [ "$V3_QUOTE_BYTES" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
-          echo "  ❗ SGX V3_QUOTE_BYTES is not set                              "
+          echo "  ❗ SGX RETH V3_QUOTE_BYTES is not set                         "
           echo "║══════════════════════════════════════════════════════════════║"
           echo "║ Please set it and rerun the script                           ║"
           echo "╚══════════════════════════════════════════════════════════════╝"
           echo
           exit 1
+        else
+          export V3_QUOTE_BYTES=$V3_QUOTE_BYTES_RETH
         fi
 
-        SGX_VERIFIER_ADDRESS=${SGX_RETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_RETH} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile sgx-verifier-setup up
+        SGX_VERIFIER_ADDRESS=${SGX_RETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_RETH} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile sgx-reth-verifier-setup up
       fi
     fi
 
-    # TODO: Add support for SGX Gaiko
+    if [ ! -f "deployment/sgx_geth_verifier_setup.lock" ]; then
+      # Prompt user for running SGX Gaiko
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ Running SGX Gaiko? (true/false) [default: false]              ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      read -r running_sgx_gaiko
+      RUNNING_SGX_GAIKO=${running_sgx_gaiko:-false}
+
+      if [ "$RUNNING_SGX_GAIKO" = "true" ]; then
+        retrieve_guest_data sgx_geth
+        if [ "$MR_ENCLAVE_GETH" = "" ] && [ "$MR_ENCLAVE" = "" ]; then
+          echo
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "  ❗ SGX GETH MR_ENCLAVE is not set                             "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        else
+          export MR_ENCLAVE=$MR_ENCLAVE_GETH
+        fi
+
+        if [ "$MR_SIGNER_GETH" = "" ] && [ "$MR_SIGNER" = "" ]; then
+          echo
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "  ❗ SGX GETH MR_SIGNER is not set                              "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        else
+          export MR_SIGNER=$MR_SIGNER_GETH
+        fi
+
+        if [ "$V3_QUOTE_BYTES_GETH" = "" ] && [ "$V3_QUOTE_BYTES" = "" ]; then
+          echo
+          echo "╔══════════════════════════════════════════════════════════════╗"
+          echo "  ❗ SGX GETH V3_QUOTE_BYTES is not set                         "
+          echo "║══════════════════════════════════════════════════════════════║"
+          echo "║ Please set it and rerun the script                           ║"
+          echo "╚══════════════════════════════════════════════════════════════╝"
+          echo
+          exit 1
+        else
+          export V3_QUOTE_BYTES=$V3_QUOTE_BYTES_GETH
+        fi
+
+        SGX_VERIFIER_ADDRESS=${SGX_GETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_GETH} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile sgx-geth-verifier-setup up
+      fi
+    fi
 
     if [ ! -f "deployment/tdx_verifier_setup.lock" ]; then
       # Prompt user for running TDX Raiko
@@ -718,6 +793,7 @@ deploy_provers() {
       RUNNING_SP1_RAIKO=${running_sp1_raiko:-false}
 
       if [ "$RUNNING_SP1_RAIKO" = "true" ]; then
+        retrieve_guest_data sp1
         if [ "$SP1_BLOCK_PROVING_PROGRAM_VKEY" = "" ]; then
           echo
           echo "╔══════════════════════════════════════════════════════════════╗"
@@ -755,6 +831,7 @@ deploy_provers() {
       RUNNING_RISC0_RAIKO=${running_risc0_raiko:-false}
 
       if [ "$RUNNING_RISC0_RAIKO" = "true" ]; then
+        retrieve_guest_data risc0
         if [ "$RISC0_BLOCK_PROVING_IMAGE_ID" = "" ]; then
           echo "╔══════════════════════════════════════════════════════════════╗"
           echo "  ❗ RISC0_BLOCK_PROVING_IMAGE_ID is not set                    "
@@ -802,7 +879,7 @@ deposit_bond() {
 
   DEPOSIT_BOND=${deposit_bond:-true}
 
-  if [ "$DEPOSIT_BOND" = "true" ]; then 
+  if [ "$DEPOSIT_BOND" = "true" ]; then
     # Prompt user for BOND_AMOUNT
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
