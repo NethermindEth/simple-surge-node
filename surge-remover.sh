@@ -107,7 +107,7 @@ remove_network() {
 remove_l2_stack
 remove_relayers
 remove_db
-# remove_configs
+remove_configs
 # remove_env_file
 remove_network
 
