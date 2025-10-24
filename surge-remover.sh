@@ -50,6 +50,7 @@ remove_db() {
     echo
 
     # Remove DB
+    rm -rf ./blobindexer-mysql
     rm -rf ./execution-data
     rm -rf ./blockscout-postgres-data
     rm -rf ./mysql-data
