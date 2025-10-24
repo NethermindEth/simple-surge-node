@@ -16,12 +16,16 @@ check_env_file() {
     source .env
     set +a  # disable automatic export
   else
-    echo
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "  ❌ Error: .env file not found                                 "
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo
-    exit 1
+    if [ $1 ]; then
+      cp .env.$1 .env
+    else
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "  ❌ Error: .env file not found                                 "
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      exit 1
+    fi
   fi
 }
 
@@ -176,7 +180,7 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   fi
 
 elif [ "$SURGE_ENVIRONMENT" = "2" ]; then
-  if [ ! docker network ls | grep -q "surge-network" ]; then
+  if ! docker network ls | grep -q "surge-network"; then
     docker network create surge-network
   fi
   echo
@@ -184,10 +188,9 @@ elif [ "$SURGE_ENVIRONMENT" = "2" ]; then
   echo "  🚀 Using Staging Environment                                  "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
-  cp .env.staging .env
-  check_env_file
+  check_env_file staging
 elif [ "$SURGE_ENVIRONMENT" = "3" ]; then
-  if [ ! docker network ls | grep -q "surge-network" ]; then
+  if ! docker network ls | grep -q "surge-network"; then
     docker network create surge-network
   fi
   echo
@@ -195,8 +198,7 @@ elif [ "$SURGE_ENVIRONMENT" = "3" ]; then
   echo "  🚀 Using Testnet Environment                                  "
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
-  cp .env.hoodi .env
-  check_env_file
+  check_env_file hoodi
 fi
 
 start_l2_stack() {
