@@ -256,6 +256,7 @@ services:
   blockscout-postgres:
     image: postgres:alpine
     container_name: l2-blockscout-postgres
+    user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
     pull_policy: always
     volumes:
