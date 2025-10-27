@@ -74,8 +74,6 @@ services:
     environment:
       TAIKO_INBOX: ${TAIKO_INBOX}
     entrypoint:
-      - /bin/sh
-      - -c
       - "/script/start-nethermind.sh"
     extra_hosts:
       - "host.docker.internal:host-gateway"
