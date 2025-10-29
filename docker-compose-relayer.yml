@@ -3,7 +3,8 @@ services:
   relayer-db:
     image: mysql:8.0
     container_name: relayer-db
-    user: "${UID:-1000}:${GID:-1000}"
+    # Only set user if DOCKER_USER is explicitly provided (local dev), not in CI
+    user: "${DOCKER_USER:-}"
     cap_add:
       - SYS_NICE
     restart: always

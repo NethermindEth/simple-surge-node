@@ -9,6 +9,12 @@ if [ "$1" = "--devnet-non-interactive" ]; then
   NON_INTERACTIVE=true
 fi
 
+# Export DOCKER_USER for local development to avoid permission issues with database containers
+# In CI (NON_INTERACTIVE=true), this remains unset so containers run as root for proper initialization
+if [ "$NON_INTERACTIVE" = "false" ] && [ -z "$DOCKER_USER" ]; then
+  export DOCKER_USER="$(id -u):$(id -g)"
+fi
+
 check_env_file() {
   if [ -f .env ]; then
     echo
