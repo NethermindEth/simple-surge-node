@@ -300,9 +300,9 @@ retrieve_guest_data() {
       echo "  Retrieving guest data for SGX - $SGX_RAIKO_HOST               "
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo
-      export MR_ENCLAVE=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_reth.mr_enclave')
-      export MR_SIGNER=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_reth.mr_signer')
-      export V3_QUOTE_BYTES=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_reth.quote')
+      export MR_ENCLAVE_RETH=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_reth.mr_enclave')
+      export MR_SIGNER_RETH=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_reth.mr_signer')
+      export V3_QUOTE_BYTES_RETH=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_reth.quote')
     fi
   elif [ "$1" = "sgx_geth" ]; then
     if [ "$SGX_RAIKO_HOST" != "" ]; then
