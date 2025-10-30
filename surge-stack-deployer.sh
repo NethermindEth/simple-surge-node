@@ -237,6 +237,20 @@ start_l2_stack() {
   fi
 }
 
+start_blob_indexer() {
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║ Starting Blob Indexer...                                     ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  docker compose --profile blobindexer up -d --remove-orphans
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "  ✅ Blob Indexer started successfully                           "
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+}
+
 deploy_l2() {
   # Check if deployment is already completed
   if [ -f "deployment/setup_l2.json" ]; then
@@ -469,6 +483,9 @@ EOF
 }
 
 deploy_surge_stack() {
+  # Start Blob Indexer
+  start_blob_indexer
+
   # Start L2 Stack
   start_l2_stack
 

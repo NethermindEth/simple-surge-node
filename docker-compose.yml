@@ -223,6 +223,56 @@ services:
     profiles:
       - prover
 
+  # MySQL Database for storing blob data
+  mysql:
+    image: mysql:8.4
+    container_name: l2-taiko-blob-indexer-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: blobindexer
+    ports:
+      - 3307:3306
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max-connections=1000
+      - --innodb-buffer-pool-size=1G
+    volumes:
+      - ./blobindexer-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-ppassword"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - surge
+    profiles:
+      - blobindexer
+
+  # Blob Indexer Service
+  blobindexer:
+    image: nethermind/surge-blob-indexer:sha-b978642
+    container_name: l2-taiko-blob-indexer
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - ${BLOB_INDEXER_PORT}:${BLOB_INDEXER_PORT}
+    networks:
+      - surge
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${BLOB_INDEXER_PORT}/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    profiles:
+      - blobindexer
+
   tx-spammer:
     image: ethpandaops/spamoor:master
     container_name: l2-tx-spammer
