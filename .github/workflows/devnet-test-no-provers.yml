@@ -22,6 +22,9 @@ env:
 jobs:
   devnet-provision-check-no-provers:
     name: Devnet Provision Check (No Provers)
+    permissions:
+      contents: read
+      issues: write
     runs-on: ubuntu-22.04
     timeout-minutes: 45
 
