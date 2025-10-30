@@ -1,5 +1,5 @@
 services:
-# Relayer infrastructure services
+  # Relayer infrastructure services
   relayer-db:
     image: mysql:8.0
     container_name: relayer-db
@@ -54,7 +54,7 @@ services:
       - relayer-init
 
   relayer-l1-processor:
-    image: nethermind/surge-relayer:sha-4206e2b
+    image: nethermind/surge-relayer:v25.1.1
     container_name: relayer-l1-processor
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]
@@ -100,7 +100,7 @@ services:
       - relayer-l1
 
   relayer-l1-indexer:
-    image: nethermind/surge-relayer:sha-4206e2b
+    image: nethermind/surge-relayer:v25.1.1
     container_name: relayer-l1-indexer
     restart: always
     env_file:
@@ -145,7 +145,7 @@ services:
       - relayer-l1
 
   relayer-l1-api:
-    image: nethermind/surge-relayer:sha-4206e2b
+    image: nethermind/surge-relayer:v25.1.1
     container_name: relayer-l1-api
     restart: always
     env_file:
@@ -181,7 +181,7 @@ services:
       - relayer-api
 
   relayer-l2-api:
-    image: nethermind/surge-relayer:sha-4206e2b
+    image: nethermind/surge-relayer:v25.1.1
     container_name: relayer-l2-api
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]
@@ -215,7 +215,7 @@ services:
       - relayer-api
 
   relayer-l2-processor:
-    image: nethermind/surge-relayer:sha-4206e2b
+    image: nethermind/surge-relayer:v25.1.1
     container_name: relayer-l2-processor
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]
@@ -261,7 +261,7 @@ services:
       - relayer-l2
 
   relayer-l2-indexer:
-    image: nethermind/surge-relayer:sha-4206e2b
+    image: nethermind/surge-relayer:v25.1.1
     container_name: relayer-l2-indexer
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]

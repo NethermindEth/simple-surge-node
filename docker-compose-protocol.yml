@@ -1,6 +1,6 @@
 services:
   surge-l1-deployer:
-    image: nethermind/surge-protocol:sha-efd2322
+    image: nethermind/surge-protocol:v25.1.1
     container_name: surge-l1-deployer
     pull_policy: always
     volumes:
@@ -30,7 +30,7 @@ services:
       - l1-deployer
 
   surge-proposer-wrapper-deployer:
-    image: nethermind/surge-protocol:sha-efd2322
+    image: nethermind/surge-protocol:v25.1.1
     container_name: surge-proposer-wrapper-deployer
     pull_policy: always
     volumes:
@@ -62,7 +62,7 @@ services:
       - proposer-wrapper-deployer
 
   surge-bond-deposit:
-    image: nethermind/surge-protocol:sha-efd2322
+    image: nethermind/surge-protocol:v25.1.1
     container_name: surge-bond-deposit
     pull_policy: always
     volumes:
@@ -90,7 +90,7 @@ services:
       - bond-deposit
 
   surge-sgx-reth-verifier-setup:
-    image: nethermind/surge-protocol:sha-efd2322
+    image: nethermind/surge-protocol:v25.1.1
     container_name: surge-sgx-reth-verifier-setup
     pull_policy: always
     volumes:
@@ -126,7 +126,7 @@ services:
       - sgx-reth-verifier-setup
 
   surge-sgx-geth-verifier-setup:
-    image: nethermind/surge-protocol:sha-efd2322
+    image: nethermind/surge-protocol:v25.1.1
     container_name: surge-sgx-geth-verifier-setup
     pull_policy: always
     volumes:
@@ -162,7 +162,7 @@ services:
       - sgx-geth-verifier-setup
 
   surge-risc0-verifier-setup:
-    image: nethermind/surge-protocol:sha-efd2322
+    image: nethermind/surge-protocol:v25.1.1
     container_name: surge-risc0-verifier-setup
     pull_policy: always
     volumes:
@@ -195,7 +195,7 @@ services:
       - risc0-verifier-setup
 
   surge-sp1-verifier-setup:
-    image: nethermind/surge-protocol:sha-efd2322
+    image: nethermind/surge-protocol:v25.1.1
     container_name: surge-sp1-verifier-setup
     pull_policy: always
     volumes:
@@ -228,7 +228,7 @@ services:
       - sp1-verifier-setup
 
   surge-l2-deployer:
-    image: nethermind/surge-protocol:sha-efd2322
+    image: nethermind/surge-protocol:v25.1.1
     container_name: surge-l2-deployer
     pull_policy: always
     volumes:
