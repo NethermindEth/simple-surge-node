@@ -227,6 +227,94 @@ services:
     profiles:
       - sp1-verifier-setup
 
+  surge-tdx-verifier-setup:
+    image: nethermind/surge-protocol:sha-93f0d57
+    container_name: surge-tdx-verifier-setup
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/setup-tdx-verifier.sh
+    env_file:
+      - .env
+    environment:
+      FOUNDRY_PROFILE: layer1
+      BROADCAST: ${BROADCAST}
+      VERIFY: ${VERIFY}
+      VERIFY_ARG: ${VERIFY_ARG}
+      TDX_TRUSTED_PARAMS_BYTES: ${TDX_TRUSTED_PARAMS_BYTES}
+      TDX_QUOTE_BYTES: ${TDX_QUOTE_BYTES}
+      TDX_VERIFIER_ADDRESS: ${TDX_NETHERMIND_VERIFIER_ADDRESS}
+      TDX_PCS_DAO_ADDRESS: ${TDX_PCS_DAO_ADDRESS}
+      TDX_FMSPC_TCB_DAO_ADDRESS: ${TDX_FMSPC_TCB_DAO_ADDRESS}
+      TDX_ENCLAVE_IDENTITY_DAO_ADDRESS: ${TDX_ENCLAVE_IDENTITY_DAO_ADDRESS}
+      TDX_ENCLAVE_IDENTITY_HELPER_ADDRESS: ${TDX_ENCLAVE_IDENTITY_HELPER_ADDRESS}
+      TDX_PCS_CERT_PATH: ${TDX_PCS_CERT_PATH}
+      TDX_ROOT_PCS_CERT_PATH: ${TDX_ROOT_PCS_CERT_PATH}
+      TDX_FMSPC: ${TDX_FMSPC}
+      TDX_TCB_LINK: ${TDX_TCB_LINK}
+      TDX_QE_IDENTITY_LINK: ${TDX_QE_IDENTITY_LINK}
+      TDX_QE_IDENTITY_PATH: ${TDX_QE_IDENTITY_PATH}
+      TDX_TCB_INFO_PATH: ${TDX_TCB_INFO_PATH}
+      NEW_OWNER: ${L1_OWNER}
+      FORK_URL: ${L1_ENDPOINT_HTTP}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - tdx-verifier-setup
+
+  surge-azure-tdx-verifier-setup:
+    image: ${SURGE_IMAGE:-nethermind/surge-protocol:sha-93f0d57}
+    container_name: surge-tdx-verifier-setup
+    pull_policy: ${SURGE_PULL_POLICY:-always}
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/setup-azure-tdx-verifier.sh
+    env_file:
+      - .env
+    environment:
+      FOUNDRY_PROFILE: layer1
+      BROADCAST: ${BROADCAST}
+      VERIFY: ${VERIFY}
+      VERIFY_ARG: ${VERIFY_ARG}
+      AZURE_TDX_TRUSTED_PARAMS_BYTES: ${AZURE_TDX_TRUSTED_PARAMS_BYTES}
+      AZURE_TDX_QUOTE_BYTES: ${AZURE_TDX_QUOTE_BYTES}
+      AZURE_TDX_VERIFIER_ADDRESS: ${AZURE_TDX_NETHERMIND_VERIFIER_ADDRESS}
+      TDX_PCS_DAO_ADDRESS: ${TDX_PCS_DAO_ADDRESS}
+      TDX_FMSPC_TCB_DAO_ADDRESS: ${TDX_FMSPC_TCB_DAO_ADDRESS}
+      TDX_ENCLAVE_IDENTITY_DAO_ADDRESS: ${TDX_ENCLAVE_IDENTITY_DAO_ADDRESS}
+      TDX_ENCLAVE_IDENTITY_HELPER_ADDRESS: ${TDX_ENCLAVE_IDENTITY_HELPER_ADDRESS}
+      AZURE_TDX_PCS_CERT_PATH: ${AZURE_TDX_PCS_CERT_PATH}
+      AZURE_TDX_ROOT_PCS_CERT_PATH: ${AZURE_TDX_ROOT_PCS_CERT_PATH}
+      AZURE_TDX_FMSPC: ${AZURE_TDX_FMSPC}
+      AZURE_TDX_TCB_LINK: ${AZURE_TDX_TCB_LINK}
+      AZURE_TDX_QE_IDENTITY_LINK: ${AZURE_TDX_QE_IDENTITY_LINK}
+      AZURE_TDX_QE_IDENTITY_PATH: ${AZURE_TDX_QE_IDENTITY_PATH}
+      AZURE_TDX_TCB_INFO_PATH: ${AZURE_TDX_TCB_INFO_PATH}
+      NEW_OWNER: ${L1_OWNER}
+      FORK_URL: ${L1_ENDPOINT_HTTP}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - azure-tdx-verifier-setup
+
   surge-l2-deployer:
     image: nethermind/surge-protocol:v25.1.1
     container_name: surge-l2-deployer
