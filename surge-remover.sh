@@ -72,9 +72,13 @@ remove_db() {
     fi
 
     # Recreate .gitkeep files
+    mkdir -p ./execution-data
     touch ./execution-data/.gitkeep
+    mkdir -p ./blockscout-postgres-data
     touch ./blockscout-postgres-data/.gitkeep
+    mkdir -p ./mysql-data
     touch ./mysql-data/.gitkeep
+    mkdir -p ./rabbitmq
     touch ./rabbitmq/.gitkeep
 
     echo
