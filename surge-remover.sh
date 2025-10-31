@@ -2,6 +2,11 @@
 
 set -e
 
+NON_INTERACTIVE=false
+if [ "$1" = "--devnet-non-interactive" ]; then
+  NON_INTERACTIVE=true
+fi
+
 remove_l2_stack() {
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
@@ -49,11 +54,32 @@ remove_db() {
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 
-    # Remove DB
-    rm -rf ./execution-data
-    rm -rf ./blockscout-postgres-data
-    rm -rf ./mysql-data
-    rm -rf ./rabbitmq
+    # Remove DB contents but preserve directory structure with .gitkeep
+    if [ -d "./execution-data" ] && [ -n "$(ls -A ./execution-data 2>/dev/null)" ]; then
+        rm -rf ./execution-data/* || echo "Warning: Could not remove some execution-data files"
+    fi
+
+    if [ -d "./blockscout-postgres-data" ] && [ -n "$(ls -A ./blockscout-postgres-data 2>/dev/null)" ]; then
+        rm -rf ./blockscout-postgres-data/* || echo "Warning: Could not remove some blockscout-postgres-data files"
+    fi
+
+    if [ -d "./mysql-data" ] && [ -n "$(ls -A ./mysql-data 2>/dev/null)" ]; then
+        rm -rf ./mysql-data/* || echo "Warning: Could not remove some mysql-data files"
+    fi
+
+    if [ -d "./rabbitmq" ] && [ -n "$(ls -A ./rabbitmq 2>/dev/null)" ]; then
+        rm -rf ./rabbitmq/* || echo "Warning: Could not remove some rabbitmq files"
+    fi
+
+    # Recreate .gitkeep files
+    mkdir -p ./execution-data
+    touch ./execution-data/.gitkeep
+    mkdir -p ./blockscout-postgres-data
+    touch ./blockscout-postgres-data/.gitkeep
+    mkdir -p ./mysql-data
+    touch ./mysql-data/.gitkeep
+    mkdir -p ./rabbitmq
+    touch ./rabbitmq/.gitkeep
 
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
