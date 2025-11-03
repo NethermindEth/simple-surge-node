@@ -186,7 +186,7 @@ services:
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]
     ports:
-      - 4103:4103
+      - 4103:4102
       - 6066:6066
     extra_hosts:
       - "host.docker.internal:host-gateway"
