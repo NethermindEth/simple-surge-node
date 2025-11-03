@@ -52,6 +52,10 @@ if [ "$ENABLE_PROPOSER" = "true" ]; then
         ARGS="${ARGS} --epoch.minProposingInterval ${EPOCH_MIN_PROPOSING_INTERVAL}"
     fi
 
+    if [ -n "$SIGNAL_FORCE_PROPOSING_DELAY" ]; then
+        ARGS="${ARGS} --signal.forceProposingDelay ${SIGNAL_FORCE_PROPOSING_DELAY}"
+    fi
+
     if [ -n "$EPOCH_ALLOW_ZERO_TIP_INTERVAL" ]; then
         ARGS="${ARGS} --epoch.allowZeroTipInterval ${EPOCH_ALLOW_ZERO_TIP_INTERVAL}"
     fi
