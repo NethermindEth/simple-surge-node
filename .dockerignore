@@ -1,0 +1,27 @@
+# Exclude database and execution data directories from Docker build context
+blockscout-postgres-data/
+execution-data/
+blockscout-db-data/
+mysql-data/
+rabbitmq/
+
+# Exclude git directory
+.git/
+.gitmodules
+
+# Exclude deployment artifacts
+deployment/
+
+# Exclude environment files
+.env
+.env.*
+
+# Exclude docker compose files (not needed in build context)
+docker-compose*.yml
+
+# Exclude any other data directories
+*-data/
+data/
+
+# Exclude temporary files
+tmp/

@@ -256,6 +256,8 @@ services:
   blockscout-postgres:
     image: postgres:alpine
     container_name: l2-blockscout-postgres
+    # Only set user if DOCKER_USER is explicitly provided (local dev), not in CI
+    user: "${DOCKER_USER:-}"
     restart: unless-stopped
     pull_policy: always
     volumes:

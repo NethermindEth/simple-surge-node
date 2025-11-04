@@ -4,20 +4,36 @@ set -e
 
 git submodule update --init --recursive
 
-# Select which Surge environment to use
-echo
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "  ⚠️ Select which Surge environment to use:                     "
-echo "║══════════════════════════════════════════════════════════════║"
-echo "║ 1 for Devnet                                                 ║"
-echo "║ 2 for Staging                                                ║"
-echo "║ 3 for Testnet                                                ║"
-echo "║ [default: Devnet]                                            ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
-echo
-read -r surge_environment
+NON_INTERACTIVE=false
+if [ "$1" = "--devnet-non-interactive" ]; then
+  NON_INTERACTIVE=true
+fi
 
-SURGE_ENVIRONMENT=${surge_environment:-1}
+# Export DOCKER_USER for local development to avoid permission issues with database containers
+# In CI (NON_INTERACTIVE=true), this remains unset so containers run as root for proper initialization
+if [ "$NON_INTERACTIVE" = "false" ] && [ -z "$DOCKER_USER" ]; then
+  export DOCKER_USER="$(id -u):$(id -g)"
+fi
+
+if [ "$NON_INTERACTIVE" = "true" ]; then
+  SURGE_ENVIRONMENT=1
+  REMOTE_OR_LOCAL=0
+else
+  # Select which Surge environment to use
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "  ⚠️ Select which Surge environment to use:                     "
+  echo "║══════════════════════════════════════════════════════════════║"
+  echo "║ 1 for Devnet                                                 ║"
+  echo "║ 2 for Staging                                                ║"
+  echo "║ 3 for Testnet                                                ║"
+  echo "║ [default: Devnet]                                            ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  read -r surge_environment
+
+  SURGE_ENVIRONMENT=${surge_environment:-1}
+fi
 
 if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   echo
@@ -26,19 +42,21 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 
-  # Select remote or local
-  echo
-  echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "  ⚠️ Select remote or local:                                    "
-  echo "║══════════════════════════════════════════════════════════════║"
-  echo "║ 0 for local                                                  ║"
-  echo "║ 1 for remote                                                 ║"
-  echo "║ [default: local]                                             ║"
-  echo "╚══════════════════════════════════════════════════════════════╝"
-  echo
-  read -r remote_or_local
+  if [ "$NON_INTERACTIVE" = "false" ]; then
+    # Select remote or local
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "  ⚠️ Select remote or local:                                    "
+    echo "║══════════════════════════════════════════════════════════════║"
+    echo "║ 0 for local                                                  ║"
+    echo "║ 1 for remote                                                 ║"
+    echo "║ [default: local]                                             ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    read -r remote_or_local
 
-REMOTE_OR_LOCAL=${remote_or_local:-0}
+    REMOTE_OR_LOCAL=${remote_or_local:-0}
+  fi
   if [ "$REMOTE_OR_LOCAL" = "1" ]; then
     # Select which devnet machine to use
     echo
@@ -344,17 +362,21 @@ deploy_l1() {
 
   # Check if deployment is already completed
   if [ -f "deployment/deploy_l1.json" ]; then
-    # Prompt user for starting a new deployment if the deployment results are already present
-    echo
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "  ⚠️ Surge L1 deployment already completed                      "
-    echo "  (deploy_l1.json exists)                                       "
-    echo "║══════════════════════════════════════════════════════════════║"
-    echo "║ Start a new deployment? (true/false) [default: false]        ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo
-    read -r start_new_deployment
-    START_NEW_DEPLOYMENT=${start_new_deployment:-false}
+    if [ "$NON_INTERACTIVE" = "true" ]; then
+      START_NEW_DEPLOYMENT=false
+    else
+      # Prompt user for starting a new deployment if the deployment results are already present
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "  ⚠️ Surge L1 deployment already completed                      "
+      echo "  (deploy_l1.json exists)                                       "
+      echo "║══════════════════════════════════════════════════════════════║"
+      echo "║ Start a new deployment? (true/false) [default: false]        ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      read -r start_new_deployment
+      START_NEW_DEPLOYMENT=${start_new_deployment:-false}
+    fi
 
     if [ "$START_NEW_DEPLOYMENT" = "true" ]; then
       echo
@@ -400,15 +422,19 @@ deploy_l1() {
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 
-  # Prompt user for USE_TIMELOCKED_OWNER with default to false
-  echo
-  echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ Use timelocked owner? (true/false) [default: false]          ║"
-  echo "╚══════════════════════════════════════════════════════════════╝"
-  echo
-  read -r timelocked_owner
+  if [ "$NON_INTERACTIVE" = "true" ]; then
+    export USE_TIMELOCKED_OWNER=false
+  else
+    # Prompt user for USE_TIMELOCKED_OWNER with default to false
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║ Use timelocked owner? (true/false) [default: false]          ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    read -r timelocked_owner
 
-  export USE_TIMELOCKED_OWNER=${timelocked_owner:-false}
+    export USE_TIMELOCKED_OWNER=${timelocked_owner:-false}
+  fi
 
   # Update USE_TIMELOCKED_OWNER in env file for other functions and scripts to use
   update_env_var ".env" "USE_TIMELOCKED_OWNER" "$USE_TIMELOCKED_OWNER"
@@ -569,15 +595,19 @@ extract_surge_proposer_wrapper() {
 }
 
 deploy_provers() {
-  # Prompt user for RUNNING_PROVERS with default to false
-  echo
-  echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ Running provers? (true/false) [default: false]               ║"
-  echo "╚══════════════════════════════════════════════════════════════╝"
-  echo
-  read -r running_provers
+  if [ "$NON_INTERACTIVE" = "true" ]; then
+    RUNNING_PROVERS=false
+  else
+    # Prompt user for RUNNING_PROVERS with default to false
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║ Running provers? (true/false) [default: false]               ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    read -r running_provers
 
-  RUNNING_PROVERS=${running_provers:-false}
+    RUNNING_PROVERS=${running_provers:-false}
+  fi
 
   # If running provers is true, set up the verifiers
   if [ "$RUNNING_PROVERS" = "true" ]; then
@@ -783,26 +813,34 @@ deposit_bond() {
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 
-  # Prompt user for deposit bond
-  echo
-  echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ Deposit bond? (true/false) [default: true]                   ║"
-  echo "╚══════════════════════════════════════════════════════════════╝"
-  echo
-  read -r deposit_bond
-
-  DEPOSIT_BOND=${deposit_bond:-true}
-
-  if [ "$DEPOSIT_BOND" = "true" ]; then
-    # Prompt user for BOND_AMOUNT
+  if [ "$NON_INTERACTIVE" = "true" ]; then
+    DEPOSIT_BOND=true
+  else
+    # Prompt user for deposit bond
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ Enter bond amount (in ETH, default: 1000)                    ║"
+    echo "║ Deposit bond? (true/false) [default: true]                   ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
-    read -r bond_amount
+    read -r deposit_bond
 
-    BOND_AMOUNT=${bond_amount:-1000}
+    DEPOSIT_BOND=${deposit_bond:-true}
+  fi
+
+  if [ "$DEPOSIT_BOND" = "true" ]; then
+    if [ "$NON_INTERACTIVE" = "true" ]; then
+      BOND_AMOUNT=1000
+    else
+      # Prompt user for BOND_AMOUNT
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ Enter bond amount (in ETH, default: 1000)                    ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+      read -r bond_amount
+
+      BOND_AMOUNT=${bond_amount:-1000}
+    fi
 
     # Convert to wei
     export BOND_AMOUNT=$(echo "$BOND_AMOUNT * 1000000000000000000" | bc | cut -d. -f1)
