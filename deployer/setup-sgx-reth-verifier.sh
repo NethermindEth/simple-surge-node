@@ -33,7 +33,7 @@ echo
 
 ./script/layer1/surge/setup_sgx_verifier.sh
 
-cp /app/deployments/sgx_instances.json /deployment/sgx_instances.json
+cp /app/deployments/sgx_instances.json /deployment/sgx_geth_instances.json
 
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
