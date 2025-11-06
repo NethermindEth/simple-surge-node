@@ -30,8 +30,14 @@ check_env_file() {
 }
 
 prepare_blockscout_for_remote() {
-  # Get the machine's IP address using ip command (works on Ubuntu)
-  export MACHINE_IP=$(ip route get 1.1.1.1 | grep -oP 'src \K\S+' | head -n1)
+  # Get the machine's public IP address using ifconfig.me
+  export MACHINE_IP=$(curl -4 -s ifconfig.me 2>/dev/null)
+
+  # Fallback to ip route method if curl fails
+  if [ -z "$MACHINE_IP" ]; then
+    echo "  ⚠️  Warning: Could not get public IP from ifconfig.me, using local IP..."
+    MACHINE_IP=$(ip route get 1.1.1.1 | grep -oP 'src \K\S+' | head -n1)
+  fi
 
   # Fallback to hostname -I if ip route doesn't work
   if [ -z "$MACHINE_IP" ]; then
@@ -78,24 +84,25 @@ read -r surge_environment
 
 SURGE_ENVIRONMENT=${surge_environment:-1}
 
-# Select remote or local
+# Select deployment type
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "  ⚠️ Select remote or local:                                    "
+echo "  ⚠️ Select deployment type:                                    "
 echo "║══════════════════════════════════════════════════════════════║"
-echo "║  0 for local                                                 ║"
-echo "║  1 for remote                                                ║"
-echo "║ [default: local]                                             ║"
+echo "║  0 - Local devnet at localhost                              ║"
+echo "║  1 - Local devnet at VM with public IP                     ║"
+echo "║  2 - Remote existing devnet                                  ║"
+echo "║  [default: Local]                                            ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo
-read -r remote_or_local 
+read -r remote_or_local
 
 REMOTE_OR_LOCAL=${remote_or_local:-0}
 
 if [ "$REMOTE_OR_LOCAL" = "1" ]; then
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ Setting up remote environment...                             ║"
+  echo "║ Setting up VM with public IP for bridge-ui...                ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
   prepare_blockscout_for_remote
@@ -109,15 +116,43 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   echo
   check_env_file
 
-  if [ "$REMOTE_OR_LOCAL" = "1" ]; then
-    # Select which devnet machine to use
+  if [ "$REMOTE_OR_LOCAL" = "0" ]; then
+    # Option 0: Local deployment - surge stack on localhost
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "  ⚠️ Select which devnet machine to use:                        "
+    echo "  🚀 Local deployment (localhost)                              "
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    export L1_RPC="http://localhost:32003"
+    export L1_BEACON_RPC="http://localhost:33001"
+    export L1_EXPLORER="http://localhost:36005"
+    export L2_RPC="http://localhost:${L2_HTTP_PORT:-8547}"
+    export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+    export L1_RELAYER="http://localhost:4102"
+    export L2_RELAYER="http://localhost:4103"
+  elif [ "$REMOTE_OR_LOCAL" = "1" ]; then
+    # Option 1: VM with public IP - for bridge-ui remote access
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "  🚀 Local devnet with public IP                               "
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    export L1_RPC="http://localhost:32003"
+    export L1_BEACON_RPC="http://localhost:33001"
+    export L1_EXPLORER="http://localhost:36005"
+    export L2_RPC="http://localhost:${L2_HTTP_PORT:-8547}"
+    export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+    export L1_RELAYER="http://localhost:4102"
+    export L2_RELAYER="http://localhost:4103"
+  elif [ "$REMOTE_OR_LOCAL" = "2" ]; then
+    # Option 2: Remote deployment - connect to existing devnet infrastructure
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "  ⚠️ Select which devnet to use:                               "
     echo "║══════════════════════════════════════════════════════════════║"
-    echo "║ 1 for Devnet 1 (prover)                                     ║"
-    echo "║ 2 for Devnet 2 (taiko-client)                               ║"
-    echo "║ [default: others]                                            ║"
+    echo "║ 1 - Devnet 1 (devnet-one.surge.wtf)                         ║"
+    echo "║ 2 - Devnet 2 (devnet-two.surge.wtf)                         ║"
+    echo "║ [default: Other VM with public IP]                          ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
     read -r devnet_machine
@@ -127,7 +162,7 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
     if [ "$devnet_machine" = "1" ]; then
       echo
       echo "╔══════════════════════════════════════════════════════════════╗"
-      echo "  🚀 Using Devnet 1 (prover)                                    "
+      echo "  🚀 Using Devnet 1 (devnet-one.surge.wtf)                     "
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo
       export L1_RPC="https://devnet-one.surge.wtf/l1-rpc"
@@ -140,7 +175,7 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
     elif [ "$devnet_machine" = "2" ]; then
       echo
       echo "╔══════════════════════════════════════════════════════════════╗"
-      echo "  🚀 Using Devnet 2 (taiko-client)                             "
+      echo "  🚀 Using Devnet 2 (devnet-two.surge.wtf)                     "
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo
       export L1_RPC="https://devnet-two.surge.wtf/l1-rpc"
@@ -151,11 +186,39 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
       export L1_RELAYER="https://devnet-two.surge.wtf/l1-relayer"
       export L2_RELAYER="https://devnet-two.surge.wtf/l2-relayer"
     else
+      # Get public IP for "others" option
       echo
       echo "╔══════════════════════════════════════════════════════════════╗"
-      echo "  🚀 Using others                                              "
+      echo "║ Detecting public IP for remote VM...                         ║"
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo
+
+      export MACHINE_IP=$(curl -4 -s ifconfig.me 2>/dev/null)
+
+      if [ -z "$MACHINE_IP" ]; then
+        echo "  ⚠️  Warning: Could not get public IP from ifconfig.me, using local IP..."
+        MACHINE_IP=$(ip route get 1.1.1.1 | grep -oP 'src \K\S+' | head -n1)
+      fi
+
+      if [ -z "$MACHINE_IP" ]; then
+        MACHINE_IP=$(hostname -I | awk '{print $1}')
+      fi
+
+      if [ -z "$MACHINE_IP" ]; then
+        echo
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "  ❌ Error: Could not determine machine IP address              "
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        echo
+        exit 1
+      fi
+
+      echo
+      echo "╔══════════════════════════════════════════════════════════════╗"
+      echo "║ Using VM with IP: $MACHINE_IP                                ║"
+      echo "╚══════════════════════════════════════════════════════════════╝"
+      echo
+
       export L1_RPC="http://$MACHINE_IP:32003"
       export L1_BEACON_RPC="http://$MACHINE_IP:33001"
       export L1_EXPLORER="http://$MACHINE_IP:36005"
@@ -163,20 +226,11 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
       export L2_EXPLORER="http://$MACHINE_IP:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
       export L1_RELAYER="http://$MACHINE_IP:4102"
       export L2_RELAYER="http://$MACHINE_IP:4103"
+
+      # Update .env file with machine IP for blockscout
+      sed -i.bak 's/^BLOCKSCOUT_API_HOST=.*/BLOCKSCOUT_API_HOST='$MACHINE_IP'/g' .env
+      sed -i.bak 's/^BLOCKSCOUT_L2_HOST=.*/BLOCKSCOUT_L2_HOST='$MACHINE_IP'/g' .env
     fi
-  else
-    echo
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "  🚀 Using local environment                                    "
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo
-    export L1_RPC="http://localhost:32003"
-    export L1_BEACON_RPC="http://localhost:33001"
-    export L1_EXPLORER="http://localhost:36005"
-    export L2_RPC="http://localhost:${L2_HTTP_PORT:-8547}"
-    export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
-    export L1_RELAYER="http://localhost:4102"
-    export L2_RELAYER="http://localhost:4103"
   fi
 
 elif [ "$SURGE_ENVIRONMENT" = "2" ]; then
@@ -325,7 +379,17 @@ prepare_bridge_ui_configs() {
   echo "║ Preparing Bridge UI configs...                               ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
-  
+
+  # Replace localhost with MACHINE_IP in URLs if MACHINE_IP is set (remote deployment)
+  if [ -n "$MACHINE_IP" ]; then
+    L1_RPC=$(echo "$L1_RPC" | sed "s/localhost/$MACHINE_IP/g")
+    L2_RPC=$(echo "$L2_RPC" | sed "s/localhost/$MACHINE_IP/g")
+    L1_EXPLORER=$(echo "$L1_EXPLORER" | sed "s/localhost/$MACHINE_IP/g")
+    L2_EXPLORER=$(echo "$L2_EXPLORER" | sed "s/localhost/$MACHINE_IP/g")
+    L1_RELAYER=$(echo "$L1_RELAYER" | sed "s/localhost/$MACHINE_IP/g")
+    L2_RELAYER=$(echo "$L2_RELAYER" | sed "s/localhost/$MACHINE_IP/g")
+  fi
+
   # Generate configuredBridges.json
   cat > configs/configuredBridges.json << EOF
 {
@@ -464,6 +528,23 @@ EOF
   echo "║  - configs/configuredRelayer.json                            ║"
   echo "║  - configs/configuredEventIndexer.json                       ║"
   echo "║  - configs/configuredCustomTokens.json                       ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  # Determine Bridge UI URL
+  if [ -n "$MACHINE_IP" ]; then
+    BRIDGE_UI_URL="http://$MACHINE_IP:3002"
+  else
+    BRIDGE_UI_URL="http://localhost:3002"
+  fi
+
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo " 🌐 Bridge UI Configuration:                                    "
+  echo "║══════════════════════════════════════════════════════════════║"
+  echo "║  Bridge UI: $BRIDGE_UI_URL"
+  echo "║  L1 RPC: $L1_RPC"
+  echo "║  L2 RPC: $L2_RPC"
+  echo "║  L1 Relayer: $L1_RELAYER"
+  echo "║  L2 Relayer: $L2_RELAYER"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 }
