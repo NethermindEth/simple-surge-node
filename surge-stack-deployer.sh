@@ -30,8 +30,14 @@ check_env_file() {
 }
 
 prepare_blockscout_for_remote() {
-  # Get the machine's IP address using ip command (works on Ubuntu)
-  export MACHINE_IP=$(ip route get 1.1.1.1 | grep -oP 'src \K\S+' | head -n1)
+  # Get the machine's public IP address using ifconfig.me
+  export MACHINE_IP=$(curl -4 -s ifconfig.me 2>/dev/null)
+
+  # Fallback to ip route method if curl fails
+  if [ -z "$MACHINE_IP" ]; then
+    echo "  ⚠️  Warning: Could not get public IP from ifconfig.me, using local IP..."
+    MACHINE_IP=$(ip route get 1.1.1.1 | grep -oP 'src \K\S+' | head -n1)
+  fi
 
   # Fallback to hostname -I if ip route doesn't work
   if [ -z "$MACHINE_IP" ]; then
@@ -325,7 +331,17 @@ prepare_bridge_ui_configs() {
   echo "║ Preparing Bridge UI configs...                               ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
-  
+
+  # Replace localhost with MACHINE_IP in URLs if MACHINE_IP is set (remote deployment)
+  if [ -n "$MACHINE_IP" ]; then
+    L1_RPC=$(echo "$L1_RPC" | sed "s/localhost/$MACHINE_IP/g")
+    L2_RPC=$(echo "$L2_RPC" | sed "s/localhost/$MACHINE_IP/g")
+    L1_EXPLORER=$(echo "$L1_EXPLORER" | sed "s/localhost/$MACHINE_IP/g")
+    L2_EXPLORER=$(echo "$L2_EXPLORER" | sed "s/localhost/$MACHINE_IP/g")
+    L1_RELAYER=$(echo "$L1_RELAYER" | sed "s/localhost/$MACHINE_IP/g")
+    L2_RELAYER=$(echo "$L2_RELAYER" | sed "s/localhost/$MACHINE_IP/g")
+  fi
+
   # Generate configuredBridges.json
   cat > configs/configuredBridges.json << EOF
 {
@@ -464,6 +480,15 @@ EOF
   echo "║  - configs/configuredRelayer.json                            ║"
   echo "║  - configs/configuredEventIndexer.json                       ║"
   echo "║  - configs/configuredCustomTokens.json                       ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo " 🌐 Bridge UI URLs:                                             "
+  echo "║══════════════════════════════════════════════════════════════║"
+  echo "║  L1 RPC: $L1_RPC"
+  echo "║  L2 RPC: $L2_RPC"
+  echo "║  L1 Relayer: $L1_RELAYER"
+  echo "║  L2 Relayer: $L2_RELAYER"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 }
