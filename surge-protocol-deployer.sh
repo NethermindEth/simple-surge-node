@@ -83,16 +83,16 @@ REMOTE_OR_LOCAL=${remote_or_local:-0}
     else
       echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "  🚀 Using others                                               "
+    echo "  🚀 Using local devnet                                        "
     echo "╚══════════════════════════════════════════════════════════════╝"
       echo
-      export L1_RPC="http://$MACHINE_IP:32003"
-      export L1_BEACON_RPC="http://$MACHINE_IP:33001"
-      export L1_EXPLORER="http://$MACHINE_IP:36005"
-      export L2_RPC="http://$MACHINE_IP:${L2_HTTP_PORT:-8547}"
-      export L2_EXPLORER="http://$MACHINE_IP:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
-      export L1_RELAYER="http://$MACHINE_IP:4102"
-      export L2_RELAYER="http://$MACHINE_IP:4103"
+      export L1_RPC="http://localhost:32003"
+      export L1_BEACON_RPC="http://localhost:33001"
+      export L1_EXPLORER="http://localhost:36005"
+      export L2_RPC="http://localhost:${L2_HTTP_PORT:-8547}"
+      export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+      export L1_RELAYER="http://localhost:4102"
+      export L2_RELAYER="http://localhost:4103"
     fi
   else
     echo
