@@ -2,3 +2,8 @@
 	path = surge-taiko-mono
 	url = https://github.com/NethermindEth/surge-taiko-mono.git
 	branch = main
+
+[submodule "surge-ethereum-package"]
+	path = surge-ethereum-package
+	url = https://github.com/NethermindEth/surge-ethereum-package.git
+	branch = main
