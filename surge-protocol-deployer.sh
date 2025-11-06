@@ -26,14 +26,14 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
 
-  # Select remote or local
+  # Select deployment target
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "  ⚠️ Select remote or local:                                    "
+  echo "  ⚠️ Deploy to local or remote devnet?                         "
   echo "║══════════════════════════════════════════════════════════════║"
-  echo "║ 0 for local                                                  ║"
-  echo "║ 1 for remote                                                 ║"
-  echo "║ [default: local]                                             ║"
+  echo "║  0 - Local devnet                                            ║"
+  echo "║  1 - Remote existing devnet                                  ║"
+  echo "║  [default: Local]                                            ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
   read -r remote_or_local
@@ -97,7 +97,7 @@ REMOTE_OR_LOCAL=${remote_or_local:-0}
   else
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "  🚀 Using local environment                                    "
+    echo "  🚀 Local devnet deployment                                   "
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
     export L1_RPC="http://localhost:32003"

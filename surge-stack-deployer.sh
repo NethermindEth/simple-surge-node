@@ -84,24 +84,25 @@ read -r surge_environment
 
 SURGE_ENVIRONMENT=${surge_environment:-1}
 
-# Select remote or local
+# Select deployment type
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "  ⚠️ Select remote or local:                                    "
+echo "  ⚠️ Select deployment type:                                    "
 echo "║══════════════════════════════════════════════════════════════║"
-echo "║  0 for local                                                 ║"
-echo "║  1 for remote                                                ║"
-echo "║ [default: local]                                             ║"
+echo "║  0 - Local (surge stack on localhost)                       ║"
+echo "║  1 - VM with public IP (for bridge-ui remote access)        ║"
+echo "║  2 - Remote existing devnet                                  ║"
+echo "║  [default: Local]                                            ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo
-read -r remote_or_local 
+read -r remote_or_local
 
 REMOTE_OR_LOCAL=${remote_or_local:-0}
 
 if [ "$REMOTE_OR_LOCAL" = "1" ]; then
   echo
   echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║ Setting up remote environment...                             ║"
+  echo "║ Setting up VM with public IP for bridge-ui...                ║"
   echo "╚══════════════════════════════════════════════════════════════╝"
   echo
   prepare_blockscout_for_remote
@@ -115,8 +116,36 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
   echo
   check_env_file
 
-  if [ "$REMOTE_OR_LOCAL" = "1" ]; then
-    # Select which devnet machine to use
+  if [ "$REMOTE_OR_LOCAL" = "0" ]; then
+    # Option 0: Local deployment - surge stack on localhost
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "  🚀 Local deployment (localhost)                              "
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    export L1_RPC="http://localhost:32003"
+    export L1_BEACON_RPC="http://localhost:33001"
+    export L1_EXPLORER="http://localhost:36005"
+    export L2_RPC="http://localhost:${L2_HTTP_PORT:-8547}"
+    export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+    export L1_RELAYER="http://localhost:4102"
+    export L2_RELAYER="http://localhost:4103"
+  elif [ "$REMOTE_OR_LOCAL" = "1" ]; then
+    # Option 1: VM with public IP - for bridge-ui remote access
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "  🚀 Local devnet with public IP                               "
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    export L1_RPC="http://localhost:32003"
+    export L1_BEACON_RPC="http://localhost:33001"
+    export L1_EXPLORER="http://localhost:36005"
+    export L2_RPC="http://localhost:${L2_HTTP_PORT:-8547}"
+    export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+    export L1_RELAYER="http://localhost:4102"
+    export L2_RELAYER="http://localhost:4103"
+  elif [ "$REMOTE_OR_LOCAL" = "2" ]; then
+    # Option 2: Remote deployment - connect to existing devnet infrastructure
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
     echo "  ⚠️ Select which devnet machine to use:                        "
@@ -162,27 +191,14 @@ if [ "$SURGE_ENVIRONMENT" = "1" ]; then
       echo "  🚀 Using others                                              "
       echo "╚══════════════════════════════════════════════════════════════╝"
       echo
-      export L1_RPC="http://$MACHINE_IP:32003"
-      export L1_BEACON_RPC="http://$MACHINE_IP:33001"
-      export L1_EXPLORER="http://$MACHINE_IP:36005"
-      export L2_RPC="http://$MACHINE_IP:${L2_HTTP_PORT:-8547}"
-      export L2_EXPLORER="http://$MACHINE_IP:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
-      export L1_RELAYER="http://$MACHINE_IP:4102"
-      export L2_RELAYER="http://$MACHINE_IP:4103"
+      export L1_RPC="http://localhost:32003"
+      export L1_BEACON_RPC="http://localhost:33001"
+      export L1_EXPLORER="http://localhost:36005"
+      export L2_RPC="http://localhost:${L2_HTTP_PORT:-8547}"
+      export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+      export L1_RELAYER="http://localhost:4102"
+      export L2_RELAYER="http://localhost:4103"
     fi
-  else
-    echo
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "  🚀 Using local environment                                    "
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo
-    export L1_RPC="http://localhost:32003"
-    export L1_BEACON_RPC="http://localhost:33001"
-    export L1_EXPLORER="http://localhost:36005"
-    export L2_RPC="http://localhost:${L2_HTTP_PORT:-8547}"
-    export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
-    export L1_RELAYER="http://localhost:4102"
-    export L2_RELAYER="http://localhost:4103"
   fi
 
 elif [ "$SURGE_ENVIRONMENT" = "2" ]; then
