@@ -1,0 +1,69 @@
+# Data directories
+execution-data
+mysql-data
+blockscout-postgres-data
+
+# Git
+.git
+.gitignore
+.gitmodules
+
+# Node modules
+**/node_modules
+**/dist
+**/.next
+**/.svelte-kit
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+**/build
+**/target
+**/out
+
+# Logs
+**/*.log
+**/logs
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# CI/CD
+.github
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deployment files
+deployment
+deployer
+
+# Scripts
+*.sh
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+# Documentation
+*.md
+LICENSE*
+
+# RabbitMQ and other service data
+rabbitmq
+grafana
+prometheus
