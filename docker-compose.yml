@@ -297,6 +297,10 @@ services:
       - ${VERIFIER_PORT}:${VERIFIER_PORT}
     environment:
       SMART_CONTRACT_VERIFIER__SERVER__HTTP__ADDR: 0.0.0.0:${VERIFIER_PORT}
+      SMART_CONTRACT_VERIFIER__SOLIDITY__FETCHER__LIST__LIST_URL: "https://binaries.soliditylang.org/linux-amd64/list.json"
+      SMART_CONTRACT_VERIFIER__ZKSYNC_SOLIDITY__EVM_FETCHER__LIST__LIST_URL: "https://binaries.soliditylang.org/linux-amd64/list.json"
+      SMART_CONTRACT_VERIFIER__ZKSYNC_SOLIDITY__ERA_EVM_FETCHER__LIST__LIST_URL: "https://raw.githubusercontent.com/blockscout/solc-bin/main/era-solidity.linux-amd64.list.json"
+      SMART_CONTRACT_VERIFIER__ZKSYNC_SOLIDITY__ZK_FETCHER__LIST__LIST_URL: "https://raw.githubusercontent.com/blockscout/solc-bin/main/zksolc.linux-amd64.list.json"
       PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       APP_USER: app
     extra_hosts:
