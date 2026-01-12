@@ -1,6 +1,75 @@
 services:
+  surge-l1-unified-deployer:
+    image: nethermind/surge-protocol:sha-b0dfa9d
+    container_name: surge-l1-unified-deployer
+    pull_policy: always
+    volumes:
+      - ./script/protocol:/script/protocol
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /script/protocol/deploy-surge-full.sh
+    env_file:
+      - .env
+    environment:
+      FOUNDRY_PROFILE: layer1
+      BROADCAST: ${BROADCAST}
+      VERIFY: ${VERIFY}
+      VERIFY_ARG: ${VERIFY_ARG}
+      FORK_URL: ${L1_ENDPOINT_HTTP}
+      CONTRACT_OWNER: ${PUBLIC_KEY}
+      PRIVATE_KEY: ${PRIVATE_KEY}
+      DEPOSIT_BOND: ${DEPOSIT_BOND:-false}
+      BOND_AMOUNT: ${BOND_AMOUNT:-1000000000000000000000}
+      SURGE_PROPOSER_WRAPPER: ${SURGE_PROPOSER_WRAPPER}
+      ADMIN: ${PUBLIC_KEY}
+      TAIKO_INBOX: ${TAIKO_INBOX}
+      BLOCK_GAS_LIMIT: ${BLOCK_GAS_LIMIT}
+      LOG_LEVEL: ${LOG_LEVEL}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - l1-unified-deployer
+
+  pacaya-deployer:
+    image: nethermind/catalyst-taiko-protocol:taiko-alethia-protocol-v2.3.1-new
+    container_name: pacaya-deployer
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/deploy-pacaya.sh
+    env_file:
+      - .env
+    environment:
+      FOUNDRY_PROFILE: layer1
+      BROADCAST: ${BROADCAST}
+      VERIFY: ${VERIFY}
+      VERIFY_ARG: ${VERIFY_ARG}
+      FORK_URL: ${L1_ENDPOINT_HTTP}
+      CONTRACT_OWNER: ${PUBLIC_KEY}
+      PRIVATE_KEY: ${PRIVATE_KEY}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - pacaya-deployer
+
   surge-l1-deployer:
-    image: nethermind/surge-protocol:v25.1.1
+    image: nethermind/surge-protocol:sha-b0dfa9d
     container_name: surge-l1-deployer
     pull_policy: always
     volumes:
@@ -17,8 +86,9 @@ services:
       BROADCAST: ${BROADCAST}
       VERIFY: ${VERIFY}
       VERIFY_ARG: ${VERIFY_ARG}
-      USE_TIMELOCKED_OWNER: ${USE_TIMELOCKED_OWNER}
       FORK_URL: ${L1_ENDPOINT_HTTP}
+      CONTRACT_OWNER: ${PUBLIC_KEY}
+      PRIVATE_KEY: ${PRIVATE_KEY}
     networks:
       - surge
     extra_hosts:
@@ -29,9 +99,9 @@ services:
     profiles:
       - l1-deployer
 
-  surge-proposer-wrapper-deployer:
-    image: nethermind/surge-protocol:v25.1.1
-    container_name: surge-proposer-wrapper-deployer
+  surge-genesis-generator:
+    image: nethermind/surge-protocol:sha-b0dfa9d
+    container_name: surge-genesis-generator
     pull_policy: always
     volumes:
       - ./deployer:/deployer
@@ -39,18 +109,16 @@ services:
     entrypoint:
       - /bin/sh
       - -c
-      - /deployer/deploy-proposer-wrapper.sh
+      - /deployer/generate-genesis.sh
     env_file:
       - .env
     environment:
-      FOUNDRY_PROFILE: layer1
-      BROADCAST: ${BROADCAST}
-      VERIFY: ${VERIFY}
-      VERIFY_ARG: ${VERIFY_ARG}
-      TAIKO_WRAPPER: ${TAIKO_WRAPPER}
-      TAIKO_INBOX: ${TAIKO_INBOX}
-      ADMIN: ${PUBLIC_KEY}
+      SEED_ADDRESS: ${PUBLIC_KEY}
+      CONTRACT_OWNER: ${PUBLIC_KEY}
+      CHAIN_ID: ${L2_CHAIN_ID}
+      REMOTE_SIGNAL_SERVICE: ${SHASTA_SIGNAL_SERVICE}
       FORK_URL: ${L1_ENDPOINT_HTTP}
+      PRIVATE_KEY: ${PRIVATE_KEY}
     networks:
       - surge
     extra_hosts:
@@ -59,10 +127,66 @@ services:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
-      - proposer-wrapper-deployer
+      - genesis-generator
+  
+  surge-accept-ownership:
+    image: nethermind/surge-protocol:sha-b0dfa9d
+    container_name: surge-accept-ownership
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/accept-ownership.sh
+    env_file:
+      - .env
+    environment:
+      FOUNDRY_PROFILE: layer1
+      BROADCAST: ${BROADCAST}
+      VERIFY: ${VERIFY}
+      VERIFY_ARG: ${VERIFY_ARG}
+      CONTRACT_ADDRESSES: ${CONTRACT_ADDRESSES}
+      FORK_URL: ${L1_ENDPOINT_HTTP}
+      PRIVATE_KEY: ${PRIVATE_KEY}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - accept-ownership
+
+  surge-switch-fork:
+    image: nethermind/surge-protocol:sha-b0dfa9d
+    container_name: surge-switch-fork
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/switch-fork.sh
+    env_file:
+      - .env
+    environment:
+      PRIVATE_KEY: ${PRIVATE_KEY}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - switch-fork
 
   surge-bond-deposit:
-    image: nethermind/surge-protocol:v25.1.1
+    image: nethermind/surge-protocol:sha-b0dfa9d
     container_name: surge-bond-deposit
     pull_policy: always
     volumes:
@@ -263,3 +387,4 @@ services:
 networks:
   surge:
     name: surge-network
+    external: true

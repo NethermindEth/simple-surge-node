@@ -12,7 +12,7 @@ services:
         condition: service_healthy
       taiko_client_driver:
         condition: service_started
-      taiko_client_proposer:
+      catalyst:
         condition: service_started
     entrypoint:
       - /bin/sh
@@ -48,7 +48,7 @@ services:
 
   # L2 stack components
   nethermind_execution_client:
-    image: nethermindeth/nethermind:v25.0.0-surge
+    image: nethermindeth/nethermind:taiko-shasta-changes
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
@@ -90,7 +90,7 @@ services:
       start_period: 10s
     profiles:
       - driver
-      - proposer
+      - catalyst
       - prover
       - spammer
       - blockscout
@@ -100,7 +100,7 @@ services:
       - relayer-api
 
   taiko_client_driver:
-    image: nethermind/taiko-client:v25.1.1
+    image: nethermind/catalyst-taiko-client:sha-816a985
     container_name: l2-taiko-consensus-client
     restart: unless-stopped
     pull_policy: always
@@ -133,7 +133,7 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - driver
-      - proposer
+      - catalyst
       - prover
       - spammer
       - blockscout
@@ -142,9 +142,55 @@ services:
       - relayer-l2
       - relayer-api
 
-  taiko_client_proposer:
-    image: nethermind/taiko-client:v25.1.1
-    container_name: l2-taiko-proposer-client
+  web3signer-l1:
+    container_name: web3signer-l1
+    image: consensys/web3signer:25.11.0
+    restart: unless-stopped
+    pull_policy: missing
+    volumes:
+      - ./configs/web3signer:/config:ro
+    networks:
+      - surge
+    command:
+      - '--key-store-path=/config'
+      - '--http-host-allowlist=*'
+      - 'eth1'
+      - '--chain-id=${L1_CHAIN_ID}'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/upcheck || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    profiles:
+      - catalyst
+
+  web3signer-l2:
+    container_name: web3signer-l2
+    image: consensys/web3signer:25.11.0
+    restart: unless-stopped
+    pull_policy: missing
+    volumes:
+      - ./configs/web3signer:/config:ro
+    networks:
+      - surge
+    command:
+      - '--key-store-path=/config'
+      - '--http-host-allowlist=*'
+      - 'eth1'
+      - '--chain-id=${L2_CHAIN_ID}'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/upcheck || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    profiles:
+      - catalyst
+
+  catalyst:
+    image: nethermind/catalyst-node:latest
+    container_name: l2-catalyst-node
     restart: unless-stopped
     pull_policy: always
     depends_on:
@@ -154,35 +200,36 @@ services:
       taiko_client_driver:
         condition: service_started
     volumes:
-      - ./execution-data:/data/taiko-nethermind
-      - ./static/jwtsecret:/tmp/jwt/jwtsecret
+      - ./static/jwtsecret:/tmp/jwtsecret
       - ./script:/script
     ports:
-      - 6061:6061
+      - 9898:9898
     env_file:
       - .env
     environment:
-      TAIKO_INBOX: ${TAIKO_INBOX}
-      L1_SIGNAL_SERVICE: ${SIGNAL_SERVICE}
-      L1_BRIDGE: ${BRIDGE}
-      TAIKO_WRAPPER: ${TAIKO_WRAPPER}
-      FORCED_INCLUSION_STORE: ${FORCED_INCLUSION_STORE}
-      SURGE_PROPOSER_WRAPPER: ${SURGE_PROPOSER_WRAPPER}
+      TAIKO_GETH_RPC_URL: ${L2_ENDPOINT_WS}
+      TAIKO_GETH_AUTH_RPC_URL: ${L2_AUTH_HTTP}
+      L1_RPC_URLS: ${L1_ENDPOINT_WS}
+      L1_BEACON_URL: ${L1_BEACON_HTTP}
+      TAIKO_INBOX_ADDRESS: ${SHASTA_SURGE_INBOX}
+      TAIKO_ANCHOR_ADDRESS: ${TAIKO_ANCHOR}
+      ANCHOR_ADDRESS: ${TAIKO_ANCHOR}
+      PRECONF_WHITELIST_ADDRESS: ${SHASTA_PRECONF_WHITELIST}
+      PRECONF_ROUTER_ADDRESS: ${PACAYA_PRECONF_ROUTER}
+      TAIKO_WRAPPER_ADDRESS: ${PACAYA_TAIKO_WRAPPER}
+      FORCED_INCLUSION_STORE_ADDRESS: ${PACAYA_FORCED_INCLUSION_STORE}
+      TAIKO_BRIDGE_L2_ADDRESS: ${SHASTA_BRIDGE}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    entrypoint:
-      - /bin/sh
-      - -c
-      - "/script/start-proposer.sh"
     networks:
       - surge
     labels:
       com.kurtosistech.custom.metrics_enabled: "true"
-      com.kurtosistech.custom.metrics_port: "6061"
+      com.kurtosistech.custom.metrics_port: "9898"
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
-      - proposer
+      - catalyst
       - spammer
       - l2-deployer
 
@@ -233,7 +280,7 @@ services:
         condition: service_healthy
       taiko_client_driver:
         condition: service_started
-      taiko_client_proposer:
+      catalyst:
         condition: service_started
     volumes:
       - ./static/spamoor:/config
@@ -390,7 +437,7 @@ services:
     environment:
       PORT: ${BLOCKSCOUT_FRONTEND_PORT}
       NEXT_PUBLIC_NETWORK_ICON: https://docs.surge.wtf/img/favicon.ico
-      NEXT_PUBLIC_NETWORK_ID: ${L2_CHAINID}
+      NEXT_PUBLIC_NETWORK_ID: ${L2_CHAIN_ID}
       NEXT_PUBLIC_APP_PROTOCOL: http
       HOSTNAME: 0.0.0.0
       NEXT_PUBLIC_AD_BANNER_PROVIDER: none

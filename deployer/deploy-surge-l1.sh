@@ -1,11 +1,30 @@
-#!/bin/bash
-
+# This script deploys the Surge protocol on L1
 set -e
 
-./script/layer1/surge/deploy_surge_l1.sh
+# Parameterize broadcasting
+export BROADCAST_ARG=""
+if [ "$BROADCAST" = "true" ]; then
+    BROADCAST_ARG="--broadcast"
+fi
+
+# Parameterize verification
+export VERIFY_ARG=""
+if [ "$VERIFY" = "true" ]; then
+    VERIFY_ARG="--verify"
+fi
+
+forge script ./script/layer1/surge/DeploySurgeL1.s.sol:DeploySurgeL1 \
+    --fork-url $FORK_URL \
+    $BROADCAST_ARG \
+    $VERIFY_ARG \
+    --ffi \
+    $LOG_LEVEL \
+    --private-key $PRIVATE_KEY \
+    --block-gas-limit $BLOCK_GAS_LIMIT
+
 
 # Copy deployment results to /deployment
-cp /app/deployments/deploy_l1.json /deployment/deploy_l1.json
+cp ./deployments/deploy_l1.json /deployment/deploy_l1.json
 
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"

@@ -690,19 +690,6 @@ main() {
         done
     fi
     
-    # Set defaults based on what exists
-    if [[ "$has_l1_devnet" == true ]]; then
-        remove_l1_devnet=${remove_l1_devnet:-"true"}
-    else
-        remove_l1_devnet=${remove_l1_devnet:-"false"}
-    fi
-    
-    remove_l2_stack=${remove_l2_stack:-"true"}
-    remove_relayers=${remove_relayers:-"true"}
-    remove_data=${remove_data:-"true"}
-    remove_configs=${remove_configs:-"true"}
-    remove_env=${remove_env:-"false"}
-    
     # Get mode choice
     local mode_choice
     if [[ -z "${mode:-}" ]]; then

@@ -14,7 +14,8 @@ ARGS="${ARGS} \
     --l2.ws ws://l2-nethermind-execution-client:"${L2_WS_PORT}" \
     --l1.beacon ${L1_BEACON_HTTP} \
     --l2.auth http://l2-nethermind-execution-client:${L2_ENGINE_API_PORT} \
-    --taikoInbox ${TAIKO_INBOX} \
+    --shastaInbox ${SHASTA_SURGE_INBOX} \
+    --pacayaInbox ${PACAYA_TAIKO} \
     --taikoAnchor ${TAIKO_ANCHOR} \
     --jwtSecret /tmp/jwt/jwtsecret \
     --metrics true \

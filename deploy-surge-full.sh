@@ -6,9 +6,12 @@ readonly SCRIPT_NAME="$(basename "$0")"
 readonly ENV_FILE=".env"
 readonly DEPLOYMENT_DIR="deployment"
 readonly CONFIGS_DIR="configs"
+readonly PACAYA_DEPLOYMENT_FILE="$DEPLOYMENT_DIR/deploy_l1_pacaya.json"
 readonly L1_DEPLOYMENT_FILE="$DEPLOYMENT_DIR/deploy_l1.json"
 readonly L1_LOCK_FILE="$DEPLOYMENT_DIR/deploy_l1.lock"
-readonly PROPOSER_WRAPPER_FILE="$DEPLOYMENT_DIR/proposer_wrappers.json"
+readonly SURGE_GENESIS_FILE="$DEPLOYMENT_DIR/surge_genesis.json"
+readonly ACCEPT_OWNERSHIP_FILE="$DEPLOYMENT_DIR/accept_ownership.json"
+readonly ACCEPT_OWNERSHIP_LOCK_FILE="$DEPLOYMENT_DIR/accept_ownership.lock"
 readonly L2_DEPLOYMENT_FILE="$DEPLOYMENT_DIR/setup_l2.json"
 readonly BLOCKSCOUT_FILE="src/blockscout/blockscout_launcher.star"
 readonly BACKUP_FILE="${BLOCKSCOUT_FILE}.bak"
@@ -818,7 +821,11 @@ configure_environment_urls() {
     case "$env_choice" in
         1|"devnet")
             log_info "Using Devnet Environment"
-            
+            # Create docker network if it doesn't exist
+            if ! docker network ls | grep -q "surge-network"; then
+                docker network create surge-network
+            fi
+
             if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
                 if [[ -z "$machine_ip" ]]; then
                     log_error "Could not determine machine IP address"
@@ -1096,12 +1103,6 @@ deploy_l1_devnet() {
 
 # Cleanup function
 cleanup() {
-    # Remove lock file if it exists
-    if [[ -f "$L1_LOCK_FILE" ]]; then
-        log_info "Cleaning up lock file..."
-        rm -f "$L1_LOCK_FILE"
-    fi
-    
     # Clean up backup files
     if [[ -f "$ENV_FILE.bak" ]]; then
         rm -f "$ENV_FILE.bak"
@@ -1256,8 +1257,8 @@ retrieve_guest_data() {
     esac
 }
 
-# Deploy L1 smart contracts (devnet only)
-deploy_l1_contracts() {
+# Deploy Pacaya smart contracts
+deploy_pacaya_contracts() {
     local mode="$1"
     
     # Ensure deployment directory exists
@@ -1265,76 +1266,90 @@ deploy_l1_contracts() {
         mkdir -p "$DEPLOYMENT_DIR"
     fi
 
-    # Check if deployment is already completed
-    if [[ -f "$L1_DEPLOYMENT_FILE" ]]; then
-        local start_new_deployment
-        if [[ "$force" == "true" ]]; then
-            start_new_deployment="false"
-        else
-            echo
-            echo "╔══════════════════════════════════════════════════════════════╗"
-            echo "  ⚠️  Surge L1 deployment already completed                     "
-            echo "  ($L1_DEPLOYMENT_FILE exists)                                  "
-            echo "║══════════════════════════════════════════════════════════════║"
-            echo "║ Start a new deployment? (true/false) [default: false]        ║"
-            echo "╚══════════════════════════════════════════════════════════════╝"
-            echo
-            read -p "Enter choice [false]: " start_new_deployment
-        fi
-        start_new_deployment=${start_new_deployment:-false}
+    log_info "Deploying Pacaya SCs..."
 
-        if [[ "$start_new_deployment" == "true" ]]; then
+    if [[ -f "$PACAYA_DEPLOYMENT_FILE" ]]; then
+        log_info "Pacaya smart contracts already deployed..."
+        echo
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "║ Start a new deployment? (true/false) [default: false]        ║"
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        echo
+        read -p "Enter choice [true]: " pacaya_redeploy
+        pacaya_redeploy=${pacaya_redeploy:-false}
+        if [[ "$pacaya_redeploy" == "true" ]]; then
             log_info "Starting a new deployment..."
             rm -f "$DEPLOYMENT_DIR"/*.json
-            if command -v ./surge-remover.sh >/dev/null 2>&1; then
-                ./surge-remover.sh
+            if command -v ./remove-surge-full.sh >/dev/null 2>&1; then
+                ./remove-surge-full.sh
             fi
         else
             log_info "Using existing deployment..."
             return 0
         fi
     fi
-
-    # Check if deployment is currently running
-    if [[ -f "$L1_LOCK_FILE" ]]; then
-        log_error "Surge L1 deployment is already running ($L1_LOCK_FILE exists)"
-        log_error "Please wait for it to complete or remove the lock file if the previous deployment failed."
+    
+    local exit_status=0
+    local temp_output="/tmp/pacaya_deploy_output_$$"
+    
+    # Deploy L1 contracts based on mode
+    if [[ "$mode" == "debug" ]]; then
+        BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile pacaya-deployer up 2>&1 | tee "$temp_output"
+        exit_status=${PIPESTATUS[0]}
+    else
+        BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile pacaya-deployer up >"$temp_output" 2>&1 &
+        local deploy_pid=$!
+        
+        show_progress $deploy_pid "Deploying Pacaya smart contracts..."
+        
+        wait $deploy_pid
+        exit_status=$?
+    fi
+    
+    if [[ $exit_status -eq 0 ]]; then
+        log_success "Pacaya smart contracts deployed successfully"
+        return 0
+    else
+        log_error "Failed to deploy Pacaya smart contracts (exit code: $exit_status)"
+        if [[ "$mode" == "silence" ]]; then
+            log_error "Run with debug mode for more details: --mode debug"
+        fi
+        if [[ -f "$temp_output" ]]; then
+            log_error "Deployment output saved in: $temp_output"
+        fi
         return 1
     fi
+}
 
-    # Create lock file to indicate deployment is starting
-    touch "$L1_LOCK_FILE"
+# Deploy L1 smart contracts (devnet only)
+deploy_l1_contracts() {
+    local mode="$1"
+    local broadcast="$2"
+    
+    # Check if Surge L1 is already accepted
+    if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" ]]; then
+        log_info "Surge L1 already deployed..."
+        return 0
+    fi
+
+    if [[ $broadcast == "true" ]]; then
+        touch "$L1_LOCK_FILE"
+        return 0
+    fi
 
     log_info "Preparing Surge L1 SCs deployment..."
 
-    # Get timelocked owner choice
-    local use_timelocked_owner
-    if [[ -z "${timelocked_owner:-}" ]]; then
-        echo
-        echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "║ Use timelocked owner? (true/false) [default: false]          ║"
-        echo "╚══════════════════════════════════════════════════════════════╝"
-        echo
-        read -p "Enter choice [false]: " use_timelocked_owner
-        use_timelocked_owner=${use_timelocked_owner:-false}
-    else
-        use_timelocked_owner=$timelocked_owner
-    fi
-
-    export USE_TIMELOCKED_OWNER="$use_timelocked_owner"
-    update_env_var "$ENV_FILE" "USE_TIMELOCKED_OWNER" "$USE_TIMELOCKED_OWNER"
-
-    log_info "Deploying Surge L1 SCs..."
+    log_info "Deploying Surge L1 SCs... BROADCAST: $broadcast"
     
     local exit_status=0
     local temp_output="/tmp/surge_l1_deploy_output_$$"
     
     # Deploy L1 contracts based on mode
     if [[ "$mode" == "debug" ]]; then
-        BROADCAST=true USE_TIMELOCKED_OWNER="$USE_TIMELOCKED_OWNER" VERIFY=false docker compose -f docker-compose-protocol.yml --profile l1-deployer up 2>&1 | tee "$temp_output"
+        BROADCAST=$broadcast VERIFY=false docker compose -f docker-compose-protocol.yml --profile l1-deployer up 2>&1 | tee "$temp_output"
         exit_status=${PIPESTATUS[0]}
     else
-        BROADCAST=true USE_TIMELOCKED_OWNER="$USE_TIMELOCKED_OWNER" VERIFY=false docker compose -f docker-compose-protocol.yml --profile l1-deployer up >"$temp_output" 2>&1 &
+        BROADCAST=$broadcast VERIFY=false docker compose -f docker-compose-protocol.yml --profile l1-deployer up >"$temp_output" 2>&1 &
         local deploy_pid=$!
         
         show_progress $deploy_pid "Deploying L1 smart contracts..."
@@ -1360,110 +1375,280 @@ deploy_l1_contracts() {
 
 # Extract L1 deployment results from JSON file
 extract_l1_deployment_results() {
-    log_info "Extracting Surge L1 SCs deployment results..."
+    log_info "Extracting Pacaya and Surge L1 SCs deployment results..."
     
+    if [[ ! -f "$PACAYA_DEPLOYMENT_FILE" ]]; then
+        log_error "Pacaya deployment file not found: $PACAYA_DEPLOYMENT_FILE"
+        return 1
+    fi
+
     if [[ ! -f "$L1_DEPLOYMENT_FILE" ]]; then
         log_error "L1 deployment file not found: $L1_DEPLOYMENT_FILE"
         return 1
     fi
     
-    # Extract L1 deployment results
-    export TAIKO_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.taiko')
-    export TAIKO_WRAPPER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.taiko_wrapper')
-    export AUTOMATA_DCAP_ATTESTATION_GETH=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.automata_dcap_attestation_geth')
-    export AUTOMATA_DCAP_ATTESTATION_RETH=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.automata_dcap_attestation_reth')
-    export BRIDGE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.bridge')
-    export ERC1155_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc1155_vault')
-    export ERC20_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc20_vault')
-    export ERC721_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc721_vault')
-    export FORCED_INCLUSION_STORE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.forced_inclusion_store')
-    export L1_OWNER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.l1_owner // "0x0000000000000000000000000000000000000000"')
-    export PEM_CERT_CHAIN_LIB=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.pem_cert_chain_lib')
-    export PROOF_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.proof_verifier')
-    export RISC0_GROTH16_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.risc0_groth16_verifier')
-    export RISC0_RETH_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.risc0_reth_verifier')
-    export SGX_GETH_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.sgx_geth_verifier')
-    export SGX_RETH_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.sgx_reth_verifier')
-    export SHARED_RESOLVER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.shared_resolver')
-    export SIG_VERIFY_LIB=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.sig_verify_lib')
-    export SIGNAL_SERVICE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.signal_service')
-    export SP1_RETH_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.sp1_reth_verifier')
-    export SUCCINCT_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.succinct_verifier')
-    export SURGE_TIMELOCK_CONTROLLER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_timelock_controller // "0x0000000000000000000000000000000000000000"')
+    # Extract L1 deployment results from deploy_l1_pacaya.json
+    export PACAYA_AUTOMATA_DCAP_ATTESTATION=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.automata_dcap_attestation')
+    export PACAYA_BRIDGE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.bridge')
+    export PACAYA_ERC1155_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc1155_vault')
+    export PACAYA_ERC20_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc20_vault')
+    export PACAYA_ERC721_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc721_vault')
+    export PACAYA_FORCED_INCLUSION_STORE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.forced_inclusion_store')
+    export PACAYA_MAINNET_TAIKO=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.mainnet_taiko')
+    export PACAYA_OP_GETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.op_geth_verifier')
+    export PACAYA_OP_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.op_verifier')
+    export PACAYA_PRECONF_ROUTER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.preconf_router')
+    export PACAYA_PRECONF_WHITELIST=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.preconf_whitelist')
+    export PACAYA_PROOF_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.proof_verifier')
+    export PACAYA_PROVER_SET=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.prover_set')
+    export PACAYA_RISC0_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.risc0_reth_verifier')
+    export PACAYA_ROLLUP_ADDRESS_RESOLVER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.rollup_address_resolver')
+    export PACAYA_SGX_GETH_AUTOMATA=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_geth_automata')
+    export PACAYA_SGX_GETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_geth_verifier')
+    export PACAYA_SGX_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_reth_verifier')
+    export PACAYA_SHARED_RESOLVER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.shared_resolver')
+    export PACAYA_SIGNAL_SERVICE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.signal_service')
+    export PACAYA_SP1_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sp1_reth_verifier')
+    export PACAYA_TAIKO=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko')
+    export PACAYA_TAIKO_TOKEN=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko_token')
+    export PACAYA_TAIKO_WRAPPER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko_wrapper')
+
+    # Extract L1 deployment results from deploy_l1.json
+    export SHASTA_BRIDGE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.bridge')
+    export SHASTA_BRIDGED_ERC1155=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.bridged_erc1155')
+    export SHASTA_BRIDGED_ERC20=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.bridged_erc20')
+    export SHASTA_BRIDGED_ERC721=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.bridged_erc721')
+    export SHASTA_EMPTY_IMPL=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.empty_impl')
+    export SHASTA_ERC1155_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc1155_vault')
+    export SHASTA_ERC20_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc20_vault')
+    export SHASTA_ERC721_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc721_vault')
+    export SHASTA_PRECONF_WHITELIST=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.preconf_whitelist')
+    export SHASTA_PROOF_VERIFIER_DUMMY=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.proof_verifier_dummy')
+    export SHASTA_SHARED_RESOLVER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.shared_resolver')
+    export SHASTA_SIGNAL_SERVICE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.signal_service')
+    export SHASTA_SURGE_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox')
+    export SHASTA_SURGE_INBOX_IMPL=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox_impl')
+    export SHASTA_SURGE_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_verifier')
 
     echo
     echo ">>>>>>"
-    echo " TAIKO_INBOX: $TAIKO_INBOX "
-    echo " BRIDGE: $BRIDGE "
-    echo " SIGNAL_SERVICE: $SIGNAL_SERVICE "
-    echo " L1_OWNER: $L1_OWNER "
+    echo " SURGE_INBOX: $SHASTA_SURGE_INBOX "
+    echo " BRIDGE: $SHASTA_BRIDGE "
+    echo " SIGNAL_SERVICE: $SHASTA_SIGNAL_SERVICE "
+    echo " PRECONF_WHITELIST: $SHASTA_PRECONF_WHITELIST "
     echo ">>>>>>"
     echo
 
     log_info "Updating .env with extracted values..."
-    update_env_var "$ENV_FILE" "TAIKO_INBOX" "$TAIKO_INBOX"
-    update_env_var "$ENV_FILE" "BRIDGE" "$BRIDGE"
-    update_env_var "$ENV_FILE" "SIGNAL_SERVICE" "$SIGNAL_SERVICE"
-    update_env_var "$ENV_FILE" "L1_OWNER" "$L1_OWNER"
+    update_env_var "$ENV_FILE" "PACAYA_AUTOMATA_DCAP_ATTESTATION" "$PACAYA_AUTOMATA_DCAP_ATTESTATION"
+    update_env_var "$ENV_FILE" "PACAYA_BRIDGE" "$PACAYA_BRIDGE"
+    update_env_var "$ENV_FILE" "PACAYA_ERC1155_VAULT" "$PACAYA_ERC1155_VAULT"
+    update_env_var "$ENV_FILE" "PACAYA_ERC20_VAULT" "$PACAYA_ERC20_VAULT"
+    update_env_var "$ENV_FILE" "PACAYA_ERC721_VAULT" "$PACAYA_ERC721_VAULT"
+    update_env_var "$ENV_FILE" "PACAYA_FORCED_INCLUSION_STORE" "$PACAYA_FORCED_INCLUSION_STORE"
+    update_env_var "$ENV_FILE" "PACAYA_MAINNET_TAIKO" "$PACAYA_MAINNET_TAIKO"
+    update_env_var "$ENV_FILE" "PACAYA_OP_GETH_VERIFIER" "$PACAYA_OP_GETH_VERIFIER"
+    update_env_var "$ENV_FILE" "PACAYA_OP_VERIFIER" "$PACAYA_OP_VERIFIER"
+    update_env_var "$ENV_FILE" "PACAYA_PRECONF_ROUTER" "$PACAYA_PRECONF_ROUTER"
+    update_env_var "$ENV_FILE" "PACAYA_PRECONF_WHITELIST" "$PACAYA_PRECONF_WHITELIST"
+    update_env_var "$ENV_FILE" "PACAYA_PROOF_VERIFIER" "$PACAYA_PROOF_VERIFIER"
+    update_env_var "$ENV_FILE" "PACAYA_PROVER_SET" "$PACAYA_PROVER_SET"
+    update_env_var "$ENV_FILE" "PACAYA_RISC0_RETH_VERIFIER" "$PACAYA_RISC0_RETH_VERIFIER"
+    update_env_var "$ENV_FILE" "PACAYA_ROLLUP_ADDRESS_RESOLVER" "$PACAYA_ROLLUP_ADDRESS_RESOLVER"
+    update_env_var "$ENV_FILE" "PACAYA_SGX_GETH_AUTOMATA" "$PACAYA_SGX_GETH_AUTOMATA"
+    update_env_var "$ENV_FILE" "PACAYA_SGX_GETH_VERIFIER" "$PACAYA_SGX_GETH_VERIFIER"
+    update_env_var "$ENV_FILE" "PACAYA_SGX_RETH_VERIFIER" "$PACAYA_SGX_RETH_VERIFIER"
+    update_env_var "$ENV_FILE" "PACAYA_SHARED_RESOLVER" "$PACAYA_SHARED_RESOLVER"
+    update_env_var "$ENV_FILE" "PACAYA_SIGNAL_SERVICE" "$PACAYA_SIGNAL_SERVICE"
+    update_env_var "$ENV_FILE" "PACAYA_SP1_RETH_VERIFIER" "$PACAYA_SP1_RETH_VERIFIER"
+    update_env_var "$ENV_FILE" "PACAYA_TAIKO" "$PACAYA_TAIKO"
+    update_env_var "$ENV_FILE" "PACAYA_TAIKO_TOKEN" "$PACAYA_TAIKO_TOKEN"
+    update_env_var "$ENV_FILE" "PACAYA_TAIKO_WRAPPER" "$PACAYA_TAIKO_WRAPPER"
+
+    update_env_var "$ENV_FILE" "SHASTA_BRIDGE" "$SHASTA_BRIDGE"
+    update_env_var "$ENV_FILE" "SHASTA_BRIDGED_ERC1155" "$SHASTA_BRIDGED_ERC1155"
+    update_env_var "$ENV_FILE" "SHASTA_BRIDGED_ERC20" "$SHASTA_BRIDGED_ERC20"
+    update_env_var "$ENV_FILE" "SHASTA_BRIDGED_ERC721" "$SHASTA_BRIDGED_ERC721"
+    update_env_var "$ENV_FILE" "SHASTA_EMPTY_IMPL" "$SHASTA_EMPTY_IMPL"
+    update_env_var "$ENV_FILE" "SHASTA_ERC1155_VAULT" "$SHASTA_ERC1155_VAULT"
+    update_env_var "$ENV_FILE" "SHASTA_ERC20_VAULT" "$SHASTA_ERC20_VAULT"
+    update_env_var "$ENV_FILE" "SHASTA_ERC721_VAULT" "$SHASTA_ERC721_VAULT"
+    update_env_var "$ENV_FILE" "SHASTA_SIGNAL_SERVICE" "$SHASTA_SIGNAL_SERVICE"
+    update_env_var "$ENV_FILE" "SHASTA_PRECONF_WHITELIST" "$SHASTA_PRECONF_WHITELIST"
+    update_env_var "$ENV_FILE" "SHASTA_PROOF_VERIFIER_DUMMY" "$SHASTA_PROOF_VERIFIER_DUMMY"
+    update_env_var "$ENV_FILE" "SHASTA_SHARED_RESOLVER" "$SHASTA_SHARED_RESOLVER"
+    update_env_var "$ENV_FILE" "SHASTA_SIGNAL_SERVICE" "$SHASTA_SIGNAL_SERVICE"
+    update_env_var "$ENV_FILE" "SHASTA_SURGE_INBOX" "$SHASTA_SURGE_INBOX"
+    update_env_var "$ENV_FILE" "SHASTA_SURGE_INBOX_IMPL" "$SHASTA_SURGE_INBOX_IMPL"
+    update_env_var "$ENV_FILE" "SHASTA_SURGE_VERIFIER" "$SHASTA_SURGE_VERIFIER"
     # Add more as needed...
 
     log_success "L1 deployment results extracted and updated in .env"
 }
 
-# Deploy proposer wrapper (devnet only)
-deploy_proposer_wrapper() {
+# Generate L2 Genesis
+generate_l2_genesis() {
     local mode="$1"
+       
+    # Check if Surge genesis is already generated
+    if [[ -f "$SURGE_GENESIS_FILE" ]]; then
+        log_info "Surge genesis already generated..."
+        return 0
+    fi
+
+    log_info "Generating Surge genesis..."
     
-    # Check if deployment is already completed
-    if [[ -f "$PROPOSER_WRAPPER_FILE" ]]; then
-        log_warning "Proposer Wrapper deployment already completed ($PROPOSER_WRAPPER_FILE exists)"
-        log_info "Deployment will be skipped..."
+    local exit_status=0
+    local temp_output="/tmp/surge_genesis_output_$$"
+    
+    if [[ "$mode" == "debug" ]]; then
+        docker compose -f docker-compose-protocol.yml --profile genesis-generator up 2>&1 | tee "$temp_output"
+        exit_status=${PIPESTATUS[0]}
+    else
+        docker compose -f docker-compose-protocol.yml --profile genesis-generator up >"$temp_output" 2>&1 &
+        local deploy_pid=$!
+        
+        show_progress $deploy_pid "Generating Surge genesis..."
+        
+        wait $deploy_pid
+        exit_status=$?
+    fi
+
+    # Calculate timestamp: current time + 60 seconds
+    NEW_TIMESTAMP=$(($(date +%s) + 60))
+
+    update_env_var "$ENV_FILE" "SHASTA_TIMESTAMP_SEC" "$NEW_TIMESTAMP"
+
+    HEX_TIMESTAMP=$(printf "0x%X" "$NEW_TIMESTAMP")
+
+    echo "HEX_TIMESTAMP: $HEX_TIMESTAMP"
+
+    update_env_var "$ENV_FILE" "SHASTA_TIMESTAMP" "$HEX_TIMESTAMP"
+
+    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 1, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' > "$DEPLOYMENT_DIR/surge_chainspec.json"
+    
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "  ✅ Surge chainspec generation completed successfully          "
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+
+    if [[ $exit_status -eq 0 ]]; then
+        log_success "Surge genesis generated successfully"
         return 0
     else
-        log_info "Deploying Surge Proposer Wrapper..."
-        
-        local exit_status=0
-        local temp_output="/tmp/surge_proposer_wrapper_output_$$"
-        
-        if [[ "$mode" == "debug" ]]; then
-            BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile proposer-wrapper-deployer up 2>&1 | tee "$temp_output"
-            exit_status=${PIPESTATUS[0]}
-        else
-            BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile proposer-wrapper-deployer up >"$temp_output" 2>&1 &
-            local deploy_pid=$!
-            
-            show_progress $deploy_pid "Deploying proposer wrapper..."
-            
-            wait $deploy_pid
-            exit_status=$?
+        log_error "Failed to generate Surge genesis (exit code: $exit_status)"
+        return 1
+        if [[ "$mode" == "silence" ]]; then
+            log_error "Run with debug mode for more details: --mode debug"
         fi
-        
-        if [[ $exit_status -eq 0 ]]; then
-            log_success "Proposer wrapper deployed successfully"
-            return 0
-        else
-            log_error "Failed to deploy proposer wrapper (exit code: $exit_status)"
-            if [[ -f "$temp_output" ]]; then
-                log_error "Deployment output saved in: $temp_output"
-            fi
-            return 1
+        if [[ -f "$temp_output" ]]; then
+            log_error "Generation output saved in: $temp_output"
         fi
+        return 1
     fi
 }
 
-# Extract proposer wrapper address
-extract_surge_proposer_wrapper() {
-    if [[ ! -f "$PROPOSER_WRAPPER_FILE" ]]; then
-        log_error "Proposer wrapper file not found: $PROPOSER_WRAPPER_FILE"
-        return 1
+accept_ownership() {
+    local mode="$1"
+
+    # Check if deployment is already completed
+    if [[ -f "$ACCEPT_OWNERSHIP_FILE" ]]; then
+        log_info "Ownership already accepted..."
+        return 0
+    fi
+
+    log_info "Accepting ownership..."
+    
+    local exit_status=0
+    local temp_output="/tmp/accept_ownership_output_$$"
+    
+    export CONTRACT_ADDRESSES="$SHASTA_PROOF_VERIFIER_DUMMY,$SHASTA_SURGE_INBOX,$SHASTA_SHARED_RESOLVER"
+
+    # Accept ownership based on mode
+    if [[ "$mode" == "debug" ]]; then
+        BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile accept-ownership up 2>&1 | tee "$temp_output"
+        exit_status=${PIPESTATUS[0]}
+    else
+        BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile accept-ownership up >"$temp_output" 2>&1 &
+        local deploy_pid=$!
+        
+        show_progress $deploy_pid "Accepting ownership..."
+        
+        wait $deploy_pid
+        exit_status=$?
     fi
     
-    export SURGE_PROPOSER_WRAPPER=$(cat "$PROPOSER_WRAPPER_FILE" | jq -r '.proposer_wrapper')
+    if [[ $exit_status -eq 0 ]]; then
+        log_success "Ownership accepted successfully"
+        return 0
+    else
+        log_error "Failed to accept ownership (exit code: $exit_status)"
+        if [[ "$mode" == "silence" ]]; then
+            log_error "Run with debug mode for more details: --mode debug"
+        fi
+        if [[ -f "$temp_output" ]]; then
+            log_error "Deployment output saved in: $temp_output"
+        fi
+        return 1
+    fi
+}
 
-    log_info "Updating .env with proposer wrapper address..."
-    update_env_var "$ENV_FILE" "SURGE_PROPOSER_WRAPPER" "$SURGE_PROPOSER_WRAPPER"
+switch_fork() {
+    local mode="$1"
+
+    if [[ -f "$DEPLOYMENT_DIR/switch_fork.lock" ]]; then
+        log_info "Fork already switched..."
+        return 0
+    fi
     
-    log_success "Proposer wrapper address extracted and updated"
+    log_info "Fetching genesis hash..."
+    # Get genesis hash first by running Nethermind with the chainspec
+    docker run -d --name nethermind-genesis-hash -v ./deployment/surge_chainspec.json:/chainspec.json nethermindeth/nethermind:taiko-shasta-changes --config=none --Init.ChainSpecPath=/chainspec.json
+    
+    sleep 30
+
+    local genesis_hash=$(docker logs nethermind-genesis-hash 2>/dev/null | grep "Genesis hash" | head -n 1 | sed 's/\x1b\[[0-9;]*m//g' | sed 's/.*Genesis hash : *\(0x[0-9a-fA-F]*\).*/\1/' | tr -d '\r\n' | xargs)
+    
+    update_env_var "$ENV_FILE" "L2_GENESIS_HASH" "$genesis_hash"
+
+    log_info "Genesis hash: $genesis_hash"
+
+    docker stop nethermind-genesis-hash
+    docker rm nethermind-genesis-hash
+
+    log_info "Switching fork..."
+
+    local exit_status=0
+    local temp_output="/tmp/switch_fork_output_$$"
+    
+    if [[ "$mode" == "debug" ]]; then
+        docker compose -f docker-compose-protocol.yml --profile switch-fork up 2>&1 | tee "$temp_output"
+        exit_status=${PIPESTATUS[0]}
+    else
+        docker compose -f docker-compose-protocol.yml --profile switch-fork up >"$temp_output" 2>&1 &
+        local switch_fork_pid=$!
+        
+        show_progress $switch_fork_pid "Switching fork..."
+    fi
+
+    wait $switch_fork_pid
+    exit_status=$?
+
+    if [[ $exit_status -eq 0 ]]; then
+        log_success "Fork switched successfully"
+        touch "$DEPLOYMENT_DIR/switch_fork.lock"
+        return 0
+    else
+        log_error "Failed to switch fork (exit code: $exit_status)"
+        if [[ "$mode" == "silence" ]]; then
+            log_error "Run with debug mode for more details: --mode debug"
+        fi
+        if [[ -f "$temp_output" ]]; then
+            log_error "Switch fork output saved in: $temp_output"
+        fi
+        return 1
+    fi
 }
 
 # Deploy and configure provers (devnet only)
@@ -1753,11 +1938,11 @@ start_l2_stack() {
             ;;
         2)
             log_info "Starting driver + proposer"
-            $compose_cmd --profile proposer --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
+            $compose_cmd --profile catalyst --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
             ;;
         3)
             log_info "Starting driver + proposer + spammer"
-            $compose_cmd --profile proposer --profile spammer --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
+            $compose_cmd --profile catalyst --profile spammer --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
             ;;
         4)
             log_info "Starting driver + proposer + prover + spammer"
@@ -1765,11 +1950,11 @@ start_l2_stack() {
             ;;
         5)
             log_info "Starting all except spammer"
-            $compose_cmd --profile driver --profile proposer --profile prover --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
+            $compose_cmd --profile driver --profile catalyst --profile prover --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
             ;;
         *)
             log_info "Starting all components"
-            $compose_cmd --profile driver --profile proposer --profile spammer --profile prover --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
+            $compose_cmd --profile driver --profile catalyst --profile spammer --profile prover --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
             ;;
     esac
     
@@ -2153,35 +2338,35 @@ main() {
             esac
         fi
         
-        if [[ "$deploy_devnet_choice" == "0" ]]; then
-            # Option A: Deploy new devnet
-            local mode_choice
-            if [[ -z "${mode:-}" ]]; then
-                mode_choice=$(prompt_mode_selection)
-            else
-                case "$mode" in
-                    0|"silence"|"silent") mode_choice="silence" ;;
-                    1|"debug") mode_choice="debug" ;;
-                    *) mode_choice="$mode" ;;
-                esac
-            fi
+        # if [[ "$deploy_devnet_choice" == "0" ]]; then
+        #     # Option A: Deploy new devnet
+        #     local mode_choice
+        #     if [[ -z "${mode:-}" ]]; then
+        #         mode_choice=$(prompt_mode_selection)
+        #     else
+        #         case "$mode" in
+        #             0|"silence"|"silent") mode_choice="silence" ;;
+        #             1|"debug") mode_choice="debug" ;;
+        #             *) mode_choice="$mode" ;;
+        #         esac
+        #     fi
             
-            if ! deploy_l1_devnet "$deployment_choice" "$mode_choice"; then
-                log_error "Failed to deploy L1 devnet"
-                exit 1
-            fi
-        else
-            # Option B: Use existing chain
-            if ! prompt_for_existing_chain_config "L1"; then
-                log_error "Failed to configure existing chain"
-                exit 1
-            fi
-            update_env_var "$ENV_FILE" "PRIVATE_KEY" "$PRIVATE_KEY"
-            update_env_var "$ENV_FILE" "PUBLIC_KEY" "$PUBLIC_KEY"
-            update_env_var "$ENV_FILE" "L1_RPC" "$L1_RPC"
-            update_env_var "$ENV_FILE" "L1_BEACON_RPC" "$L1_BEACON_RPC"
-            update_env_var "$ENV_FILE" "L1_EXPLORER" "$L1_EXPLORER"
-        fi
+        #     if ! deploy_l1_devnet "$deployment_choice" "$mode_choice"; then
+        #         log_error "Failed to deploy L1 devnet"
+        #         exit 1
+        #     fi
+        # else
+        #     # Option B: Use existing chain
+        #     if ! prompt_for_existing_chain_config "L1"; then
+        #         log_error "Failed to configure existing chain"
+        #         exit 1
+        #     fi
+        #     update_env_var "$ENV_FILE" "PRIVATE_KEY" "$PRIVATE_KEY"
+        #     update_env_var "$ENV_FILE" "PUBLIC_KEY" "$PUBLIC_KEY"
+        #     update_env_var "$ENV_FILE" "L1_RPC" "$L1_RPC"
+        #     update_env_var "$ENV_FILE" "L1_BEACON_RPC" "$L1_BEACON_RPC"
+        #     update_env_var "$ENV_FILE" "L1_EXPLORER" "$L1_EXPLORER"
+        # fi
     else
         # Staging/Testnet: Always use existing chain
         if ! prompt_for_existing_chain_config "chain"; then
@@ -2214,9 +2399,15 @@ main() {
                 *) mode_choice="$mode" ;;
             esac
         fi
+
+        # Deploy Pacaya contracts
+        if ! deploy_pacaya_contracts "$mode_choice"; then
+            log_error "Failed to deploy Pacaya smart contracts"
+            exit 1
+        fi
         
-        # Deploy L1 contracts
-        if ! deploy_l1_contracts "$mode_choice"; then
+        # Run L1 contracts simulation
+        if ! deploy_l1_contracts "$mode_choice" false; then
             log_error "Failed to deploy L1 smart contracts"
             exit 1
         fi
@@ -2227,27 +2418,29 @@ main() {
             exit 1
         fi
 
-        # Deploy Proposer Wrapper
-        if ! deploy_proposer_wrapper "$mode_choice"; then
-            log_error "Failed to deploy proposer wrapper"
+        # Generate L2 Genesis
+        if ! generate_l2_genesis "$mode_choice"; then
+            log_error "Failed to generate L2 genesis"
             exit 1
         fi
 
-        # Extract Proposer Wrapper address
-        if ! extract_surge_proposer_wrapper; then
-            log_error "Failed to extract proposer wrapper address"
+        # Deploy L1 contracts
+        if ! deploy_l1_contracts "$mode_choice" true; then
+            log_error "Failed to deploy L1 smart contracts"
             exit 1
         fi
 
-        # Deploy Provers (optional)
-        if ! deploy_provers; then
-            log_warning "Prover deployment had issues, but continuing..."
-        fi
+        # Accept ownership
+        # if ! accept_ownership "$mode_choice"; then
+        #     log_error "Failed to accept ownership"
+        #     exit 1
+        # fi
 
-        # Deposit bond (optional)
-        if ! deposit_bond "$mode_choice"; then
-            log_warning "Bond deposit had issues, but continuing..."
-        fi
+
+        # # Deploy Provers (optional)
+        # if ! deploy_provers; then
+        #     log_warning "Prover deployment had issues, but continuing..."
+        # fi
     fi
     
     # Step 4: L2 Stack Deployment (ALL environments)
@@ -2262,7 +2455,18 @@ main() {
         log_error "Failed to start L2 stack"
         exit 1
     fi
+
+    # Switch fork
+    if ! switch_fork "$mode_choice"; then
+        log_error "Failed to switch fork"
+        exit 1
+    fi
     
+    # Deposit bond (optional)
+    # if ! deposit_bond "$mode_choice"; then
+    #     log_warning "Bond deposit had issues, but continuing..."
+    # fi
+
     # Step 5: Start Relayers (optional)
     local relayers_choice
     if [[ -z "${start_relayers:-}" ]]; then
