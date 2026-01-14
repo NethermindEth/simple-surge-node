@@ -1,6 +1,13 @@
 # This script deploys the Surge protocol on L1
 set -e
 
+# echo "Adding operators to whitelist..."
+# cast send $SHASTA_PRECONF_WHITELIST "addOperator(address)" \
+#     $OPERATOR_PUBLIC_KEY \
+#     --rpc-url $L1_ENDPOINT_HTTP \
+#     --private-key $PRIVATE_KEY \
+#     --confirmations 1
+
 # Get the Shasta Inbox address from deployment
 SHASTA_INBOX=$(jq -r '.surge_inbox' /deployment/deploy_l1.json)
 
@@ -14,8 +21,8 @@ echo
 
 # Check if already activated
 echo "Checking activation status..."
-ACTIVATION_TIME=$(cast call $SHASTA_INBOX "activationTimestamp()(uint48)" --rpc-url $L1_ENDPOINT_HTTP)
-if [ "$ACTIVATION_TIME" != "0" ]; then
+ACTIVATION_TIME=$(cast call $SHASTA_INBOX "activationTimestamp()" --rpc-url $L1_ENDPOINT_HTTP)
+if [ "$ACTIVATION_TIME" != "0x0000000000000000000000000000000000000000000000000000000000000000" ]; then
   echo "✅ Already activated at timestamp: $ACTIVATION_TIME"
   exit 0
 fi

@@ -104,7 +104,7 @@ network_params:
   prefunded_accounts: {}
 additional_services:
   - blockscout
-  - spamoor
+  # - spamoor
 dora_params:
   image: ""
 tx_fuzz_params:

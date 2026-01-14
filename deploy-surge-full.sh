@@ -1326,14 +1326,9 @@ deploy_l1_contracts() {
     local mode="$1"
     local broadcast="$2"
     
-    # Check if Surge L1 is already accepted
+    # Check if Surge L1 is already deployed (only skip if both files exist AND we're broadcasting)
     if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" ]]; then
         log_info "Surge L1 already deployed..."
-        return 0
-    fi
-
-    if [[ $broadcast == "true" ]]; then
-        touch "$L1_LOCK_FILE"
         return 0
     fi
 
@@ -1360,6 +1355,12 @@ deploy_l1_contracts() {
     
     if [[ $exit_status -eq 0 ]]; then
         log_success "L1 smart contracts deployed successfully"
+        # Only create lock file after successful broadcast deployment
+        if [[ "$broadcast" == "true" ]]; then
+            echo "broadcast: $broadcast"
+            echo "touching lock file: $L1_LOCK_FILE"
+            touch "$L1_LOCK_FILE"
+        fi
         return 0
     else
         log_error "Failed to deploy L1 smart contracts (exit code: $exit_status)"
@@ -1477,7 +1478,6 @@ extract_l1_deployment_results() {
     update_env_var "$ENV_FILE" "SHASTA_PRECONF_WHITELIST" "$SHASTA_PRECONF_WHITELIST"
     update_env_var "$ENV_FILE" "SHASTA_PROOF_VERIFIER_DUMMY" "$SHASTA_PROOF_VERIFIER_DUMMY"
     update_env_var "$ENV_FILE" "SHASTA_SHARED_RESOLVER" "$SHASTA_SHARED_RESOLVER"
-    update_env_var "$ENV_FILE" "SHASTA_SIGNAL_SERVICE" "$SHASTA_SIGNAL_SERVICE"
     update_env_var "$ENV_FILE" "SHASTA_SURGE_INBOX" "$SHASTA_SURGE_INBOX"
     update_env_var "$ENV_FILE" "SHASTA_SURGE_INBOX_IMPL" "$SHASTA_SURGE_INBOX_IMPL"
     update_env_var "$ENV_FILE" "SHASTA_SURGE_VERIFIER" "$SHASTA_SURGE_VERIFIER"
@@ -1497,6 +1497,10 @@ generate_l2_genesis() {
     fi
 
     log_info "Generating Surge genesis..."
+
+    # Extract signal service from L1 deployment results needed for genesis generation
+    export SHASTA_SIGNAL_SERVICE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.signal_service')
+    update_env_var "$ENV_FILE" "SHASTA_SIGNAL_SERVICE" "$SHASTA_SIGNAL_SERVICE"
     
     local exit_status=0
     local temp_output="/tmp/surge_genesis_output_$$"
@@ -1532,6 +1536,21 @@ generate_l2_genesis() {
     echo "  ✅ Surge chainspec generation completed successfully          "
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
+
+    log_info "Fetching genesis hash..."
+    # Get genesis hash first by running Nethermind with the chainspec
+    docker run -d --name nethermind-genesis-hash -v ./deployment/surge_chainspec.json:/chainspec.json nethermindeth/nethermind:taiko-shasta-changes --config=none --Init.ChainSpecPath=/chainspec.json
+    
+    sleep 30
+
+    local genesis_hash=$(docker logs nethermind-genesis-hash 2>/dev/null | grep "Genesis hash" | head -n 1 | sed 's/\x1b\[[0-9;]*m//g' | sed 's/.*Genesis hash : *\(0x[0-9a-fA-F]*\).*/\1/' | tr -d '\r\n' | xargs)
+    
+    update_env_var "$ENV_FILE" "L2_GENESIS_HASH" "$genesis_hash"
+
+    log_info "Genesis hash: $genesis_hash"
+
+    docker stop nethermind-genesis-hash
+    docker rm nethermind-genesis-hash
 
     if [[ $exit_status -eq 0 ]]; then
         log_success "Surge genesis generated successfully"
@@ -1601,21 +1620,6 @@ switch_fork() {
         log_info "Fork already switched..."
         return 0
     fi
-    
-    log_info "Fetching genesis hash..."
-    # Get genesis hash first by running Nethermind with the chainspec
-    docker run -d --name nethermind-genesis-hash -v ./deployment/surge_chainspec.json:/chainspec.json nethermindeth/nethermind:taiko-shasta-changes --config=none --Init.ChainSpecPath=/chainspec.json
-    
-    sleep 30
-
-    local genesis_hash=$(docker logs nethermind-genesis-hash 2>/dev/null | grep "Genesis hash" | head -n 1 | sed 's/\x1b\[[0-9;]*m//g' | sed 's/.*Genesis hash : *\(0x[0-9a-fA-F]*\).*/\1/' | tr -d '\r\n' | xargs)
-    
-    update_env_var "$ENV_FILE" "L2_GENESIS_HASH" "$genesis_hash"
-
-    log_info "Genesis hash: $genesis_hash"
-
-    docker stop nethermind-genesis-hash
-    docker rm nethermind-genesis-hash
 
     log_info "Switching fork..."
 
@@ -1934,27 +1938,27 @@ start_l2_stack() {
     case "$stack_option" in
         1)
             log_info "Starting driver only"
-            $compose_cmd --profile driver --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
+            $compose_cmd --profile driver --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         2)
             log_info "Starting driver + proposer"
-            $compose_cmd --profile catalyst --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
+            $compose_cmd --profile catalyst --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         3)
             log_info "Starting driver + proposer + spammer"
-            $compose_cmd --profile catalyst --profile spammer --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
+            $compose_cmd --profile catalyst --profile spammer --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         4)
             log_info "Starting driver + proposer + prover + spammer"
-            $compose_cmd --profile prover --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
+            $compose_cmd --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         5)
             log_info "Starting all except spammer"
-            $compose_cmd --profile driver --profile catalyst --profile prover --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
+            $compose_cmd --profile driver --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         *)
             log_info "Starting all components"
-            $compose_cmd --profile driver --profile catalyst --profile spammer --profile prover --profile blockscout up -d --remove-orphans >"$temp_output" 2>&1 &
+            $compose_cmd --profile driver --profile catalyst --profile spammer --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
     esac
     
@@ -2383,7 +2387,8 @@ main() {
     # Verify L1 RPC endpoints
     if [[ -n "${L1_RPC:-}" ]]; then
         if ! check_l1_health "$L1_RPC" "${L1_BEACON_RPC:-}"; then
-            log_warning "L1 health check failed, but continuing..."
+            log_warning "L1 health check failed, please retry..."
+            exit 1
         fi
     fi
     
@@ -2399,22 +2404,10 @@ main() {
                 *) mode_choice="$mode" ;;
             esac
         fi
-
-        # Deploy Pacaya contracts
-        if ! deploy_pacaya_contracts "$mode_choice"; then
-            log_error "Failed to deploy Pacaya smart contracts"
-            exit 1
-        fi
         
         # Run L1 contracts simulation
         if ! deploy_l1_contracts "$mode_choice" false; then
             log_error "Failed to deploy L1 smart contracts"
-            exit 1
-        fi
-
-        # Extract L1 deployment results
-        if ! extract_l1_deployment_results; then
-            log_error "Failed to extract L1 deployment results"
             exit 1
         fi
 
@@ -2430,6 +2423,17 @@ main() {
             exit 1
         fi
 
+        # Deploy Pacaya contracts
+        if ! deploy_pacaya_contracts "$mode_choice"; then
+            log_error "Failed to deploy Pacaya smart contracts"
+            exit 1
+        fi
+
+        # Extract L1 deployment results
+        if ! extract_l1_deployment_results; then
+            log_error "Failed to extract L1 deployment results"
+            exit 1
+        fi
         # Accept ownership
         # if ! accept_ownership "$mode_choice"; then
         #     log_error "Failed to accept ownership"

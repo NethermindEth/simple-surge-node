@@ -82,7 +82,7 @@ services:
     env_file:
       - .env
     environment:
-      FOUNDRY_PROFILE: layer1
+      FOUNDRY_PROFILE: layer1o
       BROADCAST: ${BROADCAST}
       VERIFY: ${VERIFY}
       VERIFY_ARG: ${VERIFY_ARG}
