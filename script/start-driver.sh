@@ -20,6 +20,11 @@ ARGS="${ARGS} \
     --preconfirmation.whitelist ${SHASTA_PRECONF_WHITELIST} \
     --preconfirmation.serverPort ${PRECONF_SERVER_PORT} \
     --jwtSecret /tmp/jwt/jwtsecret \
+    --p2p.sequencer.key=${OPERATOR_PRIVATE_KEY} \
+    --p2p.listen.tcp=9000 \
+    --p2p.listen.udp=9000 \
+    --p2p.useragent=taiko \
+    --p2p.disable=false \
     --metrics true \
     --metrics.port 6060"
 
