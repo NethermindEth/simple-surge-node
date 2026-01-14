@@ -17,6 +17,8 @@ ARGS="${ARGS} \
     --shastaInbox ${SHASTA_SURGE_INBOX} \
     --pacayaInbox ${PACAYA_TAIKO} \
     --taikoAnchor ${TAIKO_ANCHOR} \
+    --preconfirmation.whitelist ${SHASTA_PRECONF_WHITELIST} \
+    --preconfirmation.serverPort ${PRECONF_SERVER_PORT} \
     --jwtSecret /tmp/jwt/jwtsecret \
     --metrics true \
     --metrics.port 6060"

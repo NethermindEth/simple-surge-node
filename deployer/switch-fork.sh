@@ -1,12 +1,24 @@
 # This script deploys the Surge protocol on L1
 set -e
 
-# echo "Adding operators to whitelist..."
-# cast send $SHASTA_PRECONF_WHITELIST "addOperator(address)" \
-#     $OPERATOR_PUBLIC_KEY \
+echo "Adding operators to whitelist..."
+
+cast send $SHASTA_PRECONF_WHITELIST "addOperator(address,address)" \
+  $OPERATOR_PUBLIC_KEY $OPERATOR_PUBLIC_KEY \
+  --rpc-url $L1_ENDPOINT_HTTP \
+  --private-key $PRIVATE_KEY \
+  --confirmations 1
+
+# cast send $SHASTA_PRECONF_WHITELIST "removeOperator(uint256)" \
+#     0 \
 #     --rpc-url $L1_ENDPOINT_HTTP \
 #     --private-key $PRIVATE_KEY \
-#     --confirmations 1
+#     --confirmations 1 || true
+
+cast send $SHASTA_SURGE_INBOX "deposit(uint64)" 10000000000 \
+  --value 10000000000000000000 \
+  --rpc-url $L1_ENDPOINT_HTTP \
+  --private-key $OPERATOR_PRIVATE_KEY
 
 # Get the Shasta Inbox address from deployment
 SHASTA_INBOX=$(jq -r '.surge_inbox' /deployment/deploy_l1.json)
