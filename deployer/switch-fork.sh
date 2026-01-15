@@ -15,7 +15,9 @@ cast send $SHASTA_PRECONF_WHITELIST "addOperator(address,address)" \
 #     --private-key $PRIVATE_KEY \
 #     --confirmations 1 || true
 
-cast send $SHASTA_SURGE_INBOX "deposit(uint64)" 10000000000 \
+echo "Depositing bond..."
+
+cast send $SHASTA_SURGE_INBOX "deposit(uint64)" 10000000000000000000 \
   --value 10000000000000000000 \
   --rpc-url $L1_ENDPOINT_HTTP \
   --private-key $OPERATOR_PRIVATE_KEY

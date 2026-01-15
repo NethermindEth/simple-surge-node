@@ -48,7 +48,7 @@ services:
 
   # L2 stack components
   nethermind_execution_client:
-    image: nethermindeth/nethermind:taiko-shasta-changes
+    image: nethermindeth/nethermind:v26.0.1-surge
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
