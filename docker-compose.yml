@@ -48,7 +48,7 @@ services:
 
   # L2 stack components
   nethermind_execution_client:
-    image: nethermindeth/nethermind:v26.0.1-surge
+    image: nethermindeth/nethermind:taiko-rpc-fix-01-15-26
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
