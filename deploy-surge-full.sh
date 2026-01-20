@@ -1,11 +1,28 @@
 #!/bin/bash
 set -euo pipefail
 
-# Configuration
+# Directories
 readonly SCRIPT_NAME="$(basename "$0")"
-readonly ENV_FILE=".env"
 readonly DEPLOYMENT_DIR="deployment"
+readonly ETHEREUM_PACKAGE_DIR="ethereum-package"
 readonly CONFIGS_DIR="configs"
+
+# L1 Devnet
+readonly NETWORK_PARAMS="./configs/network_params.yaml"
+readonly ENCLAVE_NAME="surge-devnet"
+readonly BLOCKSCOUT_FILE="$ETHEREUM_PACKAGE_DIR/src/blockscout/blockscout_launcher.star"
+readonly BLOCKSCOUT_CONFIG_FILE="$CONFIGS_DIR/blockscout_launcher.star"
+readonly SHARED_UTILS_FILE="$ETHEREUM_PACKAGE_DIR/src/shared_utils/shared_utils.star"
+readonly SHARED_UTILS_CONFIG_FILE="$CONFIGS_DIR/shared_utils.star"
+readonly INPUT_PARSER_FILE="$ETHEREUM_PACKAGE_DIR/src/package_io/input_parser.star"
+readonly INPUT_PARSER_CONFIG_FILE="$CONFIGS_DIR/input_parser.star"
+readonly SPAMOOR_FILE="$ETHEREUM_PACKAGE_DIR/src/spamoor/spamoor.star"
+readonly SPAMOOR_CONFIG_FILE="$CONFIGS_DIR/spamoor.star"
+readonly MAIN_FILE="$ETHEREUM_PACKAGE_DIR/main.star"
+readonly MAIN_CONFIG_FILE="$CONFIGS_DIR/main.star"
+
+# L2 Deployment
+readonly ENV_FILE=".env"
 readonly PACAYA_DEPLOYMENT_FILE="$DEPLOYMENT_DIR/deploy_l1_pacaya.json"
 readonly L1_DEPLOYMENT_FILE="$DEPLOYMENT_DIR/deploy_l1.json"
 readonly L1_LOCK_FILE="$DEPLOYMENT_DIR/deploy_l1.lock"
@@ -13,11 +30,8 @@ readonly SURGE_GENESIS_FILE="$DEPLOYMENT_DIR/surge_genesis.json"
 readonly ACCEPT_OWNERSHIP_FILE="$DEPLOYMENT_DIR/accept_ownership.json"
 readonly ACCEPT_OWNERSHIP_LOCK_FILE="$DEPLOYMENT_DIR/accept_ownership.lock"
 readonly L2_DEPLOYMENT_FILE="$DEPLOYMENT_DIR/setup_l2.json"
-readonly BLOCKSCOUT_FILE="src/blockscout/blockscout_launcher.star"
-readonly BACKUP_FILE="${BLOCKSCOUT_FILE}.bak"
-readonly NETWORK_PARAMS="network_params.yaml"
-readonly ENCLAVE_NAME="surge-devnet"
-readonly SURGE_ETHEREUM_PACKAGE_DIR="surge-ethereum-package"
+readonly SURGE_PROTOCOL_IMAGE="nethermind/surge-protocol:sha-91d3867"
+
 
 # Default values for command line arguments
 environment=""
@@ -28,14 +42,14 @@ l1_beacon_rpc_url=""
 l1_explorer_url=""
 deployment_key=""
 stack_option=""
-timelocked_owner=""
+accept_ownership=""
 running_provers=""
 deposit_bond=""
 bond_amount=""
 start_relayers=""
 mode=""
 force=""
-verify_key_only=""
+# verify_key_only=""
 
 # Colors for output
 readonly RED='\033[0;31m'
@@ -70,23 +84,20 @@ show_help() {
     echo "  Deploy complete Surge stack with L1 (optional devnet) and L2 components"
     echo
     echo "Options:"
-    echo "  --environment ENV       Surge environment (devnet|staging|testnet) [REQUIRED]"
+    echo "  --environment ENV        Surge environment (devnet|staging|testnet) [REQUIRED]"
     echo "  --deploy-devnet BOOL     Deploy new devnet or use existing chain (devnet only, true|false)"
     echo "  --deployment TYPE        Deployment type (local|remote)"
-    echo "  --l1-rpc-url URL        L1 RPC URL (for existing chain)"
-    echo "  --l1-beacon-rpc-url URL L1 Beacon RPC URL (for existing chain)"
-    echo "  --l1-explorer-url URL   L1 Explorer URL (optional)"
-    echo "  --deployment-key KEY    Private key for contract deployment (will be verified)"
-    echo "  --stack-option NUM      L2 stack option (1-6, see details below)"
-    echo "  --timelocked-owner BOOL Use timelocked owner (devnet only, true|false)"
-    echo "  --running-provers BOOL  Setup provers (devnet only, true|false)"
-    echo "  --deposit-bond BOOL     Deposit bond (devnet only, true|false)"
-    echo "  --bond-amount NUM       Bond amount in ETH (default: 1000)"
-    echo "  --start-relayers BOOL   Start relayers (true|false)"
-    echo "  --mode MODE             Execution mode (silence|debug)"
-    echo "  --verify-key-only       Only verify private key, don't deploy"
-    echo "  -f, --force            Skip confirmation prompts"
-    echo "  -h, --help             Show this help message"
+    echo "  --deployment-key KEY     Private key for contract deployment (will be verified)"
+    echo "  --stack-option NUM       L2 stack option (1-6, see details below)"
+    # echo "  --accept-ownership BOOL  Accept ownership (devnet only, true|false)"
+    echo "  --running-provers BOOL   Setup provers (devnet only, true|false)"
+    echo "  --deposit-bond BOOL      Deposit bond (devnet only, true|false)"
+    echo "  --bond-amount NUM        Bond amount in ETH (default: 1000)"
+    echo "  --start-relayers BOOL    Start relayers (true|false)"
+    echo "  --mode MODE              Execution mode (silence|debug)"
+    # echo "  --verify-key-only        Only verify private key, don't deploy"
+    echo "  -f, --force              Skip confirmation prompts"
+    echo "  -h, --help               Show this help message"
     echo
     echo "Stack Options:"
     echo "  1 - Driver only"
@@ -102,8 +113,7 @@ show_help() {
     echo
     echo "Examples:"
     echo "  $0 --environment devnet --deploy-devnet true --mode debug"
-    echo "  $0 --environment testnet --l1-rpc-url https://... --deployment-key 0x..."
-    echo "  $0 --environment devnet --deploy-devnet false --l1-rpc-url http://localhost:8545"
+    echo "  $0 --environment staging --stack-option 3 --start-relayers true"
     exit 0
 }
 
@@ -123,18 +133,6 @@ parse_arguments() {
                 deployment="$2"
                 shift 2
                 ;;
-            --l1-rpc-url)
-                l1_rpc_url="$2"
-                shift 2
-                ;;
-            --l1-beacon-rpc-url)
-                l1_beacon_rpc_url="$2"
-                shift 2
-                ;;
-            --l1-explorer-url)
-                l1_explorer_url="$2"
-                shift 2
-                ;;
             --deployment-key)
                 deployment_key="$2"
                 shift 2
@@ -143,8 +141,8 @@ parse_arguments() {
                 stack_option="$2"
                 shift 2
                 ;;
-            --timelocked-owner)
-                timelocked_owner="$2"
+            --accept-ownership)
+                accept_ownership="$2"
                 shift 2
                 ;;
             --running-provers)
@@ -167,10 +165,10 @@ parse_arguments() {
                 mode="$2"
                 shift 2
                 ;;
-            --verify-key-only)
-                verify_key_only="true"
-                shift
-                ;;
+            # --verify-key-only)
+            #     verify_key_only="true"
+            #     shift
+            #     ;;
             -f|--force)
                 force="true"
                 shift
@@ -214,7 +212,7 @@ validate_prerequisites() {
     fi
     
     # Check required commands
-    local required_cmds=("docker" "git" "jq" "curl" "bc")
+    local required_cmds=("docker" "git" "jq" "curl" "bc" "cast")
     local missing_cmds=()
     
     for cmd in "${required_cmds[@]}"; do
@@ -223,26 +221,10 @@ validate_prerequisites() {
         fi
     done
     
-    # Check for cast (Foundry) or node for address derivation
-    local has_cast=false
-    local has_node=false
-    if command -v cast >/dev/null 2>&1; then
-        has_cast=true
-    fi
-    if command -v node >/dev/null 2>&1; then
-        has_node=true
-    fi
-    
     if [[ ${#missing_cmds[@]} -gt 0 ]]; then
         log_error "Missing required commands: ${missing_cmds[*]}"
         log_error "Please install them first"
         return 1
-    fi
-    
-    if [[ "$has_cast" == false && "$has_node" == false ]]; then
-        log_warning "Neither 'cast' (Foundry) nor 'node' found"
-        log_warning "Private key address derivation may not work"
-        log_warning "Install Foundry (cast) or Node.js for full functionality"
     fi
     
     # Create required directories
@@ -278,51 +260,19 @@ initialize_submodules() {
             log_warning "Failed to initialize git submodules, but continuing..."
         fi
     fi
-    
-    # Specifically check and initialize surge-ethereum-package if needed
-    # Note: The submodule name in .gitmodules is "surge-ethereum-packages" but path is "surge-ethereum-package"
-    if [[ ! -d "$SURGE_ETHEREUM_PACKAGE_DIR" ]]; then
-        log_info "Attempting to initialize surge-ethereum-package submodule..."
-        # Try with the path
-        if git submodule update --init "$SURGE_ETHEREUM_PACKAGE_DIR" >/dev/null 2>&1; then
-            log_success "surge-ethereum-package submodule initialized"
-        else
-            # Try with the actual submodule name from .gitmodules
-            if git submodule update --init surge-ethereum-packages >/dev/null 2>&1; then
-                log_success "surge-ethereum-package submodule initialized (via name)"
-            else
-                log_warning "Could not initialize surge-ethereum-package submodule"
-                log_info "Will attempt to use current directory if Kurtosis files are present"
-            fi
-        fi
-    fi
 }
 
-# Ensure surge-ethereum-package submodule exists or use current directory
-ensure_surge_ethereum_package() {
-    log_info "Checking surge-ethereum-package submodule..."
+# Ensure ethereum-package submodule exists or use current directory
+ensure_ethereum_package() {
+    log_info "Checking ethereum-package submodule..."
     
-    if [[ ! -d "$SURGE_ETHEREUM_PACKAGE_DIR" ]]; then
-        log_warning "surge-ethereum-package submodule not found, checking current directory..."
-        # Fall back to current directory approach (like original deploy-surge-devnet-l1.sh)
-        if [[ -f "main.star" ]] || [[ -f "network_params.yaml" ]]; then
-            log_info "Using current directory for Kurtosis setup"
-            export SURGE_ETHEREUM_PACKAGE_DIR="."
-            return 0
-        fi
-        log_error "surge-ethereum-package submodule not found and no Kurtosis files in current directory"
-        log_error "Please run: git submodule update --init --recursive"
-        log_error "Or ensure Kurtosis setup files are in the current directory"
-        return 1
-    fi
-    
-    if [[ ! -f "$SURGE_ETHEREUM_PACKAGE_DIR/main.star" ]] && [[ "$SURGE_ETHEREUM_PACKAGE_DIR" != "." ]]; then
-        log_error "Invalid surge-ethereum-package directory"
+    if [[ ! -f "$ETHEREUM_PACKAGE_DIR/main.star" ]] && [[ "$ETHEREUM_PACKAGE_DIR" != "." ]]; then
+        log_error "Invalid ethereum-package directory"
         log_error "Expected Kurtosis main.star file not found"
         return 1
     fi
     
-    log_success "surge-ethereum-package verified"
+    log_success "ethereum-package verified"
     return 0
 }
 
@@ -369,40 +319,6 @@ derive_address_from_key_cast() {
     return 1
 }
 
-# Derive address from private key using node
-derive_address_from_key_node() {
-    local private_key="$1"
-    
-    if ! command -v node >/dev/null 2>&1; then
-        return 1
-    fi
-    
-    local script="const { ethers } = require('ethers'); const wallet = new ethers.Wallet('$private_key'); console.log(wallet.address);"
-    
-    # Try to use ethers if available
-    local address
-    if address=$(node -e "$script" 2>/dev/null); then
-        echo "$address"
-        return 0
-    fi
-    
-    # Fallback: try using crypto built-in
-    local fallback_script="
-    const crypto = require('crypto');
-    const privateKey = '$private_key';
-    if (!privateKey.startsWith('0x')) { process.exit(1); }
-    const privKey = Buffer.from(privateKey.slice(2), 'hex');
-    const secp256k1 = require('secp256k1');
-    const pubKey = secp256k1.publicKeyCreate(privKey, false).slice(1);
-    const hash = crypto.createHash('sha256').update(pubKey).digest();
-    const ripemd160 = require('ripemd160');
-    const address = '0x' + crypto.createHash('sha256').update(hash).digest().slice(12).toString('hex');
-    console.log(address);
-    "
-    
-    return 1
-}
-
 # Derive address from private key (try multiple methods)
 derive_address_from_key() {
     local private_key="$1"
@@ -414,19 +330,16 @@ derive_address_from_key() {
         return 0
     fi
     
-    # Try node with ethers
-    if address=$(derive_address_from_key_node "$private_key"); then
-        echo "$address"
-        return 0
-    fi
-    
     # Last resort: use docker with foundry
-    if docker run --rm -i foundry:latest cast wallet address "$private_key" 2>/dev/null | head -n1; then
-        return 0
+   if address=$(docker run --rm $SURGE_PROTOCOL_IMAGE cast wallet address "$private_key" 2>/dev/null | head -n1); then
+        if [ -n "$address" ]; then
+            echo "$address"
+            return 0
+        fi
     fi
     
     log_error "Unable to derive address from private key"
-    log_error "Please install Foundry (cast) or ensure Node.js with ethers is available"
+    log_error "Please install Foundry (cast) and ensure it is in your PATH"
     return 1
 }
 
@@ -442,24 +355,6 @@ test_rpc_connection() {
     fi
     
     if echo "$response" | jq -e '.result' >/dev/null 2>&1; then
-        return 0
-    fi
-    
-    return 1
-}
-
-# Get account balance
-get_account_balance() {
-    local address="$1"
-    local rpc_url="$2"
-    
-    local response
-    response=$(curl -s -X POST -H "Content-Type: application/json" \
-        --data "{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"eth_getBalance\",\"params\":[\"$address\",\"latest\"]}" \
-        "$rpc_url" 2>/dev/null)
-    
-    if echo "$response" | jq -e '.result' >/dev/null 2>&1; then
-        echo "$response" | jq -r '.result'
         return 0
     fi
     
@@ -486,47 +381,6 @@ get_chain_id() {
     return 1
 }
 
-# Convert wei to ETH
-wei_to_eth() {
-    local wei="$1"
-    
-    # Remove 0x prefix if present
-    wei="${wei#0x}"
-    
-    # Use Python or bc for precision
-    if command -v python3 >/dev/null 2>&1; then
-        python3 -c "print('{:.5f}'.format(int('$wei', 16) / 1000000000000000000))" 2>/dev/null || echo "0"
-    elif command -v bc >/dev/null 2>&1; then
-        # Convert hex to decimal using printf if it's hex
-        local wei_decimal
-        if [[ "$wei" =~ ^[0-9a-fA-F]+$ ]] && [[ ${#wei} -gt 10 ]]; then
-            wei_decimal=$(printf "%d" "0x$wei" 2>/dev/null || echo "$wei")
-        else
-            wei_decimal="$wei"
-        fi
-        echo "scale=5; $wei_decimal / 1000000000000000000" | bc -l 2>/dev/null || echo "0"
-    else
-        echo "0"
-    fi
-}
-
-# Check sufficient balance
-check_sufficient_balance() {
-    local balance="$1"
-    local min_balance="$2"
-    
-    # Remove 0x prefix if present
-    balance="${balance#0x}"
-    min_balance="${min_balance#0x}"
-    
-    # Compare hex values directly
-    if [[ $(printf "%d" "0x${balance^^}") -ge $(printf "%d" "0x${min_balance^^}") ]]; then
-        return 0
-    fi
-    
-    return 1
-}
-
 # Verify private key on chain
 verify_private_key_on_chain() {
     local private_key="$1"
@@ -536,10 +390,12 @@ verify_private_key_on_chain() {
     log_info "Verifying private key on $chain_name..."
     
     # 1. Validate format
+    log_info "Validating private key format..."
     if ! validate_private_key_format "$private_key"; then
         log_error "Invalid private key format"
         return 1
     fi
+    log_success "Private key format validated"
     
     # 2. Derive address from private key
     log_info "Deriving address from private key..."
@@ -548,8 +404,7 @@ verify_private_key_on_chain() {
         log_error "Failed to derive address from private key"
         return 1
     fi
-    
-    log_info "Derived address: $address"
+    log_info "Address used for deployment: $address"
     
     # 3. Test RPC connection
     log_info "Testing RPC connection..."
@@ -563,47 +418,33 @@ verify_private_key_on_chain() {
     # 4. Get account balance
     log_info "Querying account balance..."
     local balance
-    if ! balance=$(get_account_balance "$address" "$rpc_url"); then
+    if ! balance=$(cast balance -e "$address" --rpc-url "$rpc_url" 2>/dev/null); then
         log_error "Failed to query account balance"
         return 1
     fi
-    
-    local balance_eth
-    balance_eth=$(wei_to_eth "$balance")
-    log_info "Account balance: $balance_eth ETH"
+    # Validate balance is not empty
+    if [ -z "$balance" ]; then
+        log_error "Received empty balance response"
+        return 1
+    fi
+    log_info "Account balance: $balance ETH"
     
     # 5. Verify chain ID
     log_info "Verifying chain ID..."
     local chain_id
-    if ! chain_id=$(get_chain_id "$rpc_url"); then
+    if ! chain_id=$(cast chain-id --rpc-url "$rpc_url" 2>/dev/null); then
         log_error "Failed to get chain ID"
         return 1
     fi
     log_info "Chain ID: $chain_id"
     
     # 6. Check sufficient balance
-    local min_balance="0xde0b6b3a7640000"  # 1 ETH in hex
-    local has_sufficient_balance=false
-    if check_sufficient_balance "$balance" "$min_balance"; then
-        has_sufficient_balance=true
-    fi
-    
-    # 7. Display verification summary
-    echo
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║  Private Key Verification Summary                           ║"
-    echo "║══════════════════════════════════════════════════════════════║"
-    printf "║  Address:      %-42s ║\n" "$address"
-    printf "║  Balance:      %-20s ETH                        ║\n" "$balance_eth"
-    printf "║  Chain ID:     %-42s ║\n" "$chain_id"
-    echo "║  RPC Status:   ✓ Connected                                   ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo
-    
-    if [[ "$has_sufficient_balance" == false ]]; then
+
+    local min_balance="0.01"  # 0.01 ETH
+    if (( $(echo "$balance < $min_balance" | bc -l) )); then
         log_warning "Account balance is low. Deployment may fail."
-        log_warning "Current balance: $balance_eth ETH"
-        log_warning "Recommended: >= 1 ETH"
+        log_warning "Current balance: $balance ETH"
+        log_warning "Recommended: >= 0.01 ETH"
         
         if [[ "$force" != "true" ]]; then
             echo
@@ -616,12 +457,23 @@ verify_private_key_on_chain() {
         fi
     fi
     
+    # 7. Display verification summary
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║  Private Key Verification Summary                            ║"
+    echo "║══════════════════════════════════════════════════════════════║"
+    printf "   Address:      %-42s  \n" "$address"
+    printf "   Balance:      %-20s ETH                         \n" "$balance"
+    printf "   Chain ID:     %-42s  \n" "$chain_id"
+    echo "║  RPC Status:   ✓ Connected                                   ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    
     log_success "Private key verified successfully"
     
     # Export address for later use
     export DEPLOYMENT_ADDRESS="$address"
-    export DEPLOYMENT_BALANCE="$balance_eth"
-    export DEPLOYMENT_CHAIN_ID="$chain_id"
+    export DEPLOYMENT_BALANCE="$balance"
     
     return 0
 }
@@ -632,9 +484,9 @@ prompt_environment_selection() {
     echo "╔══════════════════════════════════════════════════════════════╗" >&2
     echo "  ⚠️  Select which Surge environment to use:                    " >&2
     echo "║══════════════════════════════════════════════════════════════║" >&2
-    echo "║ 1 for Devnet                                                 ║" >&2
-    echo "║ 2 for Staging                                                ║" >&2
-    echo "║ 3 for Testnet                                                ║" >&2
+    echo "║  1 for Devnet                                                ║" >&2
+    echo "║  2 for Staging                                               ║" >&2
+    echo "║  3 for Testnet                                               ║" >&2
     echo "║ [default: Devnet]                                            ║" >&2
     echo "╚══════════════════════════════════════════════════════════════╝" >&2
     echo >&2
@@ -666,81 +518,13 @@ prompt_l1_deployment_mode() {
     echo "  ⚠️  Deploy new devnet or use existing L1?                     " >&2
     echo "║══════════════════════════════════════════════════════════════║" >&2
     echo "║  0 for Deploy new devnet                                     ║" >&2
-    echo "║  1 for Use existing chain                                    ║" >&2
+    echo "║  1 for Use existing chain (WIP)                              ║" >&2
     echo "║ [default: Deploy new devnet]                                 ║" >&2
     echo "╚══════════════════════════════════════════════════════════════╝" >&2
     echo >&2
     read -p "Enter choice [0]: " choice
     choice=${choice:-0}
     echo $choice
-}
-
-# Prompt for existing chain configuration
-prompt_for_existing_chain_config() {
-    local chain_type="$1"  # "L1" or "chain"
-    
-    echo
-    log_info "Please provide $chain_type configuration:"
-    
-    # L1 RPC URL
-    if [[ -z "$l1_rpc_url" ]]; then
-        read -p "Enter L1 RPC URL: " l1_rpc_url_input
-        l1_rpc_url="$l1_rpc_url_input"
-    fi
-    
-    if [[ -z "$l1_rpc_url" ]]; then
-        log_error "L1 RPC URL is required"
-        return 1
-    fi
-    
-    # L1 Beacon RPC URL
-    if [[ -z "$l1_beacon_rpc_url" ]]; then
-        read -p "Enter L1 Beacon RPC URL (optional, press Enter to skip): " l1_beacon_rpc_url_input
-        l1_beacon_rpc_url="$l1_beacon_rpc_url_input"
-    fi
-    
-    # L1 Explorer URL
-    if [[ -z "$l1_explorer_url" ]]; then
-        read -p "Enter L1 Explorer URL (optional, press Enter to skip): " l1_explorer_url_input
-        l1_explorer_url="$l1_explorer_url_input"
-    fi
-    
-    # Deployment private key
-    if [[ -z "$deployment_key" ]]; then
-        echo
-        echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "  ⚠️  Enter private key for contract deployment                 "
-        echo "║══════════════════════════════════════════════════════════════║"
-        echo "║  This key will be verified on the provided chain             ║"
-        echo "║  Format: 0x followed by 64 hexadecimal characters            ║"
-        echo "╚══════════════════════════════════════════════════════════════╝"
-        echo
-        read -sp "Enter private key: " deployment_key_input
-        echo
-        deployment_key="$deployment_key_input"
-    fi
-    
-    if [[ -z "$deployment_key" ]]; then
-        log_error "Deployment private key is required"
-        return 1
-    fi
-    
-    # Verify private key on chain
-    log_info "Verifying private key on provided chain..."
-    if ! verify_private_key_on_chain "$deployment_key" "$l1_rpc_url" "$chain_type"; then
-        log_error "Private key verification failed"
-        return 1
-    fi
-    
-    # Update environment variables
-    export L1_RPC="$l1_rpc_url"
-    export L1_BEACON_RPC="$l1_beacon_rpc_url"
-    export L1_EXPLORER="$l1_explorer_url"
-    export PRIVATE_KEY="$deployment_key"
-    export PUBLIC_KEY="$DEPLOYMENT_ADDRESS"
-    
-    log_success "Chain configuration complete"
-    return 0
 }
 
 # Check and load environment file
@@ -797,19 +581,81 @@ get_machine_ip() {
 configure_remote_blockscout() {
     local machine_ip="$1"
     
-    if [[ ! -f "$BLOCKSCOUT_FILE" ]]; then
-        log_warning "Blockscout configuration file not found: $BLOCKSCOUT_FILE"
+    if [[ ! -f "$BLOCKSCOUT_CONFIG_FILE" ]]; then
+        log_warning "Blockscout configuration file not found: $BLOCKSCOUT_CONFIG_FILE"
         return 0
     fi
     
-    log_info "Backing up blockscout configuration..."
-    cp "$BLOCKSCOUT_FILE" "$BACKUP_FILE"
+    if [[ ! -d "$(dirname "$BLOCKSCOUT_FILE")" ]]; then
+        log_warning "Blockscout target directory not found: $(dirname "$BLOCKSCOUT_FILE")"
+        return 0
+    fi
+    
+    log_info "Copy blockscout configuration..."
+    cp "$BLOCKSCOUT_CONFIG_FILE" "$BLOCKSCOUT_FILE"
     
     log_info "Configuring blockscout for remote access (IP: $machine_ip)..."
-    sed -i.tmp "s/else \"localhost:{0}\"/else \"$machine_ip:{0}\"/g" "$BLOCKSCOUT_FILE"
-    rm -f "${BLOCKSCOUT_FILE}.tmp"
+    if [[ -f "$BLOCKSCOUT_FILE" ]]; then
+        sed -i.tmp "s/else \"localhost:{0}\"/else \"$machine_ip:{0}\"/g" "$BLOCKSCOUT_FILE"
+        rm -f "${BLOCKSCOUT_FILE}.tmp"
+    fi
     
     log_success "Blockscout configured for remote access"
+}
+
+# Configure shared_utils for more ports
+configure_shared_utils() {
+    if [[ ! -f "$SHARED_UTILS_CONFIG_FILE" ]]; then
+        log_warning "Shared utils configuration file not found: $SHARED_UTILS_CONFIG_FILE"
+        return 0
+    fi
+    
+    if [[ ! -d "$(dirname "$SHARED_UTILS_FILE")" ]]; then
+        log_warning "Shared utils target directory not found: $(dirname "$SHARED_UTILS_FILE")"
+        return 0
+    fi
+    
+    log_info "Copy shared_utils configuration..."
+    cp "$SHARED_UTILS_CONFIG_FILE" "$SHARED_UTILS_FILE"
+    
+    log_success "Configured shared_utils for more ports..."
+}
+
+# Configure input_parser for blockscout image
+configure_input_parser() {
+    if [[ ! -f "$INPUT_PARSER_CONFIG_FILE" ]]; then
+        log_warning "Input parser configuration file not found: $INPUT_PARSER_CONFIG_FILE"
+        return 0
+    fi
+    
+    if [[ ! -d "$(dirname "$INPUT_PARSER_FILE")" ]]; then
+        log_warning "Input parser target directory not found: $(dirname "$INPUT_PARSER_FILE")"
+        return 0
+    fi
+    
+    log_info "Copy input_parser configuration..."
+    cp "$INPUT_PARSER_CONFIG_FILE" "$INPUT_PARSER_FILE"
+    
+    log_success "Configured input_parser for blockscout image..."
+}
+
+# Configure spamoor for fixed port
+configure_spamoor() {
+    if [[ ! -f "$SPAMOOR_CONFIG_FILE" ]] || [[ ! -f "$MAIN_CONFIG_FILE" ]]; then
+        log_warning "Spamoor or main configuration file not found"
+        return 0
+    fi
+    
+    if [[ ! -d "$(dirname "$SPAMOOR_FILE")" ]]; then
+        log_warning "Spamoor target directory not found: $(dirname "$SPAMOOR_FILE")"
+        return 0
+    fi
+    
+    log_info "Copy spamoor configuration..."
+    cp "$SPAMOOR_CONFIG_FILE" "$SPAMOOR_FILE"
+    cp "$MAIN_CONFIG_FILE" "$MAIN_FILE"
+    
+    log_success "Configured spamoor for fixed port..."
 }
 
 # Configure environment URLs
@@ -911,14 +757,6 @@ validate_environment_for_devnet() {
         fi
     fi
     
-    # Check network params file exists (in surge-ethereum-package directory)
-    local network_params_path="$SURGE_ETHEREUM_PACKAGE_DIR/$NETWORK_PARAMS"
-    if [[ ! -f "$network_params_path" ]] && [[ ! -f "$NETWORK_PARAMS" ]]; then
-        log_error "Network parameters file not found: $network_params_path or $NETWORK_PARAMS"
-        log_error "Please ensure network_params.yaml exists"
-        return 1
-    fi
-    
     # Check for Kurtosis
     if ! command -v kurtosis >/dev/null 2>&1; then
         log_error "Kurtosis is not installed or not in PATH"
@@ -932,7 +770,8 @@ validate_environment_for_devnet() {
 
 # Run kurtosis with different settings
 run_kurtosis() {
-    local mode="$1"
+    local environment="$1"
+    local mode="$2"
     
     if [[ "$mode" == "0" || "$mode" == "silence" ]]; then
         mode="silence"
@@ -941,26 +780,20 @@ run_kurtosis() {
     fi
 
     echo
-    log_info "Starting Surge DevNet L1 in $mode mode..."
+    log_info "Starting Surge DevNet L1 ($environment environment) in $mode mode..."
     echo 
     
     local exit_status=0
     local temp_output="/tmp/surge_devnet_l1_output_$$"
     
-    # Determine network params file path
-    local network_params_path="$NETWORK_PARAMS"
-    if [[ ! -f "$network_params_path" ]] && [[ -f "$SURGE_ETHEREUM_PACKAGE_DIR/$NETWORK_PARAMS" ]]; then
-        network_params_path="$SURGE_ETHEREUM_PACKAGE_DIR/$NETWORK_PARAMS"
-    fi
-    
     # Run kurtosis based on mode
     if [[ "$mode" == "debug" ]]; then
         # Debug mode: run in foreground, capture output for error detection
-        kurtosis run --enclave "$ENCLAVE_NAME" "$SURGE_ETHEREUM_PACKAGE_DIR" --args-file "$network_params_path" --production --image-download always --verbosity brief 2>&1 | tee "$temp_output"
+        kurtosis run --enclave "$ENCLAVE_NAME" "$ETHEREUM_PACKAGE_DIR" --args-file "$NETWORK_PARAMS" --production --image-download always --verbosity brief 2>&1 | tee "$temp_output"
         exit_status=${PIPESTATUS[0]}
     else
         # Silent mode: run in background with progress indicator
-        kurtosis run --enclave "$ENCLAVE_NAME" "$SURGE_ETHEREUM_PACKAGE_DIR" --args-file "$network_params_path" --production --image-download always >"$temp_output" 2>&1 &
+        kurtosis run --enclave "$ENCLAVE_NAME" "$ETHEREUM_PACKAGE_DIR" --args-file "$NETWORK_PARAMS" --production --image-download always >"$temp_output" 2>&1 &
         local kurtosis_pid=$!
         show_progress $kurtosis_pid "Initializing Surge DevNet L1..."
         echo
@@ -981,14 +814,20 @@ run_kurtosis() {
     
     # Check the actual exit status and error patterns
     if [[ $exit_status -eq 0 && "$has_errors" == "false" ]]; then
-        log_success "Surge DevNet L1 started successfully"
+        log_success "Surge DevNet L1 started successfully in $environment environment"
         return 0
     else
         log_error "Failed to start Surge DevNet L1 (exit code: $exit_status)"
         if [[ "$mode" == "silence" ]]; then
             log_error "Run with debug mode for more details: --mode debug"
         fi
-        log_error "Output saved in: $temp_output"
+        log_error "Common issues:"
+        log_error "  • Check if Docker images exist and are accessible"
+        log_error "  • Verify network_params.yaml configuration"
+        log_error "  • Ensure sufficient system resources"
+        log_error "Contact Surge team for help if the problem persists"
+        log_error "The output of the deployment is saved in $temp_output"
+        log_error "Please share the output with the Surge team"
         return 1
     fi
 }
@@ -1040,9 +879,9 @@ deploy_l1_devnet() {
     
     log_info "Deploying new L1 devnet..."
     
-    # Ensure surge-ethereum-package is available
-    if ! ensure_surge_ethereum_package; then
-        log_error "Cannot deploy devnet without surge-ethereum-package submodule"
+    # Ensure ethereum-package is available
+    if ! ensure_ethereum_package; then
+        log_error "Cannot deploy devnet without ethereum-package submodule"
         return 1
     fi
     
@@ -1052,7 +891,13 @@ deploy_l1_devnet() {
         return 1
     fi
     
-    # Configure blockscout for remote if needed
+    # Determine environment name for kurtosis
+    local env_name="local"
+    if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+        env_name="remote"
+    fi
+    
+    # Configure all components
     if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
         local machine_ip
         machine_ip=$(get_machine_ip)
@@ -1063,10 +908,17 @@ deploy_l1_devnet() {
         fi
         
         configure_remote_blockscout "$machine_ip"
+    else
+        configure_remote_blockscout "localhost"
     fi
     
+    # Always configure shared_utils, input_parser, and spamoor
+    configure_shared_utils
+    configure_input_parser
+    configure_spamoor
+    
     # Run Kurtosis
-    if ! run_kurtosis "$mode"; then
+    if ! run_kurtosis "$env_name" "$mode"; then
         log_error "Devnet deployment failed"
         return 1
     fi
@@ -1108,11 +960,13 @@ cleanup() {
         rm -f "$ENV_FILE.bak"
     fi
     
-    # Restore blockscout config if backup exists
-    if [[ -f "$BACKUP_FILE" ]]; then
-        log_info "Restoring original blockscout configuration..."
-        mv "$BACKUP_FILE" "$BLOCKSCOUT_FILE"
-        log_success "Original configuration restored"
+    # Restore ethereum-package files if it's a git repository
+    if [[ -d "$ETHEREUM_PACKAGE_DIR/.git" ]]; then
+        log_info "Restoring ethereum-package git files..."
+        cd "$ETHEREUM_PACKAGE_DIR"
+        git restore . >/dev/null 2>&1 || true
+        cd ..
+        log_success "ethereum-package files restored"
     fi
 }
 
@@ -1134,7 +988,7 @@ generate_prover_chain_spec() {
 [
   {
     "name": "surge_dev_l1",
-    "chain_id": $L1_CHAINID,
+    "chain_id": $L1_CHAIN_ID,
     "max_spec_id": "CANCUN",
     "hard_forks": {},
     "eip_1559_constants": {
@@ -1154,7 +1008,7 @@ generate_prover_chain_spec() {
   },
   {
     "name": "surge_dev",
-    "chain_id": $L2_CHAINID,
+    "chain_id": $L2_CHAIN_ID,
     "max_spec_id": "PACAYA",
     "hard_forks": {
         "ONTAKE": {
@@ -1170,16 +1024,14 @@ generate_prover_chain_spec() {
       "base_fee_max_decrease_denominator": "0x8",
       "elasticity_multiplier": "0x2"
     },
-    "l1_contract": "$TAIKO_INBOX",
+    "l1_contract": "$SHASTA_SURGE_INBOX",
     "l2_contract": "$TAIKO_ANCHOR",
     "rpc": "$L2_RPC",
     "beacon_rpc": null,
     "verifier_address_forks": {
       "ONTAKE": {
-        "SGX": "$SGX_RETH_VERIFIER",
-        "SGXGETH": "$SGX_GETH_VERIFIER",
-        "SP1": "$SP1_RETH_VERIFIER",
-        "RISC0": "$RISC0_RETH_VERIFIER"
+        "SP1": "$SHASTA_SP1_VERIFIER",
+        "RISC0": "$SHASTA_RISC0_VERIFIER"
       }
     },
     "genesis_time": 0,
@@ -1193,53 +1045,11 @@ EOF
     log_info "Saved to: $CONFIGS_DIR/chain_spec_list_default.json"
 }
 
-# Generate prover environment variables
-generate_prover_env_vars() {
-    log_info "Generating prover env vars..."
-
-    # Set SGX_INSTANCE_ID from the JSON file
-    local sgx_instance_id="0"
-    if [[ -f "$DEPLOYMENT_DIR/sgx_instances.json" ]]; then
-        sgx_instance_id=$(cat "$DEPLOYMENT_DIR/sgx_instances.json" | jq -r '.sgx_instance_id // "0"')
-    fi
-
-    export SGX_INSTANCE_ID="$sgx_instance_id"
-
-    echo
-    echo ">>>>>>"
-    echo "export SGX_INSTANCE_ID=$SGX_INSTANCE_ID"
-    echo "export SGX_ONTAKE_INSTANCE_ID=${SGX_INSTANCE_ID}"
-    echo "export SGX_PACAYA_INSTANCE_ID=${SGX_INSTANCE_ID}"
-    echo "export GROTH16_VERIFIER_ADDRESS=$RISC0_GROTH16_VERIFIER"
-    echo "export SP1_VERIFIER_ADDRESS=$SUCCINCT_VERIFIER"
-    echo ">>>>>>"
-    echo
-
-    log_success "Prover env vars generated successfully"
-    log_info "Please copy and paste them when you start the provers"
-}
-
 # Retrieve guest data from prover endpoints
 retrieve_guest_data() {
     local prover_type="$1"
     
     case "$prover_type" in
-        sgx_reth)
-            if [[ -n "${SGX_RAIKO_HOST:-}" ]]; then
-                log_info "Retrieving guest data for SGX RETH - $SGX_RAIKO_HOST"
-                export MR_ENCLAVE=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_reth.mr_enclave')
-                export MR_SIGNER=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_reth.mr_signer')
-                export V3_QUOTE_BYTES=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_reth.quote')
-            fi
-            ;;
-        sgx_geth)
-            if [[ -n "${SGX_RAIKO_HOST:-}" ]]; then
-                log_info "Retrieving guest data for SGX GETH - $SGX_RAIKO_HOST"
-                export MR_ENCLAVE_GETH=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_geth.mr_enclave')
-                export MR_SIGNER_GETH=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_geth.mr_signer')
-                export V3_QUOTE_BYTES_GETH=$(curl -s "$SGX_RAIKO_HOST/guest_data" | jq -r '.sgx_geth.quote')
-            fi
-            ;;
         sp1)
             if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
                 log_info "Retrieving guest data for SP1 - $RAIKO_HOST_ZKVM"
@@ -1261,33 +1071,12 @@ retrieve_guest_data() {
 deploy_pacaya_contracts() {
     local mode="$1"
     
-    # Ensure deployment directory exists
-    if [[ ! -d "$DEPLOYMENT_DIR" ]]; then
-        mkdir -p "$DEPLOYMENT_DIR"
+    if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" && -f "$PACAYA_DEPLOYMENT_FILE" ]]; then
+        log_info "Pacaya smart contracts already deployed...skipping deployment"
+        return 0
     fi
 
     log_info "Deploying Pacaya SCs..."
-
-    if [[ -f "$PACAYA_DEPLOYMENT_FILE" ]]; then
-        log_info "Pacaya smart contracts already deployed..."
-        echo
-        echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "║ Start a new deployment? (true/false) [default: false]        ║"
-        echo "╚══════════════════════════════════════════════════════════════╝"
-        echo
-        read -p "Enter choice [true]: " pacaya_redeploy
-        pacaya_redeploy=${pacaya_redeploy:-false}
-        if [[ "$pacaya_redeploy" == "true" ]]; then
-            log_info "Starting a new deployment..."
-            rm -f "$DEPLOYMENT_DIR"/*.json
-            if command -v ./remove-surge-full.sh >/dev/null 2>&1; then
-                ./remove-surge-full.sh
-            fi
-        else
-            log_info "Using existing deployment..."
-            return 0
-        fi
-    fi
     
     local exit_status=0
     local temp_output="/tmp/pacaya_deploy_output_$$"
@@ -1325,11 +1114,37 @@ deploy_pacaya_contracts() {
 deploy_l1_contracts() {
     local mode="$1"
     local broadcast="$2"
+    local mock_proof="$3"
+
+    if [[ "$mock_proof" == "0" ]]; then
+        mock_proof="true"
+    else
+        mock_proof="false"
+    fi
     
     # Check if Surge L1 is already deployed (only skip if both files exist AND we're broadcasting)
     if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" ]]; then
         log_info "Surge L1 already deployed..."
-        return 0
+        echo
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "  ⚠️  Start a new deployment?                                   " 
+        echo "║══════════════════════════════════════════════════════════════║"
+        echo "║  0 for Use existing deployment                               ║"
+        echo "║  1 for Redeployment                                          ║"
+        echo "║ [default: 0]                                                 ║"
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        read -p "Enter choice [0]: " choice
+        choice=${choice:-0}
+
+        if [[ "$choice" == "1" ]]; then
+            log_info "Starting a redeployment..."
+            if command -v ./remove-surge-full.sh >/dev/null 2>&1; then
+                ./remove-surge-full.sh --remove-configs true --remove-l2-stack true --remove-data false --remove-relayers true --force
+            fi
+        else
+            log_info "Using existing deployment..."
+            return 0
+        fi
     fi
 
     log_info "Preparing Surge L1 SCs deployment..."
@@ -1341,10 +1156,10 @@ deploy_l1_contracts() {
     
     # Deploy L1 contracts based on mode
     if [[ "$mode" == "debug" ]]; then
-        BROADCAST=$broadcast VERIFY=false docker compose -f docker-compose-protocol.yml --profile l1-deployer up 2>&1 | tee "$temp_output"
+        BROADCAST=$broadcast VERIFY=false USE_DUMMY_VERIFIER=$mock_proof docker compose -f docker-compose-protocol.yml --profile l1-deployer up 2>&1 | tee "$temp_output"
         exit_status=${PIPESTATUS[0]}
     else
-        BROADCAST=$broadcast VERIFY=false docker compose -f docker-compose-protocol.yml --profile l1-deployer up >"$temp_output" 2>&1 &
+        BROADCAST=$broadcast VERIFY=false USE_DUMMY_VERIFIER=$mock_proof docker compose -f docker-compose-protocol.yml --profile l1-deployer up >"$temp_output" 2>&1 &
         local deploy_pid=$!
         
         show_progress $deploy_pid "Deploying L1 smart contracts..."
@@ -1378,41 +1193,63 @@ deploy_l1_contracts() {
 extract_l1_deployment_results() {
     log_info "Extracting Pacaya and Surge L1 SCs deployment results..."
     
-    if [[ ! -f "$PACAYA_DEPLOYMENT_FILE" ]]; then
-        log_error "Pacaya deployment file not found: $PACAYA_DEPLOYMENT_FILE"
-        return 1
+    if [[ -f "$PACAYA_DEPLOYMENT_FILE" ]]; then
+        # Extract L1 deployment results from deploy_l1_pacaya.json
+        export PACAYA_AUTOMATA_DCAP_ATTESTATION=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.automata_dcap_attestation')
+        export PACAYA_BRIDGE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.bridge')
+        export PACAYA_ERC1155_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc1155_vault')
+        export PACAYA_ERC20_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc20_vault')
+        export PACAYA_ERC721_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc721_vault')
+        export PACAYA_FORCED_INCLUSION_STORE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.forced_inclusion_store')
+        export PACAYA_MAINNET_TAIKO=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.mainnet_taiko')
+        export PACAYA_OP_GETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.op_geth_verifier')
+        export PACAYA_OP_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.op_verifier')
+        export PACAYA_PRECONF_ROUTER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.preconf_router')
+        export PACAYA_PRECONF_WHITELIST=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.preconf_whitelist')
+        export PACAYA_PROOF_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.proof_verifier')
+        export PACAYA_PROVER_SET=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.prover_set')
+        export PACAYA_RISC0_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.risc0_reth_verifier')
+        export PACAYA_ROLLUP_ADDRESS_RESOLVER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.rollup_address_resolver')
+        export PACAYA_SGX_GETH_AUTOMATA=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_geth_automata')
+        export PACAYA_SGX_GETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_geth_verifier')
+        export PACAYA_SGX_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_reth_verifier')
+        export PACAYA_SHARED_RESOLVER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.shared_resolver')
+        export PACAYA_SIGNAL_SERVICE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.signal_service')
+        export PACAYA_SP1_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sp1_reth_verifier')
+        export PACAYA_TAIKO=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko')
+        export PACAYA_TAIKO_TOKEN=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko_token')
+        export PACAYA_TAIKO_WRAPPER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko_wrapper')
+
+        update_env_var "$ENV_FILE" "PACAYA_AUTOMATA_DCAP_ATTESTATION" "$PACAYA_AUTOMATA_DCAP_ATTESTATION"
+        update_env_var "$ENV_FILE" "PACAYA_BRIDGE" "$PACAYA_BRIDGE"
+        update_env_var "$ENV_FILE" "PACAYA_ERC1155_VAULT" "$PACAYA_ERC1155_VAULT"
+        update_env_var "$ENV_FILE" "PACAYA_ERC20_VAULT" "$PACAYA_ERC20_VAULT"
+        update_env_var "$ENV_FILE" "PACAYA_ERC721_VAULT" "$PACAYA_ERC721_VAULT"
+        update_env_var "$ENV_FILE" "PACAYA_FORCED_INCLUSION_STORE" "$PACAYA_FORCED_INCLUSION_STORE"
+        update_env_var "$ENV_FILE" "PACAYA_MAINNET_TAIKO" "$PACAYA_MAINNET_TAIKO"
+        update_env_var "$ENV_FILE" "PACAYA_OP_GETH_VERIFIER" "$PACAYA_OP_GETH_VERIFIER"
+        update_env_var "$ENV_FILE" "PACAYA_OP_VERIFIER" "$PACAYA_OP_VERIFIER"
+        update_env_var "$ENV_FILE" "PACAYA_PRECONF_ROUTER" "$PACAYA_PRECONF_ROUTER"
+        update_env_var "$ENV_FILE" "PACAYA_PRECONF_WHITELIST" "$PACAYA_PRECONF_WHITELIST"
+        update_env_var "$ENV_FILE" "PACAYA_PROOF_VERIFIER" "$PACAYA_PROOF_VERIFIER"
+        update_env_var "$ENV_FILE" "PACAYA_PROVER_SET" "$PACAYA_PROVER_SET"
+        update_env_var "$ENV_FILE" "PACAYA_RISC0_RETH_VERIFIER" "$PACAYA_RISC0_RETH_VERIFIER"
+        update_env_var "$ENV_FILE" "PACAYA_ROLLUP_ADDRESS_RESOLVER" "$PACAYA_ROLLUP_ADDRESS_RESOLVER"
+        update_env_var "$ENV_FILE" "PACAYA_SGX_GETH_AUTOMATA" "$PACAYA_SGX_GETH_AUTOMATA"
+        update_env_var "$ENV_FILE" "PACAYA_SGX_GETH_VERIFIER" "$PACAYA_SGX_GETH_VERIFIER"
+        update_env_var "$ENV_FILE" "PACAYA_SGX_RETH_VERIFIER" "$PACAYA_SGX_RETH_VERIFIER"
+        update_env_var "$ENV_FILE" "PACAYA_SHARED_RESOLVER" "$PACAYA_SHARED_RESOLVER"
+        update_env_var "$ENV_FILE" "PACAYA_SIGNAL_SERVICE" "$PACAYA_SIGNAL_SERVICE"
+        update_env_var "$ENV_FILE" "PACAYA_SP1_RETH_VERIFIER" "$PACAYA_SP1_RETH_VERIFIER"
+        update_env_var "$ENV_FILE" "PACAYA_TAIKO" "$PACAYA_TAIKO"
+        update_env_var "$ENV_FILE" "PACAYA_TAIKO_TOKEN" "$PACAYA_TAIKO_TOKEN"
+        update_env_var "$ENV_FILE" "PACAYA_TAIKO_WRAPPER" "$PACAYA_TAIKO_WRAPPER"
     fi
 
-    if [[ ! -f "$L1_DEPLOYMENT_FILE" ]]; then
-        log_error "L1 deployment file not found: $L1_DEPLOYMENT_FILE"
-        return 1
-    fi
-    
-    # Extract L1 deployment results from deploy_l1_pacaya.json
-    export PACAYA_AUTOMATA_DCAP_ATTESTATION=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.automata_dcap_attestation')
-    export PACAYA_BRIDGE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.bridge')
-    export PACAYA_ERC1155_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc1155_vault')
-    export PACAYA_ERC20_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc20_vault')
-    export PACAYA_ERC721_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc721_vault')
-    export PACAYA_FORCED_INCLUSION_STORE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.forced_inclusion_store')
-    export PACAYA_MAINNET_TAIKO=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.mainnet_taiko')
-    export PACAYA_OP_GETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.op_geth_verifier')
-    export PACAYA_OP_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.op_verifier')
-    export PACAYA_PRECONF_ROUTER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.preconf_router')
-    export PACAYA_PRECONF_WHITELIST=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.preconf_whitelist')
-    export PACAYA_PROOF_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.proof_verifier')
-    export PACAYA_PROVER_SET=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.prover_set')
-    export PACAYA_RISC0_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.risc0_reth_verifier')
-    export PACAYA_ROLLUP_ADDRESS_RESOLVER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.rollup_address_resolver')
-    export PACAYA_SGX_GETH_AUTOMATA=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_geth_automata')
-    export PACAYA_SGX_GETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_geth_verifier')
-    export PACAYA_SGX_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_reth_verifier')
-    export PACAYA_SHARED_RESOLVER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.shared_resolver')
-    export PACAYA_SIGNAL_SERVICE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.signal_service')
-    export PACAYA_SP1_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sp1_reth_verifier')
-    export PACAYA_TAIKO=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko')
-    export PACAYA_TAIKO_TOKEN=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko_token')
-    export PACAYA_TAIKO_WRAPPER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko_wrapper')
+    # if [[ ! -f "$L1_DEPLOYMENT_FILE" ]]; then
+    #     log_error "L1 deployment file not found: $L1_DEPLOYMENT_FILE"
+    #     return 1
+    # fi
 
     # Extract L1 deployment results from deploy_l1.json
     export SHASTA_BRIDGE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.bridge')
@@ -1424,9 +1261,13 @@ extract_l1_deployment_results() {
     export SHASTA_ERC20_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc20_vault')
     export SHASTA_ERC721_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc721_vault')
     export SHASTA_PRECONF_WHITELIST=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.preconf_whitelist')
+    export SHASTA_RISC0_GROTH16_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.risc0_groth16_verifier')
+    export SHASTA_RISC0_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.risc0_verifier')
     export SHASTA_PROOF_VERIFIER_DUMMY=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.proof_verifier_dummy')
     export SHASTA_SHARED_RESOLVER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.shared_resolver')
     export SHASTA_SIGNAL_SERVICE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.signal_service')
+    export SHASTA_SP1_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.sp1_verifier')
+    export SHASTA_SUCCINCT_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.succinct_verifier')
     export SHASTA_SURGE_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox')
     export SHASTA_SURGE_INBOX_IMPL=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox_impl')
     export SHASTA_SURGE_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_verifier')
@@ -1441,30 +1282,6 @@ extract_l1_deployment_results() {
     echo
 
     log_info "Updating .env with extracted values..."
-    update_env_var "$ENV_FILE" "PACAYA_AUTOMATA_DCAP_ATTESTATION" "$PACAYA_AUTOMATA_DCAP_ATTESTATION"
-    update_env_var "$ENV_FILE" "PACAYA_BRIDGE" "$PACAYA_BRIDGE"
-    update_env_var "$ENV_FILE" "PACAYA_ERC1155_VAULT" "$PACAYA_ERC1155_VAULT"
-    update_env_var "$ENV_FILE" "PACAYA_ERC20_VAULT" "$PACAYA_ERC20_VAULT"
-    update_env_var "$ENV_FILE" "PACAYA_ERC721_VAULT" "$PACAYA_ERC721_VAULT"
-    update_env_var "$ENV_FILE" "PACAYA_FORCED_INCLUSION_STORE" "$PACAYA_FORCED_INCLUSION_STORE"
-    update_env_var "$ENV_FILE" "PACAYA_MAINNET_TAIKO" "$PACAYA_MAINNET_TAIKO"
-    update_env_var "$ENV_FILE" "PACAYA_OP_GETH_VERIFIER" "$PACAYA_OP_GETH_VERIFIER"
-    update_env_var "$ENV_FILE" "PACAYA_OP_VERIFIER" "$PACAYA_OP_VERIFIER"
-    update_env_var "$ENV_FILE" "PACAYA_PRECONF_ROUTER" "$PACAYA_PRECONF_ROUTER"
-    update_env_var "$ENV_FILE" "PACAYA_PRECONF_WHITELIST" "$PACAYA_PRECONF_WHITELIST"
-    update_env_var "$ENV_FILE" "PACAYA_PROOF_VERIFIER" "$PACAYA_PROOF_VERIFIER"
-    update_env_var "$ENV_FILE" "PACAYA_PROVER_SET" "$PACAYA_PROVER_SET"
-    update_env_var "$ENV_FILE" "PACAYA_RISC0_RETH_VERIFIER" "$PACAYA_RISC0_RETH_VERIFIER"
-    update_env_var "$ENV_FILE" "PACAYA_ROLLUP_ADDRESS_RESOLVER" "$PACAYA_ROLLUP_ADDRESS_RESOLVER"
-    update_env_var "$ENV_FILE" "PACAYA_SGX_GETH_AUTOMATA" "$PACAYA_SGX_GETH_AUTOMATA"
-    update_env_var "$ENV_FILE" "PACAYA_SGX_GETH_VERIFIER" "$PACAYA_SGX_GETH_VERIFIER"
-    update_env_var "$ENV_FILE" "PACAYA_SGX_RETH_VERIFIER" "$PACAYA_SGX_RETH_VERIFIER"
-    update_env_var "$ENV_FILE" "PACAYA_SHARED_RESOLVER" "$PACAYA_SHARED_RESOLVER"
-    update_env_var "$ENV_FILE" "PACAYA_SIGNAL_SERVICE" "$PACAYA_SIGNAL_SERVICE"
-    update_env_var "$ENV_FILE" "PACAYA_SP1_RETH_VERIFIER" "$PACAYA_SP1_RETH_VERIFIER"
-    update_env_var "$ENV_FILE" "PACAYA_TAIKO" "$PACAYA_TAIKO"
-    update_env_var "$ENV_FILE" "PACAYA_TAIKO_TOKEN" "$PACAYA_TAIKO_TOKEN"
-    update_env_var "$ENV_FILE" "PACAYA_TAIKO_WRAPPER" "$PACAYA_TAIKO_WRAPPER"
 
     update_env_var "$ENV_FILE" "SHASTA_BRIDGE" "$SHASTA_BRIDGE"
     update_env_var "$ENV_FILE" "SHASTA_BRIDGED_ERC1155" "$SHASTA_BRIDGED_ERC1155"
@@ -1474,7 +1291,11 @@ extract_l1_deployment_results() {
     update_env_var "$ENV_FILE" "SHASTA_ERC1155_VAULT" "$SHASTA_ERC1155_VAULT"
     update_env_var "$ENV_FILE" "SHASTA_ERC20_VAULT" "$SHASTA_ERC20_VAULT"
     update_env_var "$ENV_FILE" "SHASTA_ERC721_VAULT" "$SHASTA_ERC721_VAULT"
+    update_env_var "$ENV_FILE" "SHASTA_RISC0_GROTH16_VERIFIER" "$SHASTA_RISC0_GROTH16_VERIFIER"
+    update_env_var "$ENV_FILE" "SHASTA_RISC0_VERIFIER" "$SHASTA_RISC0_VERIFIER"
     update_env_var "$ENV_FILE" "SHASTA_SIGNAL_SERVICE" "$SHASTA_SIGNAL_SERVICE"
+    update_env_var "$ENV_FILE" "SHASTA_SP1_VERIFIER" "$SHASTA_SP1_VERIFIER"
+    update_env_var "$ENV_FILE" "SHASTA_SUCCINCT_VERIFIER" "$SHASTA_SUCCINCT_VERIFIER"
     update_env_var "$ENV_FILE" "SHASTA_PRECONF_WHITELIST" "$SHASTA_PRECONF_WHITELIST"
     update_env_var "$ENV_FILE" "SHASTA_PROOF_VERIFIER_DUMMY" "$SHASTA_PROOF_VERIFIER_DUMMY"
     update_env_var "$ENV_FILE" "SHASTA_SHARED_RESOLVER" "$SHASTA_SHARED_RESOLVER"
@@ -1657,74 +1478,94 @@ switch_fork() {
 
 # Deploy and configure provers (devnet only)
 deploy_provers() {
+    local mock_proof="$1"
     local should_run_provers
+    
+    if [[ "$mock_proof" == "0" ]]; then
+        log_info "Skipping provers deployment...using mock prover"
+        return 0
+    fi
+
     if [[ -z "${running_provers:-}" ]]; then
         echo
         echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "║ Running provers? (true/false) [default: false]               ║"
+        echo "  ⚠️ Running provers?                                           "
+        echo "║══════════════════════════════════════════════════════════════║"
+        echo "║  0 for Deploy provers                                        ║"
+        echo "║  1 for Skip provers                                          ║"
+        echo "║ [default: 0]                                                 ║"
         echo "╚══════════════════════════════════════════════════════════════╝"
-        echo
-        read -p "Enter choice [false]: " should_run_provers
-        should_run_provers=${should_run_provers:-false}
+        read -p "Enter choice [0]: " should_run_provers
+        should_run_provers=${should_run_provers:-0}
     else
         should_run_provers=$running_provers
     fi
 
-    if [[ "$should_run_provers" == "true" ]]; then
+    if [[ "$should_run_provers" == "0" || "$should_run_provers" == "true" ]]; then
         generate_prover_chain_spec
 
-        if [[ ! -f "$DEPLOYMENT_DIR/sgx_reth_verifier_setup.lock" ]]; then
-            setup_sgx_verifier "sgx_reth" "SGX Raiko" "$SGX_RETH_VERIFIER" "$AUTOMATA_DCAP_ATTESTATION_RETH"
-        fi
+        if [[ "$mock_proof" == "1" ]]; then
+            if [[ ! -f "$DEPLOYMENT_DIR/sp1_verifier_setup.lock" ]]; then
+                echo
+                echo "╔══════════════════════════════════════════════════════════════╗"
+                echo "  ⚠️ Running SP1?                                               "
+                echo "║══════════════════════════════════════════════════════════════║"
+                echo "║  0 for Deploy SP1                                            ║"
+                echo "║  1 for Skip SP1                                              ║"
+                echo "║ [default: 0]                                                 ║"
+                echo "╚══════════════════════════════════════════════════════════════╝"
+                echo
+                read -p "Enter choice [0]: " running_sp1
+                running_sp1=${running_sp1:-0}
 
-        if [[ ! -f "$DEPLOYMENT_DIR/sgx_geth_verifier_setup.lock" ]]; then
-            setup_sgx_verifier "sgx_geth" "SGX Gaiko" "$SGX_GETH_VERIFIER" "$AUTOMATA_DCAP_ATTESTATION_GETH"
-        fi
+                if [[ "$running_sp1" == "0" ]]; then
+                    retrieve_guest_data sp1
+                    
+                    if [[ -z "${SP1_BLOCK_PROVING_PROGRAM_VKEY:-}" ]] || [[ -z "${SP1_AGGREGATION_PROGRAM_VKEY:-}" ]]; then
+                        log_error "SP1 guest data is missing"
+                        return 1
+                    fi
 
-        if [[ ! -f "$DEPLOYMENT_DIR/sp1_verifier_setup.lock" ]]; then
-            setup_sp1_verifier
-        fi
-
-        if [[ ! -f "$DEPLOYMENT_DIR/risc0_verifier_setup.lock" ]]; then
-            setup_risc0_verifier
-        fi
-
-        generate_prover_env_vars
-    fi
-}
-
-# Setup SGX verifier (common function for both RETH and GETH)
-setup_sgx_verifier() {
-    local verifier_type="$1"
-    local verifier_name="$2"
-    local verifier_address="$3"
-    local automata_address="$4"
-    
-    echo
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ Running $verifier_name? (true/false) [default: false]        ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo
-    read -p "Enter choice [false]: " running_sgx
-    running_sgx=${running_sgx:-false}
-
-    if [[ "$running_sgx" == "true" ]]; then
-        retrieve_guest_data "$verifier_type"
-        
-        if [[ "$verifier_type" == "sgx_reth" ]]; then
-            if [[ -z "${MR_ENCLAVE:-}" ]] || [[ -z "${MR_SIGNER:-}" ]] || [[ -z "${V3_QUOTE_BYTES:-}" ]]; then
-                log_error "SGX RETH guest data is missing"
-                return 1
+                    BROADCAST=true docker compose -f docker-compose-protocol.yml --profile sp1-verifier-setup up
+                    touch "$DEPLOYMENT_DIR/sp1_verifier_setup.lock"
+                fi
             fi
-            
-            SGX_VERIFIER_ADDRESS="$verifier_address" AUTOMATA_PROXY_ADDRESS="$automata_address" BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile sgx-reth-verifier-setup up
-        else
-            if [[ -z "${MR_ENCLAVE_GETH:-}" ]] || [[ -z "${MR_SIGNER_GETH:-}" ]] || [[ -z "${V3_QUOTE_BYTES_GETH:-}" ]]; then
-                log_error "SGX GETH guest data is missing"
-                return 1
+
+            if [[ ! -f "$DEPLOYMENT_DIR/risc0_verifier_setup.lock" ]]; then
+                echo
+                echo "╔══════════════════════════════════════════════════════════════╗"
+                echo "  ⚠️ Running RISC0?                                             "
+                echo "║══════════════════════════════════════════════════════════════║"
+                echo "║  0 for Deploy RISC0                                          ║"
+                echo "║  1 for Skip RISC0                                            ║"
+                echo "║ [default: 0]                                                 ║"
+                echo "╚══════════════════════════════════════════════════════════════╝"
+                echo
+                read -p "Enter choice [0]: " running_risc0
+                running_risc0=${running_risc0:-0}
+
+                if [[ "$running_risc0" == "0" ]]; then
+                    retrieve_guest_data risc0
+                    
+                    if [[ -z "${RISC0_BLOCK_PROVING_IMAGE_ID:-}" ]] || [[ -z "${RISC0_AGGREGATION_IMAGE_ID:-}" ]]; then
+                        log_error "RISC0 guest data is missing"
+                        return 1
+                    fi
+
+                    BROADCAST=true docker compose -f docker-compose-protocol.yml --profile risc0-verifier-setup up
+                    touch "$DEPLOYMENT_DIR/risc0_verifier_setup.lock"
+                fi
             fi
-            
-            SGX_VERIFIER_ADDRESS="$verifier_address" AUTOMATA_PROXY_ADDRESS="$automata_address" BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile sgx-geth-verifier-setup up
+
+            log_info "Generating prover env vars..."
+            echo
+            echo ">>>>>>"
+            echo "export GROTH16_VERIFIER_ADDRESS=$SHASTA_RISC0_GROTH16_VERIFIER"
+            echo "export SP1_VERIFIER_ADDRESS=$SHASTA_SUCCINCT_VERIFIER"
+            echo ">>>>>>"
+            echo
+            log_success "Prover env vars generated successfully"
+            log_info "Please copy and paste them when you start the provers"
         fi
     fi
 }
@@ -1733,13 +1574,17 @@ setup_sgx_verifier() {
 setup_sp1_verifier() {
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ Running SP1? (true/false) [default: false]                   ║"
+    echo "  ⚠️ Running SP1?                                               "
+    echo "║══════════════════════════════════════════════════════════════║"
+    echo "║  0 for Deploy SP1                                            ║"
+    echo "║  1 for Skip SP1                                              ║"
+    echo "║ [default: 0]                                                 ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
-    read -p "Enter choice [false]: " running_sp1
-    running_sp1=${running_sp1:-false}
+    read -p "Enter choice [0]: " running_sp1
+    running_sp1=${running_sp1:-0}
 
-    if [[ "$running_sp1" == "true" ]]; then
+    if [[ "$running_sp1" == "0" ]]; then
         retrieve_guest_data sp1
         
         if [[ -z "${SP1_BLOCK_PROVING_PROGRAM_VKEY:-}" ]] || [[ -z "${SP1_AGGREGATION_PROGRAM_VKEY:-}" ]]; then
@@ -1755,13 +1600,17 @@ setup_sp1_verifier() {
 setup_risc0_verifier() {
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║ Running RISC0? (true/false) [default: false]                 ║"
+    echo "  ⚠️ Running RISC0?                                             "
+    echo "║══════════════════════════════════════════════════════════════║"
+    echo "║  0 for Deploy RISC0                                          ║"
+    echo "║  1 for Skip RISC0                                            ║"
+    echo "║ [default: 0]                                                 ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
-    read -p "Enter choice [false]: " running_risc0
-    running_risc0=${running_risc0:-false}
+    read -p "Enter choice [0]: " running_risc0
+    running_risc0=${running_risc0:-0}
 
-    if [[ "$running_risc0" == "true" ]]; then
+    if [[ "$running_risc0" == "0" ]]; then
         retrieve_guest_data risc0
         
         if [[ -z "${RISC0_BLOCK_PROVING_IMAGE_ID:-}" ]] || [[ -z "${RISC0_AGGREGATION_IMAGE_ID:-}" ]]; then
@@ -1783,16 +1632,20 @@ deposit_bond() {
     if [[ -z "${deposit_bond:-}" ]]; then
         echo
         echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "║ Deposit bond? (true/false) [default: true]                   ║"
+        echo "  ⚠️ Deposit bond?                                             "
+        echo "║══════════════════════════════════════════════════════════════║"
+        echo "║  0 for Deposit bond                                          ║"
+        echo "║  1 for Skip bond                                             ║"
+        echo "║ [default: 0]                                                 ║"
         echo "╚══════════════════════════════════════════════════════════════╝"
         echo
         read -p "Enter choice [true]: " should_deposit_bond
-        should_deposit_bond=${should_deposit_bond:-true}
+        should_deposit_bond=${should_deposit_bond:-0}
     else
         should_deposit_bond=$deposit_bond
     fi
 
-    if [[ "$should_deposit_bond" == "true" ]]; then
+    if [[ "$should_deposit_bond" == "0" || "$should_deposit_bond" == "true" ]]; then
         local bond_amount_eth
         if [[ -z "${bond_amount:-}" ]]; then
             echo
@@ -1902,11 +1755,15 @@ prompt_stack_option_selection() {
 prompt_relayers_selection() {
     echo >&2
     echo "╔══════════════════════════════════════════════════════════════╗" >&2
-    echo "║ Start relayers? (true/false) [default: true]                 ║" >&2
+    echo "  ⚠️ Start relayers?                                            " >&2
+    echo "║══════════════════════════════════════════════════════════════║" >&2
+    echo "║  0 for Deploy relayers                                       ║" >&2
+    echo "║  1 for Skip relayers                                         ║" >&2
+    echo "║ [default: 0]                                                 ║" >&2
     echo "╚══════════════════════════════════════════════════════════════╝" >&2
     echo >&2
-    read -p "Enter choice [true]: " choice
-    choice=${choice:-true}
+    read -p "Enter choice [0]: " choice
+    choice=${choice:-0}
     echo $choice
 }
 
@@ -1950,7 +1807,7 @@ start_l2_stack() {
             ;;
         4)
             log_info "Starting driver + proposer + prover + spammer"
-            $compose_cmd --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
+            $compose_cmd --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         5)
             log_info "Starting all except spammer"
@@ -1985,7 +1842,7 @@ start_relayers() {
     local should_start_relayers="$1"
     local environment="$2"
     
-    if [[ "$should_start_relayers" != "true" ]]; then
+    if [[ "$should_start_relayers" != "0" || "$should_start_relayers" == "true" ]]; then
         log_info "Skipping relayers as requested"
         return 0
     fi
@@ -2224,25 +2081,24 @@ display_deployment_summary() {
     echo "║  Surge Full Stack deployment completed successfully!         ║"
     echo "║                                                              ║"
     echo "║  Key Service Endpoints:                                      ║"
-    echo "║  • L1 RPC:        ${L1_RPC:-N/A}                            ║"
-    echo "║  • L1 Explorer:   ${L1_EXPLORER:-N/A}                       ║"
-    echo "║  • L2 RPC:        ${L2_RPC:-N/A}                            ║"
-    echo "║  • L2 Explorer:   ${L2_EXPLORER:-N/A}                       ║"
-    echo "║  • L1 Relayer:    ${L1_RELAYER:-N/A}                        ║"
-    echo "║  • L2 Relayer:    ${L2_RELAYER:-N/A}                        ║"
+    echo "   • L1 RPC:        ${L1_RPC:-N/A}                              "
+    echo "   • L1 Explorer:   ${L1_EXPLORER:-N/A}                         "
+    echo "   • L2 RPC:        ${L2_RPC:-N/A}                             "
+    echo "   • L2 Explorer:   ${L2_EXPLORER:-N/A}                        "
+    echo "   • L1 Relayer:    ${L1_RELAYER:-N/A}                         "
+    echo "   • L2 Relayer:    ${L2_RELAYER:-N/A}                         "
     
     if [[ -n "${DEPLOYMENT_ADDRESS:-}" ]]; then
         echo "║                                                              ║"
-        echo "║  Deployment Account:                                        ║"
-        printf "║  • Address:      %-42s ║\n" "$DEPLOYMENT_ADDRESS"
-        printf "║  • Balance:       %-20s ETH                        ║\n" "${DEPLOYMENT_BALANCE:-0}"
+        echo "║  Deployment Account:                                         ║"
+        printf "   • Address:      %-42s \n" "$DEPLOYMENT_ADDRESS"
+        printf "   • Balance:       %-20s ETH                         \n" "${DEPLOYMENT_BALANCE:-0}"
     fi
     
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 }
 
-# Main function
 main() {
     # Show help if requested
     if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
@@ -2254,26 +2110,26 @@ main() {
     
     log_info "Starting $SCRIPT_NAME..."
 
-    # If verify-key-only is set, just verify the key and exit
-    if [[ "$verify_key_only" == "true" ]]; then
-        if [[ -z "$deployment_key" ]] || [[ -z "$l1_rpc_url" ]]; then
-            log_error "Both --deployment-key and --l1-rpc-url are required for --verify-key-only"
-            exit 1
-        fi
-        verify_private_key_on_chain "$deployment_key" "$l1_rpc_url" "provided chain"
-        exit $?
-    fi
-    
     # Validate prerequisites
     if ! validate_prerequisites; then
         log_error "Prerequisites validation failed"
         exit 1
     fi
-    
+
     # Initialize submodules
     initialize_submodules
+
+    # If verify-key-only is set, just verify the key and exit (WIP due to using existing chain)
+    # if [[ "$verify_key_only" == "true" ]]; then
+    #     if [[ -z "$deployment_key" ]] || [[ -z "$l1_rpc_url" ]]; then
+    #         log_error "Both --deployment-key and --l1-rpc-url are required for --verify-key-only"
+    #         exit 1
+    #     fi
+    #     verify_private_key_on_chain "$deployment_key" "$l1_rpc_url" "provided chain"
+    #     exit $?
+    # fi
     
-    # Step 1: Environment Selection (MOVED EARLY)
+    # Step 1: Environment Selection
     local env_choice
     if [[ -z "${environment:-}" ]]; then
         env_choice=$(prompt_environment_selection)
@@ -2294,10 +2150,10 @@ main() {
         3|"testnet") env_name="testnet" ;;
         *) log_error "Invalid environment choice: $env_choice"; exit 1 ;;
     esac
-    
+
     # Load environment file
     if ! check_env_file "$env_name"; then
-        log_error "Failed to load environment file"
+        log_error "Failed to load environment file, please ensure the .env file is present"
         exit 1
     fi
     
@@ -2321,6 +2177,8 @@ main() {
             log_error "Could not determine machine IP address"
             exit 1
         fi
+        # Export machine IP for later use
+        export MACHINE_IP="$machine_ip"
     fi
     
     if ! configure_environment_urls "$env_choice" "$deployment_choice" "$machine_ip"; then
@@ -2342,46 +2200,28 @@ main() {
             esac
         fi
         
-        # if [[ "$deploy_devnet_choice" == "0" ]]; then
-        #     # Option A: Deploy new devnet
-        #     local mode_choice
-        #     if [[ -z "${mode:-}" ]]; then
-        #         mode_choice=$(prompt_mode_selection)
-        #     else
-        #         case "$mode" in
-        #             0|"silence"|"silent") mode_choice="silence" ;;
-        #             1|"debug") mode_choice="debug" ;;
-        #             *) mode_choice="$mode" ;;
-        #         esac
-        #     fi
+        if [[ "$deploy_devnet_choice" == "0" ]]; then
+            # Option A: Deploy new L1 devnet
+            local mode_choice
+            if [[ -z "${mode:-}" ]]; then
+                mode_choice=$(prompt_mode_selection)
+            else
+                case "$mode" in
+                    0|"silence"|"silent") mode_choice="silence" ;;
+                    1|"debug") mode_choice="debug" ;;
+                    *) mode_choice="$mode" ;;
+                esac
+            fi
             
-        #     if ! deploy_l1_devnet "$deployment_choice" "$mode_choice"; then
-        #         log_error "Failed to deploy L1 devnet"
-        #         exit 1
-        #     fi
-        # else
-        #     # Option B: Use existing chain
-        #     if ! prompt_for_existing_chain_config "L1"; then
-        #         log_error "Failed to configure existing chain"
-        #         exit 1
-        #     fi
-        #     update_env_var "$ENV_FILE" "PRIVATE_KEY" "$PRIVATE_KEY"
-        #     update_env_var "$ENV_FILE" "PUBLIC_KEY" "$PUBLIC_KEY"
-        #     update_env_var "$ENV_FILE" "L1_RPC" "$L1_RPC"
-        #     update_env_var "$ENV_FILE" "L1_BEACON_RPC" "$L1_BEACON_RPC"
-        #     update_env_var "$ENV_FILE" "L1_EXPLORER" "$L1_EXPLORER"
-        # fi
-    else
-        # Staging/Testnet: Always use existing chain
-        if ! prompt_for_existing_chain_config "chain"; then
-            log_error "Failed to configure existing chain"
-            exit 1
+            if ! deploy_l1_devnet "$deployment_choice" "$mode_choice"; then
+                log_error "Failed to deploy L1 devnet"
+                exit 1
+            fi
+        else
+            # Option B: Use existing chain
+            log_warning "Using existing chain is still a work in progress"
+            exit 0
         fi
-        update_env_var "$ENV_FILE" "PRIVATE_KEY" "$PRIVATE_KEY"
-        update_env_var "$ENV_FILE" "PUBLIC_KEY" "$PUBLIC_KEY"
-        update_env_var "$ENV_FILE" "L1_RPC" "$L1_RPC"
-        update_env_var "$ENV_FILE" "L1_BEACON_RPC" "$L1_BEACON_RPC"
-        update_env_var "$ENV_FILE" "L1_EXPLORER" "$L1_EXPLORER"
     fi
     
     # Verify L1 RPC endpoints
@@ -2394,21 +2234,37 @@ main() {
     
     # Step 3: L1 Protocol Deployment (ONLY for devnet)
     if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
-        local mode_choice
-        if [[ -z "${mode:-}" ]]; then
-            mode_choice=$(prompt_mode_selection)
-        else
-            case "$mode" in
-                0|"silence"|"silent") mode_choice="silence" ;;
-                1|"debug") mode_choice="debug" ;;
-                *) mode_choice="$mode" ;;
-            esac
-        fi
+
+        # Deploy L1 contracts
+
+        local mock_proof
+        echo
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "  ⚠️ Using mock prover?                                         "
+        echo "║══════════════════════════════════════════════════════════════║"
+        echo "║  0 for Using mock prover                                     ║"
+        echo "║  1 for Using real prover                                     ║"
+        echo "║ [default: 0]                                                 ║"
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        echo
+        read -p "Enter choice [0]: " mock_proof
+        mock_proof=${mock_proof:-0}
         
         # Run L1 contracts simulation
-        if ! deploy_l1_contracts "$mode_choice" false; then
+        if ! deploy_l1_contracts "$mode_choice" false $mock_proof; then
             log_error "Failed to deploy L1 smart contracts"
             exit 1
+        fi
+
+        # Extract L1 deployment results
+        if ! extract_l1_deployment_results; then
+            log_error "Failed to extract L1 deployment results"
+            exit 1
+        fi
+
+        # Deploy Provers (optional)
+        if ! deploy_provers $mock_proof; then
+            log_warning "Prover deployment had issues, but continuing..."
         fi
 
         # Generate L2 Genesis
@@ -2418,7 +2274,7 @@ main() {
         fi
 
         # Deploy L1 contracts
-        if ! deploy_l1_contracts "$mode_choice" true; then
+        if ! deploy_l1_contracts "$mode_choice" true $mock_proof; then
             log_error "Failed to deploy L1 smart contracts"
             exit 1
         fi
@@ -2434,6 +2290,12 @@ main() {
             log_error "Failed to extract L1 deployment results"
             exit 1
         fi
+
+        # Deposit bond (optional)
+        # if ! deposit_bond "$mode_choice"; then
+        #     log_warning "Bond deposit had issues, but continuing..."
+        # fi
+
         # Accept ownership
         # if ! accept_ownership "$mode_choice"; then
         #     log_error "Failed to accept ownership"
@@ -2441,10 +2303,6 @@ main() {
         # fi
 
 
-        # # Deploy Provers (optional)
-        # if ! deploy_provers; then
-        #     log_warning "Prover deployment had issues, but continuing..."
-        # fi
     fi
     
     # Step 4: L2 Stack Deployment (ALL environments)
@@ -2465,11 +2323,6 @@ main() {
         log_error "Failed to switch fork"
         exit 1
     fi
-    
-    # Deposit bond (optional)
-    # if ! deposit_bond "$mode_choice"; then
-    #     log_warning "Bond deposit had issues, but continuing..."
-    # fi
 
     # Step 5: Start Relayers (optional)
     local relayers_choice

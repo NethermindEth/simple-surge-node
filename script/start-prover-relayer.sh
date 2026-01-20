@@ -7,10 +7,12 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         --l1.ws ${L1_ENDPOINT_WS}
         --l2.ws ws://l2-nethermind-execution-client:${L2_WS_PORT}
         --l2.http http://l2-nethermind-execution-client:${L2_HTTP_PORT}
-        --taikoInbox ${TAIKO_INBOX}
+        --shastaInbox ${SHASTA_SURGE_INBOX}
+        --pacayaInbox ${PACAYA_TAIKO}
         --taikoAnchor ${TAIKO_ANCHOR}
+        --taikoToken 0x0000000000000000000000000000000000000000
         --l1.proverPrivKey ${L1_PROVER_PRIVATE_KEY}
-        --raiko.host.sgx ${SGX_RAIKO_HOST}
+        --raiko.host ${SGX_RAIKO_HOST}
         --prover.sgx.batchSize ${SGX_BATCH_SIZE}
         --prover.zkvm.batchSize ${ZKVM_BATCH_SIZE}
         --metrics true

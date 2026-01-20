@@ -189,7 +189,7 @@ services:
       - catalyst
 
   catalyst:
-    image: nethermind/catalyst-node:latest
+    image: nethermind/catalyst-node@sha256:7cb619e5ef887630223f969372504038246883a4f216d17ac035a2c416918946
     container_name: l2-catalyst-node
     restart: unless-stopped
     pull_policy: always
@@ -235,7 +235,7 @@ services:
       - l2-deployer
 
   taiko_client_prover_relayer:
-    image: nethermind/taiko-client:v25.1.3
+    image: nethermind/catalyst-taiko-client:sha-816a985
     container_name: l2-taiko-prover-relayer-client
     restart: unless-stopped
     pull_policy: always
@@ -270,6 +270,47 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - prover
+  
+  raiko:
+    image: nethermind/surge-raiko-zk:sha-1f5ae44
+    container_name: l2-raiko-zk-client
+    restart: unless-stopped
+    pull_policy: always
+    volumes:
+      - ./configs/raiko:/raiko/config
+    env_file:
+      - .env
+    environment:
+      RAIKO_CONF_DIR: "/raiko/configs"
+      BASE_CONFIG_FILE: "config.json"
+      BASE_CHAINSPEC_FILE: "chain_spec_list_default.json"
+      REDIS_URL: "redis://redis-zk:6379"
+      RUST_LOG: "info"
+      MOCK_KEY: ${PRIVATE_KEY}
+    networks:
+      - surge
+    profiles:
+      - prover
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  
+  redis-zk:
+    image: redis
+    container_name: redis-zk
+    ports:
+      - "6379:6379"
+    profiles:
+      - prover
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   tx-spammer:
     image: ethpandaops/spamoor:master
