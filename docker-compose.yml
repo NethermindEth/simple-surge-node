@@ -277,16 +277,23 @@ services:
     restart: unless-stopped
     pull_policy: always
     volumes:
-      - ./configs/raiko:/raiko/config
+      - ./configs:/raiko/config
+    ports:
+      - 8080:8080
     env_file:
       - .env
     environment:
-      RAIKO_CONF_DIR: "/raiko/configs"
+      RAIKO_CONF_DIR: "/raiko/config"
       BASE_CONFIG_FILE: "config.json"
       BASE_CHAINSPEC_FILE: "chain_spec_list_default.json"
       REDIS_URL: "redis://redis-zk:6379"
       RUST_LOG: "info"
       MOCK_KEY: ${PRIVATE_KEY}
+      ZK: "true"
+    entrypoint:
+      - /opt/raiko/bin/raiko-host
+      - --config-path=/raiko/config/config.json
+      - --chain-spec-path=/raiko/config/chain_spec_list_default.json
     networks:
       - surge
     profiles:

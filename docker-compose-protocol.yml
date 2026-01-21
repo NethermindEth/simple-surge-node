@@ -1,6 +1,6 @@
 services:
   surge-l1-unified-deployer:
-    image: nethermind/surge-protocol:sha-91d3867
+    image: nethermind/surge-protocol:sha-cf5fd40
     container_name: surge-l1-unified-deployer
     pull_policy: always
     volumes:
@@ -69,7 +69,7 @@ services:
       - pacaya-deployer
 
   surge-l1-deployer:
-    image: nethermind/surge-protocol:sha-91d3867
+    image: nethermind/surge-protocol:sha-cf5fd40
     container_name: surge-l1-deployer
     pull_policy: always
     volumes:
@@ -101,7 +101,7 @@ services:
       - l1-deployer
 
   surge-genesis-generator:
-    image: nethermind/surge-protocol:sha-91d3867
+    image: nethermind/surge-protocol:sha-cf5fd40
     container_name: surge-genesis-generator
     pull_policy: always
     volumes:
@@ -131,7 +131,7 @@ services:
       - genesis-generator
   
   surge-accept-ownership:
-    image: nethermind/surge-protocol:sha-91d3867
+    image: nethermind/surge-protocol:sha-cf5fd40
     container_name: surge-accept-ownership
     pull_policy: always
     volumes:
@@ -162,7 +162,7 @@ services:
       - accept-ownership
 
   surge-switch-fork:
-    image: nethermind/surge-protocol:sha-91d3867
+    image: nethermind/surge-protocol:sha-cf5fd40
     container_name: surge-switch-fork
     pull_policy: always
     volumes:
@@ -187,7 +187,7 @@ services:
       - switch-fork
 
   surge-bond-deposit:
-    image: nethermind/surge-protocol:sha-91d3867
+    image: nethermind/surge-protocol:sha-cf5fd40
     container_name: surge-bond-deposit
     pull_policy: always
     volumes:

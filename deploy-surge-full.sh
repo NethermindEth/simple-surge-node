@@ -20,6 +20,8 @@ readonly SPAMOOR_FILE="$ETHEREUM_PACKAGE_DIR/src/spamoor/spamoor.star"
 readonly SPAMOOR_CONFIG_FILE="$CONFIGS_DIR/spamoor.star"
 readonly MAIN_FILE="$ETHEREUM_PACKAGE_DIR/main.star"
 readonly MAIN_CONFIG_FILE="$CONFIGS_DIR/main.star"
+readonly NETHERMIND_LAUNCHER_FILE="$ETHEREUM_PACKAGE_DIR/src/el/nethermind/nethermind_launcher.star"
+readonly NETHERMIND_LAUNCHER_CONFIG_FILE="$CONFIGS_DIR/nethermind_launcher.star"
 
 # L2 Deployment
 readonly ENV_FILE=".env"
@@ -658,6 +660,24 @@ configure_spamoor() {
     log_success "Configured spamoor for fixed port..."
 }
 
+# Configure nethermind launcher for enabling proofs translation
+configure_nethermind_launcher() {
+    if [[ ! -f "$NETHERMIND_LAUNCHER_CONFIG_FILE" ]]; then
+        log_warning "Nethermind launcher configuration file not found: $NETHERMIND_LAUNCHER_CONFIG_FILE"
+        return 0
+    fi
+    
+    if [[ ! -d "$(dirname "$NETHERMIND_LAUNCHER_FILE")" ]]; then
+        log_warning "Nethermind launcher target directory not found: $(dirname "$NETHERMIND_LAUNCHER_FILE")"
+        return 0
+    fi
+    
+    log_info "Copy nethermind launcher configuration..."
+    cp "$NETHERMIND_LAUNCHER_CONFIG_FILE" "$NETHERMIND_LAUNCHER_FILE"
+    
+    log_success "Configured nethermind launcher for enabling proofs translation..."
+}
+
 # Configure environment URLs
 configure_environment_urls() {
     local env_choice="$1"
@@ -686,13 +706,13 @@ configure_environment_urls() {
                 export L1_RELAYER="http://$machine_ip:4102"
                 export L2_RELAYER="http://$machine_ip:4103"
             else
-                export L1_RPC="http://localhost:32003"
-                export L1_BEACON_RPC="http://localhost:33001"
-                export L1_EXPLORER="http://localhost:36005"
-                export L2_RPC="http://localhost:${L2_HTTP_PORT:-8547}"
-                export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
-                export L1_RELAYER="http://localhost:4102"
-                export L2_RELAYER="http://localhost:4103"
+                export L1_RPC="http://host.docker.internal:32003"
+                export L1_BEACON_RPC="http://host.docker.internal:33001"
+                export L1_EXPLORER="http://host.docker.internal:36005"
+                export L2_RPC="http://host.docker.internal:${L2_HTTP_PORT:-8547}"
+                export L2_EXPLORER="http://host.docker.internal:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
+                export L1_RELAYER="http://host.docker.internal:4102"
+                export L2_RELAYER="http://host.docker.internal:4103"
             fi
             ;;
         2|"staging")
@@ -916,7 +936,8 @@ deploy_l1_devnet() {
     configure_shared_utils
     configure_input_parser
     configure_spamoor
-    
+    configure_nethermind_launcher
+
     # Run Kurtosis
     if ! run_kurtosis "$env_name" "$mode"; then
         log_error "Devnet deployment failed"
@@ -997,7 +1018,7 @@ generate_prover_chain_spec() {
       "base_fee_max_decrease_denominator": "0x8",
       "elasticity_multiplier": "0x2"
     },
-    "l1_contract": null,
+    "l1_contract": {},
     "l2_contract": null,
     "rpc": "$L1_RPC",
     "beacon_rpc": "$L1_BEACON_RPC",
@@ -1024,14 +1045,25 @@ generate_prover_chain_spec() {
       "base_fee_max_decrease_denominator": "0x8",
       "elasticity_multiplier": "0x2"
     },
-    "l1_contract": "$SHASTA_SURGE_INBOX",
+    "l1_contract": {
+      "SHASTA": "$SHASTA_SURGE_INBOX",
+      "PACAYA": "$PACAYA_TAIKO"
+    },
     "l2_contract": "$TAIKO_ANCHOR",
     "rpc": "$L2_RPC",
     "beacon_rpc": null,
     "verifier_address_forks": {
       "ONTAKE": {
-        "SP1": "$SHASTA_SP1_VERIFIER",
-        "RISC0": "$SHASTA_RISC0_VERIFIER"
+        "SP1": "$PACAYA_SP1_RETH_VERIFIER",
+        "RISC0": "$PACAYA_RISC0_RETH_VERIFIER"
+      },
+      "PACAYA": {
+        "SP1": "$PACAYA_SP1_RETH_VERIFIER",
+        "RISC0": "$PACAYA_RISC0_RETH_VERIFIER"
+      },
+      "SHASTA": {
+        "SP1": "$PACAYA_SP1_RETH_VERIFIER",
+        "RISC0": "$PACAYA_RISC0_RETH_VERIFIER"
       }
     },
     "genesis_time": 0,
@@ -1041,8 +1073,30 @@ generate_prover_chain_spec() {
 ]
 EOF
 
-    log_success "Prover chain spec list json generated successfully"
-    log_info "Saved to: $CONFIGS_DIR/chain_spec_list_default.json"
+        # Generate config.json for raiko
+    cat > "$CONFIGS_DIR/config.json" << EOF
+{
+	"address": "0.0.0.0:8080",
+	"network": "surge_dev",
+	"concurrency_limit": 1,
+	"l1_network": "surge_dev_l1",
+	"cache_path": "/tmp/raiko/",
+	"prover": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+	"graffiti": "8008500000000000000000000000000000000000000000000000000000000000",
+	"proof_type": "sp1",
+	"blob_proof_type": "proof_of_equivalence",
+	"redis_url": "redis://redis-zk:6379",
+	"redis_ttl": 3600,
+	"enable_redis_pool": false,
+	"queue_limit": 1000,
+	"api_keys": "",
+	"ballot_zk": "{\"Sp1\":[1, 0]}",
+	"ballot_sgx": "{\"Sgx\":[1, 0]}"
+}
+EOF
+
+    log_success "Prover chain spec list json and config json generated successfully"
+    log_info "Saved to: $CONFIGS_DIR/chain_spec_list_default.json and $CONFIGS_DIR/config.json"
 }
 
 # Retrieve guest data from prover endpoints
@@ -1482,6 +1536,7 @@ deploy_provers() {
     local should_run_provers
     
     if [[ "$mock_proof" == "0" ]]; then
+        generate_prover_chain_spec
         log_info "Skipping provers deployment...using mock prover"
         return 0
     fi
