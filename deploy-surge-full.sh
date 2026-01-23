@@ -936,7 +936,7 @@ deploy_l1_devnet() {
     configure_shared_utils
     configure_input_parser
     configure_spamoor
-    configure_nethermind_launcher
+    # configure_nethermind_launcher
 
     # Run Kurtosis
     if ! run_kurtosis "$env_name" "$mode"; then
@@ -1020,8 +1020,8 @@ generate_prover_chain_spec() {
     },
     "l1_contract": {},
     "l2_contract": null,
-    "rpc": "$L1_RPC",
-    "beacon_rpc": "$L1_BEACON_RPC",
+    "rpc": "http://host.docker.internal:32003",
+    "beacon_rpc": "http://host.docker.internal:33001",
     "verifier_address_forks": {},
     "genesis_time": $genesis_time,
     "seconds_per_slot": 12,
@@ -1050,7 +1050,7 @@ generate_prover_chain_spec() {
       "PACAYA": "$PACAYA_TAIKO"
     },
     "l2_contract": "$TAIKO_ANCHOR",
-    "rpc": "$L2_RPC",
+    "rpc": "http://host.docker.internal:8547",
     "beacon_rpc": null,
     "verifier_address_forks": {
       "ONTAKE": {
