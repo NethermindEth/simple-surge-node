@@ -10,3 +10,7 @@
 /deployment/*.lock
 /configs/*.json
 /blockscout-postgres-data/
+
+.DS_Store
+.vscode/
+.cursorignore

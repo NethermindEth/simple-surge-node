@@ -1,44 +1,6 @@
 services:
-  surge-l1-unified-deployer:
-    image: nethermind/surge-protocol:sha-cf5fd40
-    container_name: surge-l1-unified-deployer
-    pull_policy: always
-    volumes:
-      - ./script/protocol:/script/protocol
-      - ./deployment:/deployment
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /script/protocol/deploy-surge-full.sh
-    env_file:
-      - .env
-    environment:
-      FOUNDRY_PROFILE: layer1
-      BROADCAST: ${BROADCAST}
-      VERIFY: ${VERIFY}
-      VERIFY_ARG: ${VERIFY_ARG}
-      FORK_URL: ${L1_ENDPOINT_HTTP}
-      CONTRACT_OWNER: ${PUBLIC_KEY}
-      PRIVATE_KEY: ${PRIVATE_KEY}
-      DEPOSIT_BOND: ${DEPOSIT_BOND:-false}
-      BOND_AMOUNT: ${BOND_AMOUNT:-1000000000000000000000}
-      SURGE_PROPOSER_WRAPPER: ${SURGE_PROPOSER_WRAPPER}
-      ADMIN: ${PUBLIC_KEY}
-      TAIKO_INBOX: ${TAIKO_INBOX}
-      BLOCK_GAS_LIMIT: ${BLOCK_GAS_LIMIT}
-      LOG_LEVEL: ${LOG_LEVEL}
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - l1-unified-deployer
-
   pacaya-deployer:
-    image: nethermind/catalyst-taiko-protocol:taiko-alethia-protocol-v2.3.1-new
+    image: ${PACAYA_PROTOCOL_IMAGE}
     container_name: pacaya-deployer
     pull_policy: always
     volumes:
@@ -54,6 +16,7 @@ services:
       FOUNDRY_PROFILE: layer1
       BROADCAST: ${BROADCAST}
       VERIFY: ${VERIFY}
+      SLOW: ${SLOW}
       VERIFY_ARG: ${VERIFY_ARG}
       FORK_URL: ${L1_ENDPOINT_HTTP}
       CONTRACT_OWNER: ${PUBLIC_KEY}
@@ -69,7 +32,7 @@ services:
       - pacaya-deployer
 
   surge-l1-deployer:
-    image: nethermind/surge-protocol:sha-cf5fd40
+    image: ${PROTOCOL_IMAGE}
     container_name: surge-l1-deployer
     pull_policy: always
     volumes:
@@ -85,6 +48,7 @@ services:
       FOUNDRY_PROFILE: layer1o
       BROADCAST: ${BROADCAST}
       VERIFY: ${VERIFY}
+      SLOW: ${SLOW}
       VERIFY_ARG: ${VERIFY_ARG}
       USE_DUMMY_VERIFIER: ${USE_DUMMY_VERIFIER}
       FORK_URL: ${L1_ENDPOINT_HTTP}
@@ -101,7 +65,7 @@ services:
       - l1-deployer
 
   surge-genesis-generator:
-    image: nethermind/surge-protocol:sha-cf5fd40
+    image: ${PROTOCOL_IMAGE}
     container_name: surge-genesis-generator
     pull_policy: always
     volumes:
@@ -131,7 +95,7 @@ services:
       - genesis-generator
   
   surge-accept-ownership:
-    image: nethermind/surge-protocol:sha-cf5fd40
+    image: ${PROTOCOL_IMAGE}
     container_name: surge-accept-ownership
     pull_policy: always
     volumes:
@@ -162,7 +126,7 @@ services:
       - accept-ownership
 
   surge-switch-fork:
-    image: nethermind/surge-protocol:sha-cf5fd40
+    image: ${PROTOCOL_IMAGE}
     container_name: surge-switch-fork
     pull_policy: always
     volumes:
@@ -187,7 +151,7 @@ services:
       - switch-fork
 
   surge-bond-deposit:
-    image: nethermind/surge-protocol:sha-cf5fd40
+    image: ${PROTOCOL_IMAGE}
     container_name: surge-bond-deposit
     pull_policy: always
     volumes:
@@ -213,78 +177,6 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - bond-deposit
-
-  surge-sgx-reth-verifier-setup:
-    image: nethermind/surge-protocol:v25.1.1
-    container_name: surge-sgx-reth-verifier-setup
-    pull_policy: always
-    volumes:
-      - ./deployer:/deployer
-      - ./deployment:/deployment
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /deployer/setup-sgx-reth-verifier.sh
-    env_file:
-      - .env
-    environment:
-      FOUNDRY_PROFILE: layer1
-      BROADCAST: ${BROADCAST}
-      VERIFY: ${VERIFY}
-      VERIFY_ARG: ${VERIFY_ARG}
-      MR_ENCLAVE: ${MR_ENCLAVE}
-      MR_SIGNER: ${MR_SIGNER}
-      V3_QUOTE_BYTES: ${V3_QUOTE_BYTES}
-      SGX_VERIFIER_ADDRESS: ${SGX_VERIFIER_ADDRESS}
-      AUTOMATA_PROXY_ADDRESS: ${AUTOMATA_PROXY_ADDRESS}
-      PEM_CERT_CHAIN_LIB_ADDRESS: ${PEM_CERT_CHAIN_LIB}
-      NEW_OWNER: ${L1_OWNER}
-      FORK_URL: ${L1_ENDPOINT_HTTP}
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - sgx-reth-verifier-setup
-
-  surge-sgx-geth-verifier-setup:
-    image: nethermind/surge-protocol:v25.1.1
-    container_name: surge-sgx-geth-verifier-setup
-    pull_policy: always
-    volumes:
-      - ./deployer:/deployer
-      - ./deployment:/deployment
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /deployer/setup-sgx-geth-verifier.sh
-    env_file:
-      - .env
-    environment:
-      FOUNDRY_PROFILE: layer1
-      BROADCAST: ${BROADCAST}
-      VERIFY: ${VERIFY}
-      VERIFY_ARG: ${VERIFY_ARG}
-      MR_ENCLAVE: ${MR_ENCLAVE}
-      MR_SIGNER: ${MR_SIGNER}
-      V3_QUOTE_BYTES: ${V3_QUOTE_BYTES}
-      SGX_VERIFIER_ADDRESS: ${SGX_VERIFIER_ADDRESS}
-      AUTOMATA_PROXY_ADDRESS: ${AUTOMATA_PROXY_ADDRESS}
-      PEM_CERT_CHAIN_LIB_ADDRESS: ${PEM_CERT_CHAIN_LIB}
-      NEW_OWNER: ${L1_OWNER}
-      FORK_URL: ${L1_ENDPOINT_HTTP}
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - sgx-geth-verifier-setup
 
   surge-risc0-verifier-setup:
     image: nethermind/surge-protocol:v25.1.1
@@ -351,39 +243,6 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - sp1-verifier-setup
-
-  surge-l2-deployer:
-    image: nethermind/surge-protocol:v25.1.1
-    container_name: surge-l2-deployer
-    pull_policy: always
-    volumes:
-      - ./deployer:/deployer
-      - ./deployment:/deployment
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /deployer/setup-surge-l2.sh
-    env_file:
-      - .env
-    environment:
-      BROADCAST: ${BROADCAST}
-      L1_BRIDGE: ${BRIDGE}
-      L1_SIGNAL_SERVICE: ${SIGNAL_SERVICE}
-      L1_ERC1155_VAULT: ${ERC1155_VAULT}
-      L1_ERC20_VAULT: ${ERC20_VAULT}
-      L1_ERC721_VAULT: ${ERC721_VAULT}
-      L1_OWNER: ${L1_OWNER}
-      FORK_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
-      FOUNDRY_PROFILE: layer2
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - l2-deployer
 
 networks:
   surge:

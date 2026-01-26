@@ -13,10 +13,17 @@ if [ "$VERIFY" = "true" ]; then
     VERIFY_ARG="--verify"
 fi
 
+# Parameterize slow mode
+export SLOW_ARG=""
+if [ "$SLOW" = "true" ]; then
+    SLOW_ARG="--slow"
+fi
+
 forge script ./script/layer1/surge/DeploySurgeL1.s.sol:DeploySurgeL1 \
     --fork-url $FORK_URL \
     $BROADCAST_ARG \
     $VERIFY_ARG \
+    $SLOW_ARG \
     --ffi \
     $LOG_LEVEL \
     --private-key $PRIVATE_KEY \

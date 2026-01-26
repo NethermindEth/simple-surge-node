@@ -999,7 +999,7 @@ generate_prover_chain_spec() {
     log_info "Generating prover chain spec list json..."
 
     local genesis_time
-    if ! genesis_time=$(curl -s "${L1_BEACON_RPC:-http://localhost:33001}/eth/v1/beacon/genesis" | jq -r '.data.genesis_time' 2>/dev/null); then
+    if ! genesis_time=$(curl -s "${L1_BEACON_HTTP:-http://localhost:33001}/eth/v1/beacon/genesis" | jq -r '.data.genesis_time' 2>/dev/null); then
         log_warning "Failed to retrieve genesis time, using default value 0"
         genesis_time=0
     fi
@@ -1124,23 +1124,28 @@ retrieve_guest_data() {
 # Deploy Pacaya smart contracts
 deploy_pacaya_contracts() {
     local mode="$1"
+    local slow_mode="$2"
+
+    if [[ "$slow_mode" != "true" ]]; then
+        slow_mode=false
+    fi
     
     if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" && -f "$PACAYA_DEPLOYMENT_FILE" ]]; then
         log_info "Pacaya smart contracts already deployed...skipping deployment"
         return 0
     fi
 
-    log_info "Deploying Pacaya SCs..."
+    log_info "Deploying Pacaya SCs... SLOW: $slow_mode"
     
     local exit_status=0
     local temp_output="/tmp/pacaya_deploy_output_$$"
     
     # Deploy L1 contracts based on mode
     if [[ "$mode" == "debug" ]]; then
-        BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile pacaya-deployer up 2>&1 | tee "$temp_output"
+        BROADCAST=true VERIFY=false SLOW=$slow_mode docker compose -f docker-compose-protocol.yml --profile pacaya-deployer up 2>&1 | tee "$temp_output"
         exit_status=${PIPESTATUS[0]}
     else
-        BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile pacaya-deployer up >"$temp_output" 2>&1 &
+        BROADCAST=true VERIFY=false SLOW=$slow_mode docker compose -f docker-compose-protocol.yml --profile pacaya-deployer up >"$temp_output" 2>&1 &
         local deploy_pid=$!
         
         show_progress $deploy_pid "Deploying Pacaya smart contracts..."
@@ -1169,7 +1174,12 @@ deploy_l1_contracts() {
     local mode="$1"
     local broadcast="$2"
     local mock_proof="$3"
+    local slow_mode="$4"
 
+    if [[ "$slow_mode" != "true" ]]; then
+        slow_mode=false
+    fi
+    
     if [[ "$mock_proof" == "0" ]]; then
         mock_proof="true"
     else
@@ -1203,17 +1213,17 @@ deploy_l1_contracts() {
 
     log_info "Preparing Surge L1 SCs deployment..."
 
-    log_info "Deploying Surge L1 SCs... BROADCAST: $broadcast"
+    log_info "Deploying Surge L1 SCs... BROADCAST: $broadcast SLOW: $slow_mode"
     
     local exit_status=0
     local temp_output="/tmp/surge_l1_deploy_output_$$"
     
     # Deploy L1 contracts based on mode
     if [[ "$mode" == "debug" ]]; then
-        BROADCAST=$broadcast VERIFY=false USE_DUMMY_VERIFIER=$mock_proof docker compose -f docker-compose-protocol.yml --profile l1-deployer up 2>&1 | tee "$temp_output"
+        BROADCAST=$broadcast VERIFY=false USE_DUMMY_VERIFIER=$mock_proof SLOW=$slow_mode docker compose -f docker-compose-protocol.yml --profile l1-deployer up 2>&1 | tee "$temp_output"
         exit_status=${PIPESTATUS[0]}
     else
-        BROADCAST=$broadcast VERIFY=false USE_DUMMY_VERIFIER=$mock_proof docker compose -f docker-compose-protocol.yml --profile l1-deployer up >"$temp_output" 2>&1 &
+        BROADCAST=$broadcast VERIFY=false USE_DUMMY_VERIFIER=$mock_proof SLOW=$slow_mode docker compose -f docker-compose-protocol.yml --profile l1-deployer up >"$temp_output" 2>&1 &
         local deploy_pid=$!
         
         show_progress $deploy_pid "Deploying L1 smart contracts..."
@@ -2272,18 +2282,40 @@ main() {
                 log_error "Failed to deploy L1 devnet"
                 exit 1
             fi
+
+            # Verify L1 RPC endpoints
+            if [[ -n "${L1_RPC:-}" ]]; then
+                if ! check_l1_health "$L1_RPC" "${L1_BEACON_RPC:-}"; then
+                    log_warning "L1 health check failed, please retry..."
+                    exit 1
+                fi
+            fi
         else
             # Option B: Use existing chain
-            log_warning "Using existing chain is still a work in progress"
-            exit 0
-        fi
-    fi
-    
-    # Verify L1 RPC endpoints
-    if [[ -n "${L1_RPC:-}" ]]; then
-        if ! check_l1_health "$L1_RPC" "${L1_BEACON_RPC:-}"; then
-            log_warning "L1 health check failed, please retry..."
-            exit 1
+            local mode_choice
+            if [[ -z "${mode:-}" ]]; then
+                mode_choice=$(prompt_mode_selection)
+            else
+                case "$mode" in
+                    0|"silence"|"silent") mode_choice="silence" ;;
+                    1|"debug") mode_choice="debug" ;;
+                    *) mode_choice="$mode" ;;
+                esac
+            fi
+
+            local slow_mode
+            slow_mode=true
+
+            # Verify L1 RPC endpoints
+            if [[ -n "${L1_ENDPOINT_HTTP:-}" ]]; then
+                if ! check_l1_health "$L1_ENDPOINT_HTTP" "${L1_BEACON_HTTP:-}"; then
+                    log_warning "L1 health check failed, please retry..."
+                    exit 1
+                fi
+            fi
+
+            # log_warning "Using existing chain is still a work in progress"
+            # exit 0
         fi
     fi
     
@@ -2291,7 +2323,6 @@ main() {
     if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
 
         # Deploy L1 contracts
-
         local mock_proof
         echo
         echo "╔══════════════════════════════════════════════════════════════╗"
@@ -2306,7 +2337,7 @@ main() {
         mock_proof=${mock_proof:-0}
         
         # Run L1 contracts simulation
-        if ! deploy_l1_contracts "$mode_choice" false $mock_proof; then
+        if ! deploy_l1_contracts "$mode_choice" false $mock_proof false; then
             log_error "Failed to deploy L1 smart contracts"
             exit 1
         fi
@@ -2329,13 +2360,13 @@ main() {
         fi
 
         # Deploy L1 contracts
-        if ! deploy_l1_contracts "$mode_choice" true $mock_proof; then
+        if ! deploy_l1_contracts "$mode_choice" true $mock_proof $slow_mode; then
             log_error "Failed to deploy L1 smart contracts"
             exit 1
         fi
 
         # Deploy Pacaya contracts
-        if ! deploy_pacaya_contracts "$mode_choice"; then
+        if ! deploy_pacaya_contracts "$mode_choice" $slow_mode; then
             log_error "Failed to deploy Pacaya smart contracts"
             exit 1
         fi
