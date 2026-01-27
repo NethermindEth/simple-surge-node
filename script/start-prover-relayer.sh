@@ -12,7 +12,10 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         --taikoAnchor ${TAIKO_ANCHOR}
         --taikoToken 0x0000000000000000000000000000000000000000
         --l1.proverPrivKey ${L1_PROVER_PRIVATE_KEY}
-        --raiko.host ${SGX_RAIKO_HOST}
+        --raiko.host.zkvm1 ${SGX_RAIKO_HOST}
+        --raiko.zkvm.proofType1 sp1
+        --raiko.host.zkvm2 ${RAIKO_HOST_ZKVM}
+        --raiko.zkvm.proofType2 risc0
         --prover.sgx.batchSize ${SGX_BATCH_SIZE}
         --prover.zkvm.batchSize ${ZKVM_BATCH_SIZE}
         --metrics true

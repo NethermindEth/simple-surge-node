@@ -6,6 +6,7 @@
 /mysql-data/
 /rabbitmq/
 /execution-data/
+/driver-data/
 /deployment/*.json
 /deployment/*.lock
 /configs/*.json

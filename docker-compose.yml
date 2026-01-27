@@ -62,6 +62,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
+      - ./driver-data:/driver-data
       - ./execution-data:/data/surge
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./script:/script
@@ -232,7 +233,7 @@ services:
     volumes:
       - ./configs:/raiko/config
     ports:
-      - 8080:8080
+      - 8082:8080
     env_file:
       - .env
     environment:
@@ -287,7 +288,7 @@ services:
     volumes:
       - ./static/spamoor:/config
     ports:
-      - 8080:8080
+      - 8083:8080
     entrypoint:
       - ./spamoor-daemon
     command:

@@ -579,6 +579,57 @@ get_machine_ip() {
     echo "$ip"
 }
 
+# Convert endpoint to docker-internal format (for use inside containers)
+to_docker_internal() {
+    local endpoint="$1"
+    # Replace hostname with host.docker.internal, preserving protocol and port
+    echo "$endpoint" | sed -E 's#(https?://)([^:/]+)(.*)#\1host.docker.internal\3#'
+}
+
+# Convert docker-internal endpoint to localhost (for use from host machine)
+to_localhost() {
+    local endpoint="$1"
+    # Replace host.docker.internal with localhost
+    echo "$endpoint" | sed -E 's#(https?://)host\.docker\.internal(.*)#\1localhost\2#'
+}
+
+# Format endpoint based on deployment context
+format_endpoint_for_context() {
+    local endpoint="$1"
+    local deployment_type="$2"  # local or remote
+    local machine_ip="$3"
+    
+    if [[ "$deployment_type" == "remote" || "$deployment_type" == "1" ]] && [[ -n "$machine_ip" ]]; then
+        # Replace hostname with machine IP for remote access
+        echo "$endpoint" | sed -E "s#(https?://)([^:/]+)(.*)#\1$machine_ip\3#"
+    elif [[ "$deployment_type" == "local" || "$deployment_type" == "0" ]]; then
+        # Replace hostname with host.docker.internal for local docker access
+        echo "$endpoint" | sed -E 's#(https?://)([^:/]+)(.*)#\1host.docker.internal\3#'
+    else
+        # Return as-is if no transformation needed
+        echo "$endpoint"
+    fi
+}
+
+# Extract port from endpoint URL
+extract_port() {
+    local endpoint="$1"
+    echo "$endpoint" | grep -oP ':\K[0-9]+$' || echo ""
+}
+
+# Build endpoint URL from host and port
+build_endpoint() {
+    local protocol="${1:-http}"
+    local host="$2"
+    local port="$3"
+    
+    if [[ -n "$port" ]]; then
+        echo "${protocol}://${host}:${port}"
+    else
+        echo "${protocol}://${host}"
+    fi
+}
+
 # Configure blockscout for remote access
 configure_remote_blockscout() {
     local machine_ip="$1"
@@ -692,27 +743,65 @@ configure_environment_urls() {
                 docker network create surge-network
             fi
 
+            # Set default endpoints for devnet if not already defined in .env
+            # These can be overridden by pre-existing .env values
+            if [[ -z "${L1_ENDPOINT_HTTP:-}" ]]; then
+                export L1_ENDPOINT_HTTP="http://localhost:32003"
+            fi
+            if [[ -z "${L1_BEACON_HTTP:-}" ]]; then
+                export L1_BEACON_HTTP="http://localhost:33001"
+            fi
+            if [[ -z "${L2_ENDPOINT_HTTP:-}" ]]; then
+                export L2_ENDPOINT_HTTP="http://localhost:${L2_HTTP_PORT:-8547}"
+            fi
+            
+            # Create context-specific endpoint versions
+            # DOCKER versions: for containers to access host services (always use host.docker.internal)
+            export L1_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L1_ENDPOINT_HTTP")
+            export L1_BEACON_HTTP_DOCKER=$(to_docker_internal "$L1_BEACON_HTTP")
+            export L2_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L2_ENDPOINT_HTTP")
+            
+            # EXTERNAL versions: for host/browser access (use actual IP for remote, localhost for local)
             if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
-                if [[ -z "$machine_ip" ]]; then
-                    log_error "Could not determine machine IP address"
-                    return 1
-                fi
-                
-                export L1_RPC="http://$machine_ip:32003"
-                export L1_BEACON_RPC="http://$machine_ip:33001"
-                export L1_EXPLORER="http://$machine_ip:36005"
-                export L2_RPC="http://$machine_ip:${L2_HTTP_PORT:-8547}"
-                export L2_EXPLORER="http://$machine_ip:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
-                export L1_RELAYER="http://$machine_ip:4102"
-                export L2_RELAYER="http://$machine_ip:4103"
+                # Remote: replace hostname with machine IP for external access
+                export L1_ENDPOINT_HTTP_EXTERNAL=$(format_endpoint_for_context "$L1_ENDPOINT_HTTP" "remote" "$machine_ip")
+                export L1_BEACON_HTTP_EXTERNAL=$(format_endpoint_for_context "$L1_BEACON_HTTP" "remote" "$machine_ip")
+                export L2_ENDPOINT_HTTP_EXTERNAL=$(format_endpoint_for_context "$L2_ENDPOINT_HTTP" "remote" "$machine_ip")
             else
-                export L1_RPC="http://host.docker.internal:32003"
-                export L1_BEACON_RPC="http://host.docker.internal:33001"
-                export L1_EXPLORER="http://host.docker.internal:36005"
-                export L2_RPC="http://host.docker.internal:${L2_HTTP_PORT:-8547}"
-                export L2_EXPLORER="http://host.docker.internal:${BLOCKSCOUT_FRONTEND_PORT:-3000}"
-                export L1_RELAYER="http://host.docker.internal:4102"
-                export L2_RELAYER="http://host.docker.internal:4103"
+                # Local: convert to localhost for host access (handles both localhost and host.docker.internal in .env)
+                export L1_ENDPOINT_HTTP_EXTERNAL=$(to_localhost "$L1_ENDPOINT_HTTP")
+                export L1_BEACON_HTTP_EXTERNAL=$(to_localhost "$L1_BEACON_HTTP")
+                export L2_ENDPOINT_HTTP_EXTERNAL=$(to_localhost "$L2_ENDPOINT_HTTP")
+            fi
+            
+            # Set explorer and relayer endpoints (for external/browser access)
+            if [[ -z "${L1_EXPLORER:-}" ]]; then
+                if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                    export L1_EXPLORER="http://$machine_ip:36005"
+                else
+                    export L1_EXPLORER="http://localhost:36005"
+                fi
+            fi
+            if [[ -z "${L2_EXPLORER:-}" ]]; then
+                if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                    export L2_EXPLORER="http://$machine_ip:${BLOCKSCOUT_FRONTEND_PORT:-3001}"
+                else
+                    export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3001}"
+                fi
+            fi
+            if [[ -z "${L1_RELAYER:-}" ]]; then
+                if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                    export L1_RELAYER="http://$machine_ip:4102"
+                else
+                    export L1_RELAYER="http://localhost:4102"
+                fi
+            fi
+            if [[ -z "${L2_RELAYER:-}" ]]; then
+                if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                    export L2_RELAYER="http://$machine_ip:4103"
+                else
+                    export L2_RELAYER="http://localhost:4103"
+                fi
             fi
             ;;
         2|"staging")
@@ -721,7 +810,22 @@ configure_environment_urls() {
             if ! docker network ls | grep -q "surge-network"; then
                 docker network create surge-network
             fi
-            # URLs should be set from .env file or user input
+            
+            # For staging/testnet, respect .env values
+            # DOCKER versions: convert to host.docker.internal for container access
+            # EXTERNAL versions: keep original for host/browser access
+            if [[ -n "${L1_ENDPOINT_HTTP:-}" ]]; then
+                export L1_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L1_ENDPOINT_HTTP")
+                export L1_ENDPOINT_HTTP_EXTERNAL="$L1_ENDPOINT_HTTP"
+            fi
+            if [[ -n "${L1_BEACON_HTTP:-}" ]]; then
+                export L1_BEACON_HTTP_DOCKER=$(to_docker_internal "$L1_BEACON_HTTP")
+                export L1_BEACON_HTTP_EXTERNAL="$L1_BEACON_HTTP"
+            fi
+            if [[ -n "${L2_ENDPOINT_HTTP:-}" ]]; then
+                export L2_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L2_ENDPOINT_HTTP")
+                export L2_ENDPOINT_HTTP_EXTERNAL="$L2_ENDPOINT_HTTP"
+            fi
             ;;
         3|"testnet")
             log_info "Using Testnet Environment"
@@ -729,7 +833,22 @@ configure_environment_urls() {
             if ! docker network ls | grep -q "surge-network"; then
                 docker network create surge-network
             fi
-            # URLs should be set from .env file or user input
+            
+            # For staging/testnet, respect .env values
+            # DOCKER versions: convert to host.docker.internal for container access
+            # EXTERNAL versions: keep original for host/browser access
+            if [[ -n "${L1_ENDPOINT_HTTP:-}" ]]; then
+                export L1_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L1_ENDPOINT_HTTP")
+                export L1_ENDPOINT_HTTP_EXTERNAL="$L1_ENDPOINT_HTTP"
+            fi
+            if [[ -n "${L1_BEACON_HTTP:-}" ]]; then
+                export L1_BEACON_HTTP_DOCKER=$(to_docker_internal "$L1_BEACON_HTTP")
+                export L1_BEACON_HTTP_EXTERNAL="$L1_BEACON_HTTP"
+            fi
+            if [[ -n "${L2_ENDPOINT_HTTP:-}" ]]; then
+                export L2_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L2_ENDPOINT_HTTP")
+                export L2_ENDPOINT_HTTP_EXTERNAL="$L2_ENDPOINT_HTTP"
+            fi
             ;;
         *)
             log_error "Invalid environment choice: $env_choice"
@@ -948,27 +1067,8 @@ deploy_l1_devnet() {
     log_info "Waiting for services to initialize..."
     sleep 10
     
-    # Check health
-    local rpc_url="http://localhost:32003"
-    local beacon_url="http://localhost:33001"
-    if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
-        local machine_ip
-        machine_ip=$(get_machine_ip)
-        rpc_url="http://$machine_ip:32003"
-        beacon_url="http://$machine_ip:33001"
-    fi
-    
-    check_l1_health "$rpc_url" "$beacon_url"
-    
-    # Update environment variables
-    export L1_RPC="$rpc_url"
-    export L1_BEACON_RPC="$beacon_url"
-    export L1_EXPLORER="http://localhost:36005"
-    if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
-        local machine_ip
-        machine_ip=$(get_machine_ip)
-        export L1_EXPLORER="http://$machine_ip:36005"
-    fi
+    # Check health using the external endpoints (accessible from host)
+    check_l1_health "$L1_ENDPOINT_HTTP_EXTERNAL" "$L1_BEACON_HTTP_EXTERNAL"
     
     log_success "L1 devnet deployed successfully"
     return 0
@@ -999,10 +1099,16 @@ generate_prover_chain_spec() {
     log_info "Generating prover chain spec list json..."
 
     local genesis_time
-    if ! genesis_time=$(curl -s "${L1_BEACON_HTTP:-http://localhost:33001}/eth/v1/beacon/genesis" | jq -r '.data.genesis_time' 2>/dev/null); then
+    local beacon_endpoint="${L1_BEACON_HTTP_EXTERNAL:-${L1_BEACON_HTTP:-http://localhost:33001}}"
+    if ! genesis_time=$(curl -s "${beacon_endpoint}/eth/v1/beacon/genesis" | jq -r '.data.genesis_time' 2>/dev/null); then
         log_warning "Failed to retrieve genesis time, using default value 0"
         genesis_time=0
     fi
+
+    # Use docker-internal endpoints for chain spec (used by containers)
+    local l1_rpc_docker="${L1_ENDPOINT_HTTP_DOCKER:-http://host.docker.internal:32003}"
+    local l1_beacon_docker="${L1_BEACON_HTTP_DOCKER:-http://host.docker.internal:33001}"
+    local l2_rpc_docker="${L2_ENDPOINT_HTTP_DOCKER:-http://host.docker.internal:8547}"
 
     # Generate chain spec list
     cat > "$CONFIGS_DIR/chain_spec_list_default.json" << EOF
@@ -1020,8 +1126,8 @@ generate_prover_chain_spec() {
     },
     "l1_contract": {},
     "l2_contract": null,
-    "rpc": "http://host.docker.internal:32003",
-    "beacon_rpc": "http://host.docker.internal:33001",
+    "rpc": "$l1_rpc_docker",
+    "beacon_rpc": "$l1_beacon_docker",
     "verifier_address_forks": {},
     "genesis_time": $genesis_time,
     "seconds_per_slot": 12,
@@ -1050,7 +1156,7 @@ generate_prover_chain_spec() {
       "PACAYA": "$PACAYA_TAIKO"
     },
     "l2_contract": "$TAIKO_ANCHOR",
-    "rpc": "http://host.docker.internal:8547",
+    "rpc": "$l2_rpc_docker",
     "beacon_rpc": null,
     "verifier_address_forks": {
       "ONTAKE": {
@@ -1974,26 +2080,32 @@ prepare_bridge_ui_configs() {
         mkdir -p "$CONFIGS_DIR"
     fi
     
+    # Use external endpoints for UI (accessible from browser)
+    local l1_rpc_ui="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-http://localhost:32003}}"
+    local l2_rpc_ui="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-http://localhost:8547}}"
+    local l1_explorer_ui="${L1_EXPLORER:-http://localhost:36005}"
+    local l2_explorer_ui="${L2_EXPLORER:-http://localhost:3001}"
+    
     # Generate configuredBridges.json
     cat > "$CONFIGS_DIR/configuredBridges.json" << EOF
 {
   "configuredBridges": [
     {
-      "source": "$L1_CHAINID",
-      "destination": "$L2_CHAINID",
+      "source": "$L1_CHAIN_ID",
+      "destination": "$L2_CHAIN_ID",
       "addresses": {
-        "bridgeAddress": "$BRIDGE",
-        "erc20VaultAddress": "$ERC20_VAULT",
-        "erc721VaultAddress": "$ERC721_VAULT",
-        "erc1155VaultAddress": "$ERC1155_VAULT",
+        "bridgeAddress": "$SHASTA_BRIDGE",
+        "erc20VaultAddress": "$SHASTA_ERC20_VAULT",
+        "erc721VaultAddress": "$SHASTA_ERC721_VAULT",
+        "erc1155VaultAddress": "$SHASTA_ERC1155_VAULT",
         "crossChainSyncAddress": "",
-        "signalServiceAddress": "$SIGNAL_SERVICE",
+        "signalServiceAddress": "$SHASTA_SIGNAL_SERVICE",
         "quotaManagerAddress": ""
       }
     },
     {
-      "source": "$L2_CHAINID",
-      "destination": "$L1_CHAINID",
+      "source": "$L2_CHAIN_ID",
+      "destination": "$L1_CHAIN_ID",
       "addresses": {
         "bridgeAddress": "$L2_BRIDGE",
         "erc20VaultAddress": "$L2_ERC20_VAULT",
@@ -2013,13 +2125,13 @@ EOF
 {
   "configuredChains": [
     {
-      "$L1_CHAINID": {
+      "$L1_CHAIN_ID": {
         "name": "L1",
         "type": "L1",
         "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
         "rpcUrls": {
           "default": {
-            "http": ["$L1_RPC"]
+            "http": ["$l1_rpc_ui"]
           }
         },
         "nativeCurrency": {
@@ -2030,19 +2142,19 @@ EOF
         "blockExplorers": {
           "default": {
             "name": "L1 Explorer",
-            "url": "$L1_EXPLORER"
+            "url": "$l1_explorer_ui"
           }
         }
       }
     },
     {
-      "$L2_CHAINID": {
+      "$L2_CHAIN_ID": {
         "name": "Surge",
         "type": "L2",
         "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
         "rpcUrls": {
           "default": {
-            "http": ["$L2_RPC"]
+            "http": ["$l2_rpc_ui"]
           }
         },
         "nativeCurrency": {
@@ -2053,7 +2165,7 @@ EOF
         "blockExplorers": {
           "default": {
             "name": "Surge Explorer",
-            "url": "$L2_EXPLORER"
+            "url": "$l2_explorer_ui"
           }
         }
       }
@@ -2067,11 +2179,11 @@ EOF
 {
   "configuredRelayer": [
     {
-      "chainIds": [$L1_CHAINID, $L2_CHAINID],
+      "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID],
       "url": "$L1_RELAYER"
     },
     {
-      "chainIds": [$L2_CHAINID, $L1_CHAINID],
+      "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID],
       "url": "$L2_RELAYER"
     }
   ]
@@ -2083,11 +2195,11 @@ EOF
 {
   "configuredEventIndexer": [
     {
-      "chainIds": [$L1_CHAINID, $L2_CHAINID],
+      "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID],
       "url": "$L1_RELAYER"
     },
     {
-      "chainIds": [$L2_CHAINID, $L1_CHAINID],
+      "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID],
       "url": "$L2_RELAYER"
     }
   ]
@@ -2108,22 +2220,24 @@ verify_rpc_endpoints() {
     
     local all_healthy=true
     
-    # Verify L1 RPC
-    if [[ -n "${L1_RPC:-}" ]]; then
-        if test_rpc_connection "$L1_RPC"; then
-            log_success "L1 RPC endpoint is accessible: $L1_RPC"
+    # Verify L1 RPC (use external endpoint for host-based verification)
+    local l1_endpoint="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-}}"
+    if [[ -n "$l1_endpoint" ]]; then
+        if test_rpc_connection "$l1_endpoint"; then
+            log_success "L1 RPC endpoint is accessible: $l1_endpoint"
         else
-            log_error "L1 RPC endpoint is not accessible: $L1_RPC"
+            log_error "L1 RPC endpoint is not accessible: $l1_endpoint"
             all_healthy=false
         fi
     fi
     
-    # Verify L2 RPC
-    if [[ -n "${L2_RPC:-}" ]]; then
-        if test_rpc_connection "$L2_RPC"; then
-            log_success "L2 RPC endpoint is accessible: $L2_RPC"
+    # Verify L2 RPC (use external endpoint for host-based verification)
+    local l2_endpoint="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-}}"
+    if [[ -n "$l2_endpoint" ]]; then
+        if test_rpc_connection "$l2_endpoint"; then
+            log_success "L2 RPC endpoint is accessible: $l2_endpoint"
         else
-            log_error "L2 RPC endpoint is not accessible: $L2_RPC"
+            log_error "L2 RPC endpoint is not accessible: $l2_endpoint"
             all_healthy=false
         fi
     fi
@@ -2146,9 +2260,9 @@ display_deployment_summary() {
     echo "║  Surge Full Stack deployment completed successfully!         ║"
     echo "║                                                              ║"
     echo "║  Key Service Endpoints:                                      ║"
-    echo "   • L1 RPC:        ${L1_RPC:-N/A}                              "
+    echo "   • L1 RPC:        ${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-N/A}}                              "
     echo "   • L1 Explorer:   ${L1_EXPLORER:-N/A}                         "
-    echo "   • L2 RPC:        ${L2_RPC:-N/A}                             "
+    echo "   • L2 RPC:        ${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-N/A}}                             "
     echo "   • L2 Explorer:   ${L2_EXPLORER:-N/A}                        "
     echo "   • L1 Relayer:    ${L1_RELAYER:-N/A}                         "
     echo "   • L2 Relayer:    ${L2_RELAYER:-N/A}                         "
@@ -2253,6 +2367,7 @@ main() {
     
     # Step 2: L1 Infrastructure Decision
     local deploy_devnet_choice
+    local slow_mode
     if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
         # Devnet: prompt for deploy devnet or use existing
         if [[ -z "${deploy_devnet:-}" ]]; then
@@ -2283,9 +2398,11 @@ main() {
                 exit 1
             fi
 
+            slow_mode=false
+
             # Verify L1 RPC endpoints
-            if [[ -n "${L1_RPC:-}" ]]; then
-                if ! check_l1_health "$L1_RPC" "${L1_BEACON_RPC:-}"; then
+            if [[ -n "${L1_ENDPOINT_HTTP_EXTERNAL:-}" ]]; then
+                if ! check_l1_health "$L1_ENDPOINT_HTTP_EXTERNAL" "${L1_BEACON_HTTP_EXTERNAL:-}"; then
                     log_warning "L1 health check failed, please retry..."
                     exit 1
                 fi
@@ -2303,12 +2420,18 @@ main() {
                 esac
             fi
 
-            local slow_mode
             slow_mode=true
 
-            # Verify L1 RPC endpoints
+            # Verify L1 RPC endpoints (use external endpoint for health check from host)
             if [[ -n "${L1_ENDPOINT_HTTP:-}" ]]; then
-                if ! check_l1_health "$L1_ENDPOINT_HTTP" "${L1_BEACON_HTTP:-}"; then
+                # For existing chain, endpoints should already be set in .env
+                # Create external versions if not already done
+                if [[ -z "${L1_ENDPOINT_HTTP_EXTERNAL:-}" ]]; then
+                    export L1_ENDPOINT_HTTP_EXTERNAL="$L1_ENDPOINT_HTTP"
+                    export L1_BEACON_HTTP_EXTERNAL="${L1_BEACON_HTTP:-}"
+                fi
+                
+                if ! check_l1_health "$L1_ENDPOINT_HTTP_EXTERNAL" "${L1_BEACON_HTTP_EXTERNAL:-}"; then
                     log_warning "L1 health check failed, please retry..."
                     exit 1
                 fi
