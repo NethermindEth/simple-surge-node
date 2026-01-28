@@ -54,6 +54,7 @@ services:
       FORK_URL: ${L1_ENDPOINT_HTTP}
       CONTRACT_OWNER: ${PUBLIC_KEY}
       PRIVATE_KEY: ${PRIVATE_KEY}
+      PERMISSIONLESS_PROVING_DELAY: 42300
     networks:
       - surge
     extra_hosts:
@@ -179,7 +180,7 @@ services:
       - bond-deposit
 
   surge-risc0-verifier-setup:
-    image: nethermind/surge-protocol:v25.1.1
+    image: ${PROTOCOL_IMAGE}
     container_name: surge-risc0-verifier-setup
     pull_policy: always
     volumes:
@@ -212,7 +213,7 @@ services:
       - risc0-verifier-setup
 
   surge-sp1-verifier-setup:
-    image: nethermind/surge-protocol:v25.1.1
+    image: ${PROTOCOL_IMAGE}
     container_name: surge-sp1-verifier-setup
     pull_policy: always
     volumes:
