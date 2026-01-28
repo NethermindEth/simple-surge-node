@@ -6,7 +6,7 @@ readonly SCRIPT_NAME="$(basename "$0")"
 readonly DEPLOYMENT_DIR="deployment"
 readonly CONFIGS_DIR="configs"
 readonly ENCLAVE_NAME="surge-devnet"
-readonly DATA_DIRS=("execution-data" "blockscout-postgres-data" "mysql-data" "rabbitmq")
+readonly DATA_DIRS=("execution-data" "blockscout-postgres-data" "mysql-data" "rabbitmq" "driver-data")
 
 # Default values for command line arguments
 remove_l1_devnet=""
@@ -779,4 +779,3 @@ main() {
 
 # Run main function
 main "$@"
-
