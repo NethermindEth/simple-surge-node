@@ -16,6 +16,7 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         --raiko.zkvm.proofType1 sp1
         --raiko.host.zkvm2 ${RAIKO_HOST_ZKVM}
         --raiko.zkvm.proofType2 risc0
+        --prover.localProposerAddresses ${OPERATOR_PUBLIC_KEY}
         --prover.sgx.batchSize ${SGX_BATCH_SIZE}
         --prover.zkvm.batchSize ${ZKVM_BATCH_SIZE}
         --metrics true

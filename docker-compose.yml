@@ -174,7 +174,7 @@ services:
       TAIKO_WRAPPER_ADDRESS: ${PACAYA_TAIKO_WRAPPER}
       FORCED_INCLUSION_STORE_ADDRESS: ${PACAYA_FORCED_INCLUSION_STORE}
       TAIKO_BRIDGE_L2_ADDRESS: ${SHASTA_BRIDGE}
-      MAX_BLOCKS_PER_BATCH: 1
+      # MAX_BLOCKS_PER_BATCH: 1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
