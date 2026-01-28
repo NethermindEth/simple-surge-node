@@ -21,6 +21,9 @@ ARGS="${ARGS} \
     --preconfirmation.serverPort ${PRECONF_SERVER_PORT} \
     --jwtSecret /tmp/jwt/jwtsecret \
     --p2p.sequencer.key=${OPERATOR_PRIVATE_KEY} \
+    --p2p.priv.path=/driver-data/opnode_p2p_priv.txt \
+    --p2p.peerstore.path=/driver-data/opnode_peerstore_db \
+    --p2p.discovery.path=/driver-data/opnode_discovery_db \
     --p2p.listen.tcp=9000 \
     --p2p.listen.udp=9000 \
     --p2p.useragent=taiko \

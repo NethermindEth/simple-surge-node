@@ -1,4 +1,4 @@
-# This script deploys the Surge protocol on L1
+# This script to switch the fork to the Shasta fork
 set -e
 
 echo "Adding operators to whitelist..."
@@ -17,8 +17,8 @@ cast send $SHASTA_PRECONF_WHITELIST "addOperator(address,address)" \
 
 echo "Depositing bond..."
 
-cast send $SHASTA_SURGE_INBOX "deposit(uint64)" 10000000000000000000 \
-  --value 10000000000000000000 \
+cast send $SHASTA_SURGE_INBOX "deposit(uint64)" 100000000000000000 \
+  --value 100000000000000000 \
   --rpc-url $L1_ENDPOINT_HTTP \
   --private-key $OPERATOR_PRIVATE_KEY
 

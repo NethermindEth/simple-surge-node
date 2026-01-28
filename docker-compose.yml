@@ -1,54 +1,7 @@
 services:
-  # L2 deployer
-  surge-l2-deployer:
-    image: nethermind/surge-protocol:sha-93f0d57
-    container_name: surge-l2-deployer
-    pull_policy: always
-    volumes:
-      - ./deployer:/deployer
-      - ./deployment:/deployment
-    depends_on:
-      nethermind_execution_client:
-        condition: service_healthy
-      taiko_client_driver:
-        condition: service_started
-      catalyst:
-        condition: service_started
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /deployer/setup-surge-l2.sh
-    env_file:
-      - .env
-    environment:
-      L1_BRIDGE: ${BRIDGE}
-      L1_SIGNAL_SERVICE: ${SIGNAL_SERVICE}
-      L1_ERC1155_VAULT: ${ERC1155_VAULT}
-      L1_ERC20_VAULT: ${ERC20_VAULT}
-      L1_ERC721_VAULT: ${ERC721_VAULT}
-      L1_OWNER: ${L1_OWNER}
-      FORK_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
-      BROADCAST: ${BROADCAST}
-      FOUNDRY_PROFILE: layer2
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'test -f /app/deployments/setup_l2.json'"]
-      interval: 2s
-      timeout: 2s
-      retries: 15
-      start_period: 10s
-    profiles:
-      - l2-deployer
-
   # L2 stack components
   nethermind_execution_client:
-    image: nethermindeth/nethermind:taiko-rpc-fix-01-15-26
+    image: ${NETHERMIND_CLIENT_IMAGE}
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
@@ -100,7 +53,7 @@ services:
       - relayer-api
 
   taiko_client_driver:
-    image: nethermind/catalyst-taiko-client:sha-816a985
+    image: ${TAIKO_CLIENT_IMAGE}
     container_name: l2-taiko-consensus-client
     restart: unless-stopped
     pull_policy: always
@@ -109,6 +62,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
+      - ./driver-data:/driver-data
       - ./execution-data:/data/surge
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./script:/script
@@ -189,7 +143,7 @@ services:
       - catalyst
 
   catalyst:
-    image: nethermind/catalyst-node@sha256:7cb619e5ef887630223f969372504038246883a4f216d17ac035a2c416918946
+    image: ${CATALYST_IMAGE}
     container_name: l2-catalyst-node
     restart: unless-stopped
     pull_policy: always
@@ -220,6 +174,7 @@ services:
       TAIKO_WRAPPER_ADDRESS: ${PACAYA_TAIKO_WRAPPER}
       FORCED_INCLUSION_STORE_ADDRESS: ${PACAYA_FORCED_INCLUSION_STORE}
       TAIKO_BRIDGE_L2_ADDRESS: ${SHASTA_BRIDGE}
+      MAX_BLOCKS_PER_BATCH: 1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -235,7 +190,7 @@ services:
       - l2-deployer
 
   taiko_client_prover_relayer:
-    image: nethermind/catalyst-taiko-client:sha-816a985
+    image: ${TAIKO_CLIENT_IMAGE}
     container_name: l2-taiko-prover-relayer-client
     restart: unless-stopped
     pull_policy: always
@@ -272,14 +227,14 @@ services:
       - prover
   
   raiko:
-    image: nethermind/surge-raiko-zk:sha-1f5ae44
+    image: ${RAIKO_IMAGE}
     container_name: l2-raiko-zk-client
     restart: unless-stopped
     pull_policy: always
     volumes:
       - ./configs:/raiko/config
     ports:
-      - 8080:8080
+      - 8082:8080
     env_file:
       - .env
     environment:
@@ -334,7 +289,7 @@ services:
     volumes:
       - ./static/spamoor:/config
     ports:
-      - 8080:8080
+      - 8083:8080
     entrypoint:
       - ./spamoor-daemon
     command:

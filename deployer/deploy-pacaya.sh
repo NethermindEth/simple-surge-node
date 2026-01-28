@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Script to deploy the Pacaya protocol (Pacaya)
-# Usage: ./script/pacaya-deployer.sh
 
 set -e
 
@@ -56,6 +55,12 @@ if [ "$VERIFY" = "true" ]; then
     VERIFY_ARG="--verify"
 fi
 
+# Parameterize slow mode
+export SLOW_ARG=""
+if [ "$SLOW" = "true" ]; then
+    SLOW_ARG="--slow"
+fi
+
 # Verify the variable is set before calling setup.sh
 echo "Verifying DEVNET_BEACON_GENESIS before setup.sh: $DEVNET_BEACON_GENESIS"
 
@@ -65,6 +70,7 @@ forge script ./script/layer1/based/DeployProtocolOnL1.s.sol:DeployProtocolOnL1 \
     --fork-url $FORK_URL \
     $BROADCAST_ARG \
     $VERIFY_ARG \
+    $SLOW_ARG \
     --ffi \
     $LOG_LEVEL \
     --private-key $PRIVATE_KEY \
