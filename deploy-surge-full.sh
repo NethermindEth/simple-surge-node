@@ -33,7 +33,8 @@ readonly ACCEPT_OWNERSHIP_FILE="$DEPLOYMENT_DIR/accept_ownership.json"
 readonly ACCEPT_OWNERSHIP_LOCK_FILE="$DEPLOYMENT_DIR/accept_ownership.lock"
 readonly L2_DEPLOYMENT_FILE="$DEPLOYMENT_DIR/setup_l2.json"
 readonly SURGE_PROTOCOL_IMAGE="nethermind/surge-protocol:sha-91d3867"
-
+readonly COMPOSABILITY_MULTICALL_FILE="$DEPLOYMENT_DIR/composability_multicall.json"
+readonly COMPOSABILITY_USEROPS_SUBMITTER_FILE="$DEPLOYMENT_DIR/composability_userops_submitter.json"
 
 # Default values for command line arguments
 environment=""
@@ -1359,6 +1360,98 @@ deploy_l1_contracts() {
     fi
 }
 
+deploy_multicall_contract() {
+    local mode="$1"
+    local slow_mode="$2"
+    
+    if [[ "$slow_mode" != "true" ]]; then
+        slow_mode=false
+    fi
+
+    if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" && -f "$COMPOSABILITY_MULTICALL_FILE" ]]; then
+        log_info "Multicall contract already deployed..."
+        return 0
+    fi
+
+    log_info "Deploying Multicall contract..."
+
+    local exit_status=0
+    local temp_output="/tmp/multicall_deploy_output_$$"
+    
+    if [[ "$mode" == "debug" ]]; then
+        BROADCAST=true VERIFY=false SLOW=$slow_mode docker compose -f docker-compose-protocol.yml --profile multicall-deployer up 2>&1 | tee "$temp_output"
+        exit_status=${PIPESTATUS[0]}
+    else
+        BROADCAST=true VERIFY=false SLOW=$slow_mode docker compose -f docker-compose-protocol.yml --profile multicall-deployer up >"$temp_output" 2>&1 &
+        local deploy_pid=$!
+        
+        show_progress $deploy_pid "Deploying Multicall contract..."
+        
+        wait $deploy_pid
+        exit_status=$?
+    fi
+    
+    if [[ $exit_status -eq 0 ]]; then
+        log_success "Multicall contract deployed successfully"
+        return 0
+    else
+        log_error "Failed to deploy Multicall contract (exit code: $exit_status)"
+        if [[ "$mode" == "silence" ]]; then
+            log_error "Run with debug mode for more details: --mode debug"
+        fi
+        if [[ -f "$temp_output" ]]; then
+            log_error "Deployment output saved in: $temp_output"
+        fi
+        return 1
+    fi
+}
+
+deploy_userops_submitter_contract() {
+    local mode="$1"
+    local slow_mode="$2"
+    
+    if [[ "$slow_mode" != "true" ]]; then
+        slow_mode=false
+    fi
+
+    if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" && -f "$COMPOSABILITY_USEROPS_SUBMITTER_FILE" ]]; then
+        log_info "UserOpsSubmitter contract already deployed..."
+        return 0
+    fi
+
+    log_info "Deploying UserOpsSubmitter contract..."
+
+    local exit_status=0
+    local temp_output="/tmp/userops_submitter_deploy_output_$$"
+    
+    if [[ "$mode" == "debug" ]]; then
+        BROADCAST=true VERIFY=false SLOW=$slow_mode docker compose -f docker-compose-protocol.yml --profile userops-submitter-deployer up 2>&1 | tee "$temp_output"
+        exit_status=${PIPESTATUS[0]}
+    else
+        BROADCAST=true VERIFY=false SLOW=$slow_mode docker compose -f docker-compose-protocol.yml --profile userops-submitter-deployer up >"$temp_output" 2>&1 &
+        local deploy_pid=$!
+        
+        show_progress $deploy_pid "Deploying UserOpsSubmitter contract..."
+        
+        wait $deploy_pid
+        exit_status=$?
+    fi
+    
+    if [[ $exit_status -eq 0 ]]; then
+        log_success "UserOpsSubmitter contract deployed successfully"
+        return 0
+    else
+        log_error "Failed to deploy UserOpsSubmitter contract (exit code: $exit_status)"
+        if [[ "$mode" == "silence" ]]; then
+            log_error "Run with debug mode for more details: --mode debug"
+        fi
+        if [[ -f "$temp_output" ]]; then
+            log_error "Deployment output saved in: $temp_output"
+        fi
+        return 1
+    fi
+}
+
 # Extract L1 deployment results from JSON file
 extract_l1_deployment_results() {
     log_info "Extracting Pacaya and Surge L1 SCs deployment results..."
@@ -1473,6 +1566,12 @@ extract_l1_deployment_results() {
     update_env_var "$ENV_FILE" "SHASTA_SURGE_INBOX_IMPL" "$SHASTA_SURGE_INBOX_IMPL"
     update_env_var "$ENV_FILE" "SHASTA_SURGE_VERIFIER" "$SHASTA_SURGE_VERIFIER"
     # Add more as needed...
+
+    # POC
+    export MULTICALL_ADDRESS=$(cat "$COMPOSABILITY_MULTICALL_FILE" | jq -r '.multicall')
+    update_env_var "$ENV_FILE" "MULTICALL_ADDRESS" "$MULTICALL_ADDRESS"
+    export USEROPS_SUBMITTER_FACTORY_ADDRESS=$(cat "$COMPOSABILITY_USEROPS_SUBMITTER_FILE" | jq -r '.userops_submitter_factory')
+    update_env_var "$ENV_FILE" "USEROPS_SUBMITTER_FACTORY_ADDRESS" "$USEROPS_SUBMITTER_FACTORY_ADDRESS"
 
     log_success "L1 deployment results extracted and updated in .env"
 }
@@ -2485,6 +2584,18 @@ main() {
         # Deploy L1 contracts
         if ! deploy_l1_contracts "$mode_choice" true $mock_proof $slow_mode; then
             log_error "Failed to deploy L1 smart contracts"
+            exit 1
+        fi
+
+        # Deploy Multicall contract
+        if ! deploy_multicall_contract "$mode_choice" $slow_mode; then
+            log_error "Failed to deploy Multicall smart contracts"
+            exit 1
+        fi
+
+        # Deploy UserOpsSubmitter contract
+        if ! deploy_userops_submitter_contract "$mode_choice" $slow_mode; then
+            log_error "Failed to deploy UserOpsSubmitter smart contracts"
             exit 1
         fi
 

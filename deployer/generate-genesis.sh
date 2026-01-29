@@ -1,6 +1,12 @@
 # This script deploys the Surge protocol on L1
 set -e
 
+export SEED_ADDRESS=${PUBLIC_KEY},${OPERATOR_PUBLIC_KEY},${SUBMITTER_PUBLIC_KEY}
+export SEED_AMOUNT=1000
+
+echo "SEED_ADDRESS: $SEED_ADDRESS"
+
+echo
 echo "=== Genesis Configuration ==="
 echo "CONTRACT_OWNER: $CONTRACT_OWNER"
 echo "CHAIN_ID: $CHAIN_ID"
