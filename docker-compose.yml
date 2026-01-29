@@ -68,6 +68,7 @@ services:
       - ./script:/script
     ports:
       - 6060:6060
+      - 1235:1235
     env_file:
       - .env
     environment:
