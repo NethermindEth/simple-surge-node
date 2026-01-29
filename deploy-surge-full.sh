@@ -1147,6 +1147,9 @@ generate_prover_chain_spec() {
         },
         "PACAYA": {
             "Block": 1
+        },
+        "SHASTA": {
+            "Block": 1
         }
     },
     "eip_1559_constants": {
