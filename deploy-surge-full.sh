@@ -234,12 +234,13 @@ validate_prerequisites() {
         if [[ ! -d "$dir" ]]; then
             log_info "Creating $dir directory..."
             mkdir -p "$dir"
-            # Ensure driver-data is writable by containers
-            if [[ "$dir" == "driver-data" ]]; then
-                chmod 777 "$dir"
-            fi
         fi
     done
+    
+    # Ensure driver-data is writable by containers (always apply, even if dir already exists)
+    if [[ -d "driver-data" ]]; then
+        chmod 777 "driver-data"
+    fi
     
     log_success "Prerequisites validation passed"
     return 0
