@@ -2074,7 +2074,8 @@ start_l2_stack() {
     local exit_status=0
     local temp_output="/tmp/surge_l2_stack_output_$$"
 
-    chmod 777 ./driver-data
+    mkdir -p ./driver-data
+    chmod -R 777 ./driver-data
     
     case "$stack_option" in
         1)
