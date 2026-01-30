@@ -1573,6 +1573,17 @@ extract_l1_deployment_results() {
     export USEROPS_SUBMITTER_FACTORY_ADDRESS=$(cat "$COMPOSABILITY_USEROPS_SUBMITTER_FILE" | jq -r '.userops_submitter_factory')
     update_env_var "$ENV_FILE" "USEROPS_SUBMITTER_FACTORY_ADDRESS" "$USEROPS_SUBMITTER_FACTORY_ADDRESS"
 
+    update_env_var "catalyst.env" "TAIKO_INBOX_ADDRESS" "$PACAYA_TAIKO"
+    update_env_var "catalyst.env" "PRECONF_WHITELIST_ADDRESS" "$PACAYA_PRECONF_WHITELIST"
+    update_env_var "catalyst.env" "PRECONF_ROUTER_ADDRESS" "$PACAYA_PRECONF_ROUTER"
+    update_env_var "catalyst.env" "TAIKO_WRAPPER_ADDRESS" "$PACAYA_TAIKO_WRAPPER"
+    update_env_var "catalyst.env" "FORCED_INCLUSION_STORE_ADDRESS" "$PACAYA_FORCED_INCLUSION_STORE"
+
+    update_env_var "catalyst.env" "SHASTA_INBOX_ADDRESS" "$SHASTA_SURGE_INBOX"
+    update_env_var "catalyst.env" "PROPOSER_MULTICALL_ADDRESS" "$MULTICALL_ADDRESS"
+    update_env_var "catalyst.env" "L1_BRIDGE_ADDRESS" "$SHASTA_BRIDGE"
+    update_env_var "catalyst.env" "USEROPS_SUBMITTER_FACTORY_ADDRESS" "$USEROPS_SUBMITTER_FACTORY_ADDRESS"
+
     log_success "L1 deployment results extracted and updated in .env"
 }
 
@@ -1612,6 +1623,7 @@ generate_l2_genesis() {
     NEW_TIMESTAMP=$(($(date +%s) + 60))
 
     update_env_var "$ENV_FILE" "SHASTA_TIMESTAMP_SEC" "$NEW_TIMESTAMP"
+    update_env_var "catalyst.env" "SHASTA_TIMESTAMP_SEC" "$NEW_TIMESTAMP"
 
     HEX_TIMESTAMP=$(printf "0x%X" "$NEW_TIMESTAMP")
 
@@ -2061,6 +2073,8 @@ start_l2_stack() {
     local compose_cmd="docker compose"
     local exit_status=0
     local temp_output="/tmp/surge_l2_stack_output_$$"
+
+    chmod 777 ./driver-data
     
     case "$stack_option" in
         1)
