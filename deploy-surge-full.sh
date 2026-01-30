@@ -1150,7 +1150,7 @@ generate_prover_chain_spec() {
             "Block": 1
         },
         "SHASTA": {
-            "Block": 1
+            "Timestamp": 1
         }
     },
     "eip_1559_constants": {
