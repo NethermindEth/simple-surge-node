@@ -230,12 +230,17 @@ validate_prerequisites() {
     fi
     
     # Create required directories
-    for dir in "$DEPLOYMENT_DIR" "$CONFIGS_DIR"; do
+    for dir in "$DEPLOYMENT_DIR" "$CONFIGS_DIR" "driver-data"; do
         if [[ ! -d "$dir" ]]; then
             log_info "Creating $dir directory..."
             mkdir -p "$dir"
         fi
     done
+    
+    # Ensure driver-data is writable by containers (always apply, even if dir already exists)
+    if [[ -d "driver-data" ]]; then
+        chmod 777 "driver-data"
+    fi
     
     log_success "Prerequisites validation passed"
     return 0
@@ -1143,6 +1148,9 @@ generate_prover_chain_spec() {
         },
         "PACAYA": {
             "Block": 1
+        },
+        "SHASTA": {
+            "Timestamp": 1
         }
     },
     "eip_1559_constants": {
@@ -1530,7 +1538,7 @@ generate_l2_genesis() {
 
     log_info "Fetching genesis hash..."
     # Get genesis hash first by running Nethermind with the chainspec
-    docker run -d --name nethermind-genesis-hash -v ./deployment/surge_chainspec.json:/chainspec.json nethermindeth/nethermind:taiko-shasta-changes --config=none --Init.ChainSpecPath=/chainspec.json
+    docker run -d --name nethermind-genesis-hash -v ./deployment/surge_chainspec.json:/chainspec.json "${NETHERMIND_CLIENT_IMAGE}" --config=none --Init.ChainSpecPath=/chainspec.json
     
     sleep 30
 
@@ -2471,11 +2479,6 @@ main() {
             exit 1
         fi
 
-        # Deploy Provers (optional)
-        if ! deploy_provers $mock_proof; then
-            log_warning "Prover deployment had issues, but continuing..."
-        fi
-
         # Generate L2 Genesis
         if ! generate_l2_genesis "$mode_choice"; then
             log_error "Failed to generate L2 genesis"
@@ -2498,6 +2501,11 @@ main() {
         if ! extract_l1_deployment_results; then
             log_error "Failed to extract L1 deployment results"
             exit 1
+        fi
+
+        # Deploy Provers (optional) - must be after Pacaya contracts for PACAYA_TAIKO
+        if ! deploy_provers $mock_proof; then
+            log_warning "Prover deployment had issues, but continuing..."
         fi
 
         # Deposit bond (optional)

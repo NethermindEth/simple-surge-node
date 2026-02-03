@@ -12,7 +12,7 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         --taikoAnchor ${TAIKO_ANCHOR}
         --taikoToken 0x0000000000000000000000000000000000000000
         --l1.proverPrivKey ${L1_PROVER_PRIVATE_KEY}
-        --raiko.host.zkvm1 ${SGX_RAIKO_HOST}
+        --raiko.host.zkvm1 ${RAIKO_HOST_ZKVM}
         --raiko.zkvm.proofType1 sp1
         --raiko.host.zkvm2 ${RAIKO_HOST_ZKVM}
         --raiko.zkvm.proofType2 risc0
@@ -22,8 +22,8 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         --metrics true
         --metrics.port 6062"
 
-    if [ -z "$SGX_RAIKO_HOST" ]; then
-        echo "Error: SGX_RAIKO_HOST must be non-empty"
+    if [ -z "$RAIKO_HOST_ZKVM" ]; then
+        echo "Error: RAIKO_HOST_ZKVM must be non-empty"
         exit 1
     fi
 
@@ -42,10 +42,6 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         exit 1
     fi
     
-    if [ -n "$RAIKO_HOST_ZKVM" ]; then
-        ARGS="${ARGS} --raiko.host.zkvm ${RAIKO_HOST_ZKVM}"
-    fi
-
     if [ -n "$RAIKO_REQUEST_TIMEOUT" ]; then
         ARGS="${ARGS} --raiko.requestTimeout ${RAIKO_REQUEST_TIMEOUT}"
     fi
