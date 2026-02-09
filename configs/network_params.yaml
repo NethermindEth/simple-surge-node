@@ -6,7 +6,8 @@ participants:
     el_extra_env_vars: {}
     el_extra_labels: {}
     el_extra_params: [
-      "--TxPool.ProofsTranslationEnabled=true"
+      "--TxPool.ProofsTranslationEnabled=true",
+      "--Pruning.Mode=None"
     ]
     el_tolerations: []
     el_volume_size: 0
@@ -106,7 +107,7 @@ network_params:
   prefunded_accounts: {}
 additional_services:
   - blockscout
-  - spamoor
+  # - spamoor
 dora_params:
   image: ""
 tx_fuzz_params:
