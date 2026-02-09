@@ -2027,12 +2027,12 @@ start_relayers() {
     fi
     
     # Deploy L2 SCs first for devnet environment
-    if [[ "$environment" == "1" || "$environment" == "devnet" ]]; then
-        if ! deploy_l2; then
-            log_error "Failed to deploy L2 contracts, cannot start relayers"
-            return 1
-        fi
-    fi
+    # if [[ "$environment" == "1" || "$environment" == "devnet" ]]; then
+    #     if ! deploy_l2; then
+    #         log_error "Failed to deploy L2 contracts, cannot start relayers"
+    #         return 1
+    #     fi
+    # fi
     
     log_info "Starting relayers..."
     
