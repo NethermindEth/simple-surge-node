@@ -21,13 +21,11 @@ services:
       - relayer-init
 
   relayer-migrations:
-    image: ghcr.io/kukymbr/goose-docker:latest
+    image: ${RELAYER_MIGRATIONS_IMAGE}
     container_name: relayer-migrations
     environment:
       GOOSE_DRIVER: mysql
       GOOSE_DBSTRING: ${MYSQL_USER}:${MYSQL_PASSWORD}@tcp(relayer-db:3306)/${MYSQL_DATABASE}
-    volumes:
-      - ./migrations:/migrations
     networks:
       - surge
     profiles:
@@ -54,7 +52,7 @@ services:
       - relayer-init
 
   relayer-l1-processor:
-    image: nethermind/surge-relayer:surge-shasta
+    image: ${RELAYER_IMAGE}
     container_name: relayer-l1-processor
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]
@@ -100,7 +98,7 @@ services:
       - relayer-l1
 
   relayer-l1-indexer:
-    image: nethermind/surge-relayer:surge-shasta
+    image: ${RELAYER_IMAGE}
     container_name: relayer-l1-indexer
     restart: always
     env_file:
@@ -145,7 +143,7 @@ services:
       - relayer-l1
 
   relayer-l1-api:
-    image: nethermind/surge-relayer:surge-shasta
+    image: ${RELAYER_IMAGE}
     container_name: relayer-l1-api
     restart: always
     env_file:
@@ -181,7 +179,7 @@ services:
       - relayer-api
 
   relayer-l2-api:
-    image: nethermind/surge-relayer:surge-shasta
+    image: ${RELAYER_IMAGE}
     container_name: relayer-l2-api
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]
@@ -215,7 +213,7 @@ services:
       - relayer-api
 
   relayer-l2-processor:
-    image: nethermind/surge-relayer:surge-shasta
+    image: ${RELAYER_IMAGE}
     container_name: relayer-l2-processor
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]
@@ -261,7 +259,7 @@ services:
       - relayer-l2
 
   relayer-l2-indexer:
-    image: nethermind/surge-relayer:surge-shasta
+    image: ${RELAYER_IMAGE}
     container_name: relayer-l2-indexer
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]
