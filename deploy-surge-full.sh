@@ -31,7 +31,7 @@ readonly L1_LOCK_FILE="$DEPLOYMENT_DIR/deploy_l1.lock"
 readonly SURGE_GENESIS_FILE="$DEPLOYMENT_DIR/surge_genesis.json"
 readonly ACCEPT_OWNERSHIP_FILE="$DEPLOYMENT_DIR/accept_ownership.json"
 readonly ACCEPT_OWNERSHIP_LOCK_FILE="$DEPLOYMENT_DIR/accept_ownership.lock"
-readonly L2_DEPLOYMENT_FILE="$DEPLOYMENT_DIR/setup_l2.json"
+readonly L2_LOCK_FILE="$DEPLOYMENT_DIR/setup_l2.lock"
 readonly SURGE_PROTOCOL_IMAGE="nethermind/surge-protocol:sha-91d3867"
 
 
@@ -1879,8 +1879,8 @@ deposit_bond() {
 # Deploy L2 smart contracts
 deploy_l2() {
     # Check if deployment is already completed
-    if [[ -f "$L2_DEPLOYMENT_FILE" ]]; then
-        log_warning "Surge L2 deployment already completed ($L2_DEPLOYMENT_FILE exists)"
+    if [[ -f "$L2_LOCK_FILE" ]]; then
+        log_warning "Surge L2 deployment already completed ($L2_LOCK_FILE exists)"
         log_info "Deployment will be skipped..."
         return 0
     else
