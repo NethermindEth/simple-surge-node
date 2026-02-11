@@ -126,6 +126,7 @@ services:
       - --srcBridgeAddress=${SHASTA_BRIDGE}
       - --srcTaikoAddress=${SHASTA_SURGE_INBOX}
       - --srcSignalServiceAddress=${SHASTA_SIGNAL_SERVICE}
+      - --srcSignalServiceForkRouterAddress=${SHASTA_SIGNAL_SERVICE}
       - --srcRpcUrl=http://host.docker.internal:32003
       - --destBridgeAddress=${L2_BRIDGE}
       - --destRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
@@ -282,6 +283,7 @@ services:
       - --queue.username=${RABBITMQ_USER}
       - --srcBridgeAddress=${L2_BRIDGE}
       - --srcSignalServiceAddress=${L2_SIGNAL_SERVICE}
+      - --srcSignalServiceForkRouterAddress=${L2_SIGNAL_SERVICE}
       - --srcRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
       - --destBridgeAddress=${SHASTA_BRIDGE}
       - --destRpcUrl=http://host.docker.internal:32003

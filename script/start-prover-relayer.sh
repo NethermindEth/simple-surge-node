@@ -3,7 +3,7 @@
 set -eou pipefail
 
 if [ "$ENABLE_PROVER" = "true" ]; then
-    ARGS="--verbosity 4
+    ARGS="--verbosity 3
         --l1.ws ${L1_ENDPOINT_WS}
         --l2.ws ws://l2-nethermind-execution-client:${L2_WS_PORT}
         --l2.http http://l2-nethermind-execution-client:${L2_HTTP_PORT}
