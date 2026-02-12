@@ -1,7 +1,8 @@
 # This script deploys the Surge protocol on L1
 set -e
 
-export SEED_ADDRESS=${PUBLIC_KEY},${OPERATOR_PUBLIC_KEY},${SUBMITTER_PUBLIC_KEY}
+# export SEED_ADDRESS=${PUBLIC_KEY},${OPERATOR_PUBLIC_KEY},${SUBMITTER_PUBLIC_KEY}
+export SEED_ADDRESS=${OPERATOR_PUBLIC_KEY} # https://demerzelsolutions.slack.com/archives/D07BYJK5V40/p1770881547003279
 export SEED_AMOUNT=1000
 
 echo "SEED_ADDRESS: $SEED_ADDRESS"

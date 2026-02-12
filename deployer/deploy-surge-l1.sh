@@ -5,6 +5,7 @@ set -e
 export BROADCAST_ARG=""
 if [ "$BROADCAST" = "true" ]; then
     BROADCAST_ARG="--broadcast"
+    GAS_ESTIMATE_MULTIPLIER_ARG="--gas-estimate-multiplier 500"
 fi
 
 # Parameterize verification
@@ -20,6 +21,7 @@ if [ "$SLOW" = "true" ]; then
 fi
 
 forge script ./script/layer1/surge/DeploySurgeL1.s.sol:DeploySurgeL1 \
+    $GAS_ESTIMATE_MULTIPLIER_ARG \
     --fork-url $FORK_URL \
     $BROADCAST_ARG \
     $VERIFY_ARG \
@@ -28,6 +30,8 @@ forge script ./script/layer1/surge/DeploySurgeL1.s.sol:DeploySurgeL1 \
     $LOG_LEVEL \
     --private-key $PRIVATE_KEY \
     --block-gas-limit $BLOCK_GAS_LIMIT
+
+# https://demerzelsolutions.slack.com/archives/D07BYJK5V40/p1770888108456519
 
 
 # Copy deployment results to /deployment

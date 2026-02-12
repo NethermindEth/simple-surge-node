@@ -15,12 +15,13 @@ cast send $SHASTA_PRECONF_WHITELIST "addOperator(address,address)" \
 #     --private-key $PRIVATE_KEY \
 #     --confirmations 1 || true
 
-echo "Depositing bond..."
+# echo "Depositing bond..."
 
-cast send $SHASTA_SURGE_INBOX "deposit(uint64)" 100000000000000000 \
-  --value 100000000000000000 \
-  --rpc-url $L1_ENDPOINT_HTTP \
-  --private-key $OPERATOR_PRIVATE_KEY
+# cast send $SHASTA_SURGE_INBOX "deposit(uint64)" 100000000000000000 \
+#   --value 100000000000000000 \
+#   --rpc-url $L1_ENDPOINT_HTTP \
+#   --private-key $OPERATOR_PRIVATE_KEY
+# https://demerzelsolutions.slack.com/archives/D07BYJK5V40/p1770884749521069
 
 # Get the Shasta Inbox address from deployment
 SHASTA_INBOX=$(jq -r '.surge_inbox' /deployment/deploy_l1.json)
