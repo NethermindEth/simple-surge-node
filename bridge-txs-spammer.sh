@@ -264,9 +264,9 @@ run_bridge_spam() {
     for ((i = 1; i <= count; i++)); do
         if send_bridge_tx "$bridge_address" "$rpc_url" "$dest_chain_id" \
             "$amount_wei" "$total_value_wei" "$direction_label" "$i" "$count"; then
-            ((success_count++))
+            ((success_count++)) || true
         else
-            ((fail_count++))
+            ((fail_count++)) || true
         fi
     done
 

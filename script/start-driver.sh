@@ -9,7 +9,7 @@ else
 fi
 
 ARGS="${ARGS} \
-    --verbosity 4 \
+    --verbosity 3 \
     --l1.ws ${L1_ENDPOINT_WS} \
     --l2.ws ws://l2-nethermind-execution-client:"${L2_WS_PORT}" \
     --l1.beacon ${L1_BEACON_HTTP} \
