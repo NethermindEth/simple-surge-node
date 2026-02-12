@@ -1889,7 +1889,7 @@ deploy_l2() {
         local exit_status=0
         local temp_output="/tmp/surge_l2_deploy_output_$$"
         
-        # Deploy L2 contracts
+        # Start L2 deployer in detached mode, then wait for it to finish
         BROADCAST=true docker compose --profile l2-deployer up -d >"$temp_output" 2>&1 &
         local deploy_pid=$!
         
@@ -1898,16 +1898,50 @@ deploy_l2() {
         wait $deploy_pid
         exit_status=$?
         
-        if [[ $exit_status -eq 0 ]]; then
-            log_success "L2 smart contracts deployed successfully"
-            return 0
-        else
-            log_error "Failed to deploy L2 smart contracts (exit code: $exit_status)"
+        if [[ $exit_status -ne 0 ]]; then
+            log_error "Failed to start L2 deployer container (exit code: $exit_status)"
             if [[ -f "$temp_output" ]]; then
-                log_error "Deployment output saved in: $temp_output"
+                log_error "Output saved in: $temp_output"
             fi
             return 1
         fi
+        
+        # Wait for the deployer container to finish (up to 120s)
+        log_info "Waiting for L2 deployer to complete..."
+        local waited=0
+        local max_wait=120
+        while [[ $waited -lt $max_wait ]]; do
+            local status
+            status=$(docker inspect surge-l2-deployer --format '{{.State.Status}}' 2>/dev/null || echo "not found")
+            if [[ "$status" == "exited" ]]; then
+                local code
+                code=$(docker inspect surge-l2-deployer --format '{{.State.ExitCode}}' 2>/dev/null || echo "1")
+                if [[ "$code" == "0" ]]; then
+                    break
+                else
+                    log_error "L2 deployer exited with code $code"
+                    docker logs surge-l2-deployer 2>&1 | tail -20 >&2
+                    return 1
+                fi
+            fi
+            sleep 5
+            waited=$((waited + 5))
+        done
+        
+        if [[ $waited -ge $max_wait ]]; then
+            log_error "L2 deployer timed out after ${max_wait}s"
+            return 1
+        fi
+        
+        # Verify the deployment artifact was produced
+        if [[ -f "$DEPLOYMENT_DIR/setup_l2.json" ]]; then
+            log_success "L2 smart contracts deployed successfully"
+            touch "$L2_LOCK_FILE"
+        else
+            log_warning "L2 deployer exited 0 but setup_l2.json not found, continuing..."
+        fi
+        
+        return 0
     fi
 }
 
@@ -1985,7 +2019,7 @@ start_l2_stack() {
             $compose_cmd --profile catalyst --profile spammer --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         4)
-            log_info "Starting driver + proposer + prover + spammer"
+            log_info "Starting driver + proposer + prover (spammer deferred until after L2 deploy)"
             $compose_cmd --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         5)
@@ -1993,8 +2027,8 @@ start_l2_stack() {
             $compose_cmd --profile driver --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         *)
-            log_info "Starting all components"
-            $compose_cmd --profile driver --profile catalyst --profile spammer --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
+            log_info "Starting all components (spammer deferred until after L2 deploy)"
+            $compose_cmd --profile driver --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
     esac
     
@@ -2021,7 +2055,7 @@ start_relayers() {
     local should_start_relayers="$1"
     local environment="$2"
     
-    if [[ "$should_start_relayers" != "0" || "$should_start_relayers" == "true" ]]; then
+    if [[ "$should_start_relayers" == "1" ]]; then
         log_info "Skipping relayers as requested"
         return 0
     fi
@@ -2551,6 +2585,12 @@ main() {
     
     if ! start_relayers "$relayers_choice" "$env_choice"; then
         log_warning "Relayer startup had issues, but continuing..."
+    fi
+    
+    # Step 5b: Start spammer now that L2 deploy is done (if stack option included it)
+    if [[ "$stack_choice" == "3" || "$stack_choice" == "4" || "$stack_choice" == "6" || -z "$stack_choice" ]]; then
+        log_info "Starting tx spammer..."
+        docker compose --profile spammer up -d tx-spammer >/dev/null 2>&1 || true
     fi
     
     # Step 6: Verification

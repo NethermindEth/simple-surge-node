@@ -222,6 +222,8 @@ services:
       FORCED_INCLUSION_STORE_ADDRESS: ${PACAYA_FORCED_INCLUSION_STORE}
       TAIKO_BRIDGE_L2_ADDRESS: ${SHASTA_BRIDGE}
       MAX_BLOCKS_PER_BATCH: 1
+      PRECONF_MIN_TXS: 1
+      MIN_BYTES_PER_TX_LIST: 128
       RUST_LOG: "info"
     extra_hosts:
       - "host.docker.internal:host-gateway"
