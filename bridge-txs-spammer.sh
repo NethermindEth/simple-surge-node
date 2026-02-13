@@ -223,12 +223,15 @@ send_bridge_tx() {
 
     log_tx "[$tx_num/$total] Sending $label bridge tx..."
 
+    local nonce="$9"
+
     if cast send "$bridge_address" \
         "sendMessage((uint64,uint64,uint32,address,uint64,address,uint64,address,address,uint256,bytes))" \
         "(0,$FEE_WEI,$GAS_LIMIT,$ZERO_ADDRESS,0,$PUBLIC_KEY,$dest_chain_id,$PUBLIC_KEY,$PUBLIC_KEY,$amount_wei,0x)" \
         --value "$total_value_wei" \
         --rpc-url "$rpc_url" \
-        --private-key "$PRIVATE_KEY" >/dev/null 2>&1; then
+        --private-key "$PRIVATE_KEY" \
+        --nonce "$nonce" >/dev/null 2>&1; then
         log_tx "[$tx_num/$total] $label bridge tx sent successfully ✓"
         return 0
     else
@@ -261,13 +264,36 @@ run_bridge_spam() {
     local success_count=0
     local fail_count=0
 
+    # Get starting nonce to avoid nonce collisions when sending rapid txs.
+    # We use pending nonce and increment locally, with retry on nonce conflicts
+    # (the same key may be used by proposer/prover, causing contention).
+    local current_nonce
+    current_nonce=$(cast nonce "$PUBLIC_KEY" --rpc-url "$rpc_url" --pending 2>/dev/null || cast nonce "$PUBLIC_KEY" --rpc-url "$rpc_url")
+    log_info "Starting nonce: $current_nonce"
+
+    local max_retries=3
     for ((i = 1; i <= count; i++)); do
-        if send_bridge_tx "$bridge_address" "$rpc_url" "$dest_chain_id" \
-            "$amount_wei" "$total_value_wei" "$direction_label" "$i" "$count"; then
-            ((success_count++)) || true
-        else
+        local attempt=0
+        local sent=false
+        while [[ "$sent" == "false" && $attempt -lt $max_retries ]]; do
+            if send_bridge_tx "$bridge_address" "$rpc_url" "$dest_chain_id" \
+                "$amount_wei" "$total_value_wei" "$direction_label" "$i" "$count" "$current_nonce"; then
+                ((success_count++)) || true
+                sent=true
+            else
+                ((attempt++)) || true
+                if [[ $attempt -lt $max_retries ]]; then
+                    # Brief pause to allow pending txs to be mined before refreshing nonce
+                    sleep 2
+                    current_nonce=$(cast nonce "$PUBLIC_KEY" --rpc-url "$rpc_url" --pending 2>/dev/null || cast nonce "$PUBLIC_KEY" --rpc-url "$rpc_url")
+                    log_info "Retrying with refreshed nonce: $current_nonce (attempt $((attempt+1))/$max_retries)"
+                fi
+            fi
+        done
+        if [[ "$sent" == "false" ]]; then
             ((fail_count++)) || true
         fi
+        ((current_nonce++)) || true
     done
 
     echo
