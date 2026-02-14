@@ -1303,16 +1303,21 @@ deploy_l1_contracts() {
     # Check if Surge L1 is already deployed (only skip if both files exist AND we're broadcasting)
     if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" ]]; then
         log_info "Surge L1 already deployed..."
-        echo
-        echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "  ⚠️  Start a new deployment?                                   " 
-        echo "║══════════════════════════════════════════════════════════════║"
-        echo "║  0 for Use existing deployment                               ║"
-        echo "║  1 for Redeployment                                          ║"
-        echo "║ [default: 0]                                                 ║"
-        echo "╚══════════════════════════════════════════════════════════════╝"
-        read -p "Enter choice [0]: " choice
-        choice=${choice:-0}
+        local choice
+        if [[ "$force" == "true" ]]; then
+            choice=0  # default: use existing deployment
+        else
+            echo
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "  ⚠️  Start a new deployment?                                   "
+            echo "║══════════════════════════════════════════════════════════════║"
+            echo "║  0 for Use existing deployment                               ║"
+            echo "║  1 for Redeployment                                          ║"
+            echo "║ [default: 0]                                                 ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            read -p "Enter choice [0]: " choice
+            choice=${choice:-0}
+        fi
 
         if [[ "$choice" == "1" ]]; then
             log_info "Starting a redeployment..."
@@ -1631,12 +1636,12 @@ switch_fork() {
     else
         docker compose -f docker-compose-protocol.yml --profile switch-fork up >"$temp_output" 2>&1 &
         local switch_fork_pid=$!
-        
-        show_progress $switch_fork_pid "Switching fork..."
-    fi
 
-    wait $switch_fork_pid
-    exit_status=$?
+        show_progress $switch_fork_pid "Switching fork..."
+
+        wait $switch_fork_pid
+        exit_status=$?
+    fi
 
     if [[ $exit_status -eq 0 ]]; then
         log_success "Fork switched successfully"
@@ -1666,16 +1671,20 @@ deploy_provers() {
     fi
 
     if [[ -z "${running_provers:-}" ]]; then
-        echo
-        echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "  ⚠️ Running provers?                                           "
-        echo "║══════════════════════════════════════════════════════════════║"
-        echo "║  0 for Deploy provers                                        ║"
-        echo "║  1 for Skip provers                                          ║"
-        echo "║ [default: 0]                                                 ║"
-        echo "╚══════════════════════════════════════════════════════════════╝"
-        read -p "Enter choice [0]: " should_run_provers
-        should_run_provers=${should_run_provers:-0}
+        if [[ "$force" == "true" ]]; then
+            should_run_provers=0  # default: deploy provers
+        else
+            echo
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "  ⚠️ Running provers?                                           "
+            echo "║══════════════════════════════════════════════════════════════║"
+            echo "║  0 for Deploy provers                                        ║"
+            echo "║  1 for Skip provers                                          ║"
+            echo "║ [default: 0]                                                 ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            read -p "Enter choice [0]: " should_run_provers
+            should_run_provers=${should_run_provers:-0}
+        fi
     else
         should_run_provers=$running_provers
     fi
@@ -1685,17 +1694,22 @@ deploy_provers() {
 
         if [[ "$mock_proof" == "1" ]]; then
             if [[ ! -f "$DEPLOYMENT_DIR/sp1_verifier_setup.lock" ]]; then
-                echo
-                echo "╔══════════════════════════════════════════════════════════════╗"
-                echo "  ⚠️ Running SP1?                                               "
-                echo "║══════════════════════════════════════════════════════════════║"
-                echo "║  0 for Deploy SP1                                            ║"
-                echo "║  1 for Skip SP1                                              ║"
-                echo "║ [default: 0]                                                 ║"
-                echo "╚══════════════════════════════════════════════════════════════╝"
-                echo
-                read -p "Enter choice [0]: " running_sp1
-                running_sp1=${running_sp1:-0}
+                local running_sp1
+                if [[ "$force" == "true" ]]; then
+                    running_sp1=0  # default: deploy SP1
+                else
+                    echo
+                    echo "╔══════════════════════════════════════════════════════════════╗"
+                    echo "  ⚠️ Running SP1?                                               "
+                    echo "║══════════════════════════════════════════════════════════════║"
+                    echo "║  0 for Deploy SP1                                            ║"
+                    echo "║  1 for Skip SP1                                              ║"
+                    echo "║ [default: 0]                                                 ║"
+                    echo "╚══════════════════════════════════════════════════════════════╝"
+                    echo
+                    read -p "Enter choice [0]: " running_sp1
+                    running_sp1=${running_sp1:-0}
+                fi
 
                 if [[ "$running_sp1" == "0" ]]; then
                     retrieve_guest_data sp1
@@ -1711,17 +1725,22 @@ deploy_provers() {
             fi
 
             if [[ ! -f "$DEPLOYMENT_DIR/risc0_verifier_setup.lock" ]]; then
-                echo
-                echo "╔══════════════════════════════════════════════════════════════╗"
-                echo "  ⚠️ Running RISC0?                                             "
-                echo "║══════════════════════════════════════════════════════════════║"
-                echo "║  0 for Deploy RISC0                                          ║"
-                echo "║  1 for Skip RISC0                                            ║"
-                echo "║ [default: 0]                                                 ║"
-                echo "╚══════════════════════════════════════════════════════════════╝"
-                echo
-                read -p "Enter choice [0]: " running_risc0
-                running_risc0=${running_risc0:-0}
+                local running_risc0
+                if [[ "$force" == "true" ]]; then
+                    running_risc0=0  # default: deploy RISC0
+                else
+                    echo
+                    echo "╔══════════════════════════════════════════════════════════════╗"
+                    echo "  ⚠️ Running RISC0?                                             "
+                    echo "║══════════════════════════════════════════════════════════════║"
+                    echo "║  0 for Deploy RISC0                                          ║"
+                    echo "║  1 for Skip RISC0                                            ║"
+                    echo "║ [default: 0]                                                 ║"
+                    echo "╚══════════════════════════════════════════════════════════════╝"
+                    echo
+                    read -p "Enter choice [0]: " running_risc0
+                    running_risc0=${running_risc0:-0}
+                fi
 
                 if [[ "$running_risc0" == "0" ]]; then
                     retrieve_guest_data risc0
@@ -1809,17 +1828,21 @@ deposit_bond() {
 
     local should_deposit_bond
     if [[ -z "${deposit_bond:-}" ]]; then
-        echo
-        echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "  ⚠️ Deposit bond?                                             "
-        echo "║══════════════════════════════════════════════════════════════║"
-        echo "║  0 for Deposit bond                                          ║"
-        echo "║  1 for Skip bond                                             ║"
-        echo "║ [default: 0]                                                 ║"
-        echo "╚══════════════════════════════════════════════════════════════╝"
-        echo
-        read -p "Enter choice [true]: " should_deposit_bond
-        should_deposit_bond=${should_deposit_bond:-0}
+        if [[ "$force" == "true" ]]; then
+            should_deposit_bond=0  # default: deposit bond
+        else
+            echo
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "  ⚠️ Deposit bond?                                             "
+            echo "║══════════════════════════════════════════════════════════════║"
+            echo "║  0 for Deposit bond                                          ║"
+            echo "║  1 for Skip bond                                             ║"
+            echo "║ [default: 0]                                                 ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            echo
+            read -p "Enter choice [true]: " should_deposit_bond
+            should_deposit_bond=${should_deposit_bond:-0}
+        fi
     else
         should_deposit_bond=$deposit_bond
     fi
@@ -1827,13 +1850,17 @@ deposit_bond() {
     if [[ "$should_deposit_bond" == "0" || "$should_deposit_bond" == "true" ]]; then
         local bond_amount_eth
         if [[ -z "${bond_amount:-}" ]]; then
-            echo
-            echo "╔══════════════════════════════════════════════════════════════╗"
-            echo "║ Enter bond amount (in ETH, default: 1000)                    ║"
-            echo "╚══════════════════════════════════════════════════════════════╝"
-            echo
-            read -p "Enter amount [1000]: " bond_amount_eth
-            bond_amount_eth=${bond_amount_eth:-1000}
+            if [[ "$force" == "true" ]]; then
+                bond_amount_eth=1000  # default: 1000 ETH
+            else
+                echo
+                echo "╔══════════════════════════════════════════════════════════════╗"
+                echo "║ Enter bond amount (in ETH, default: 1000)                    ║"
+                echo "╚══════════════════════════════════════════════════════════════╝"
+                echo
+                read -p "Enter amount [1000]: " bond_amount_eth
+                bond_amount_eth=${bond_amount_eth:-1000}
+            fi
         else
             bond_amount_eth=$bond_amount
         fi
@@ -1876,6 +1903,34 @@ deposit_bond() {
     fi
 }
 
+# Wait for L2 chain to start producing blocks
+wait_for_l2_blocks() {
+    log_info "Waiting for L2 chain to start producing blocks..."
+
+    local l2_rpc="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-http://localhost:8547}}"
+    # Ensure we use localhost for host-based calls
+    l2_rpc=$(echo "$l2_rpc" | sed 's/host\.docker\.internal/localhost/g')
+
+    local waited=0
+    local max_wait=300  # 5 minutes
+    while [[ $waited -lt $max_wait ]]; do
+        local block_number
+        block_number=$(cast block-number --rpc-url "$l2_rpc" 2>/dev/null || echo "0")
+        if [[ "$block_number" -gt 0 ]]; then
+            log_success "L2 is producing blocks (current block: $block_number)"
+            return 0
+        fi
+        sleep 5
+        waited=$((waited + 5))
+        if (( waited % 30 == 0 )); then
+            log_info "Still waiting for L2 blocks... (${waited}s elapsed)"
+        fi
+    done
+
+    log_error "L2 did not start producing blocks within ${max_wait}s"
+    return 1
+}
+
 # Deploy L2 smart contracts
 deploy_l2() {
     # Check if deployment is already completed
@@ -1884,20 +1939,26 @@ deploy_l2() {
         log_info "Deployment will be skipped..."
         return 0
     else
+        # Wait for L2 to be ready before deploying contracts
+        if ! wait_for_l2_blocks; then
+            log_error "Cannot deploy L2 contracts: L2 chain is not producing blocks"
+            return 1
+        fi
+
         log_info "Deploying L2 smart contracts..."
-        
+
         local exit_status=0
         local temp_output="/tmp/surge_l2_deploy_output_$$"
-        
+
         # Start L2 deployer in detached mode, then wait for it to finish
         BROADCAST=true docker compose --profile l2-deployer up -d >"$temp_output" 2>&1 &
         local deploy_pid=$!
-        
+
         show_progress $deploy_pid "Deploying L2 contracts..."
-        
+
         wait $deploy_pid
         exit_status=$?
-        
+
         if [[ $exit_status -ne 0 ]]; then
             log_error "Failed to start L2 deployer container (exit code: $exit_status)"
             if [[ -f "$temp_output" ]]; then
@@ -1905,12 +1966,19 @@ deploy_l2() {
             fi
             return 1
         fi
-        
-        # Wait for the deployer container to finish (up to 120s)
+
+        # Wait for the deployer container to finish (up to 600s)
+        # The deployer runs forge script --broadcast which needs L2 blocks to confirm txs
         log_info "Waiting for L2 deployer to complete..."
         local waited=0
-        local max_wait=120
+        local max_wait=600
         while [[ $waited -lt $max_wait ]]; do
+            # Check if the deployment artifact appeared on the host (most reliable signal)
+            if [[ -f "$DEPLOYMENT_DIR/setup_l2.json" ]]; then
+                log_success "L2 deployment artifact detected"
+                break
+            fi
+
             local status
             status=$(docker inspect surge-l2-deployer --format '{{.State.Status}}' 2>/dev/null || echo "not found")
             if [[ "$status" == "exited" ]]; then
@@ -1926,13 +1994,18 @@ deploy_l2() {
             fi
             sleep 5
             waited=$((waited + 5))
+            if (( waited % 60 == 0 )); then
+                log_info "Still waiting for L2 deployer... (${waited}s / ${max_wait}s)"
+            fi
         done
-        
+
         if [[ $waited -ge $max_wait ]]; then
             log_error "L2 deployer timed out after ${max_wait}s"
+            log_error "Last deployer logs:"
+            docker logs surge-l2-deployer 2>&1 | tail -20 >&2
             return 1
         fi
-        
+
         # Verify the deployment artifact was produced
         if [[ -f "$DEPLOYMENT_DIR/setup_l2.json" ]]; then
             log_success "L2 smart contracts deployed successfully"
@@ -1940,7 +2013,7 @@ deploy_l2() {
         else
             log_warning "L2 deployer exited 0 but setup_l2.json not found, continuing..."
         fi
-        
+
         return 0
     fi
 }
@@ -2353,7 +2426,11 @@ main() {
     # Step 1: Environment Selection
     local env_choice
     if [[ -z "${environment:-}" ]]; then
-        env_choice=$(prompt_environment_selection)
+        if [[ "$force" == "true" ]]; then
+            env_choice=1  # default: devnet
+        else
+            env_choice=$(prompt_environment_selection)
+        fi
     else
         case "$environment" in
             1|"devnet") env_choice=1 ;;
@@ -2381,7 +2458,11 @@ main() {
     # Get deployment choice (local/remote)
     local deployment_choice
     if [[ -z "${deployment:-}" ]]; then
-        deployment_choice=$(prompt_deployment_selection)
+        if [[ "$force" == "true" ]]; then
+            deployment_choice=0  # default: local
+        else
+            deployment_choice=$(prompt_deployment_selection)
+        fi
     else
         case "$deployment" in
             0|"local") deployment_choice=0 ;;
@@ -2413,7 +2494,11 @@ main() {
     if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
         # Devnet: prompt for deploy devnet or use existing
         if [[ -z "${deploy_devnet:-}" ]]; then
-            deploy_devnet_choice=$(prompt_l1_deployment_mode)
+            if [[ "$force" == "true" ]]; then
+                deploy_devnet_choice=0  # default: deploy new devnet
+            else
+                deploy_devnet_choice=$(prompt_l1_deployment_mode)
+            fi
         else
             case "$deploy_devnet" in
                 true|"true"|"0"|0) deploy_devnet_choice=0 ;;
@@ -2426,7 +2511,11 @@ main() {
             # Option A: Deploy new L1 devnet
             local mode_choice
             if [[ -z "${mode:-}" ]]; then
-                mode_choice=$(prompt_mode_selection)
+                if [[ "$force" == "true" ]]; then
+                    mode_choice="debug"  # default: debug for visibility
+                else
+                    mode_choice=$(prompt_mode_selection)
+                fi
             else
                 case "$mode" in
                     0|"silence"|"silent") mode_choice="silence" ;;
@@ -2434,7 +2523,7 @@ main() {
                     *) mode_choice="$mode" ;;
                 esac
             fi
-            
+
             if ! deploy_l1_devnet "$deployment_choice" "$mode_choice"; then
                 log_error "Failed to deploy L1 devnet"
                 exit 1
@@ -2453,7 +2542,11 @@ main() {
             # Option B: Use existing chain
             local mode_choice
             if [[ -z "${mode:-}" ]]; then
-                mode_choice=$(prompt_mode_selection)
+                if [[ "$force" == "true" ]]; then
+                    mode_choice="debug"  # default: debug for visibility
+                else
+                    mode_choice=$(prompt_mode_selection)
+                fi
             else
                 case "$mode" in
                     0|"silence"|"silent") mode_choice="silence" ;;
@@ -2489,17 +2582,21 @@ main() {
 
         # Deploy L1 contracts
         local mock_proof
-        echo
-        echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "  ⚠️ Using mock prover?                                         "
-        echo "║══════════════════════════════════════════════════════════════║"
-        echo "║  0 for Using mock prover                                     ║"
-        echo "║  1 for Using real prover                                     ║"
-        echo "║ [default: 0]                                                 ║"
-        echo "╚══════════════════════════════════════════════════════════════╝"
-        echo
-        read -p "Enter choice [0]: " mock_proof
-        mock_proof=${mock_proof:-0}
+        if [[ "$force" == "true" ]]; then
+            mock_proof=0  # default: mock prover
+        else
+            echo
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "  ⚠️ Using mock prover?                                         "
+            echo "║══════════════════════════════════════════════════════════════║"
+            echo "║  0 for Using mock prover                                     ║"
+            echo "║  1 for Using real prover                                     ║"
+            echo "║ [default: 0]                                                 ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            echo
+            read -p "Enter choice [0]: " mock_proof
+            mock_proof=${mock_proof:-0}
+        fi
         
         # Run L1 contracts simulation
         if ! deploy_l1_contracts "$mode_choice" false $mock_proof false; then
@@ -2559,7 +2656,11 @@ main() {
     # Step 4: L2 Stack Deployment (ALL environments)
     local stack_choice
     if [[ -z "${stack_option:-}" ]]; then
-        stack_choice=$(prompt_stack_option_selection)
+        if [[ "$force" == "true" ]]; then
+            stack_choice=6  # default: all components
+        else
+            stack_choice=$(prompt_stack_option_selection)
+        fi
     else
         stack_choice=$stack_option
     fi
@@ -2578,7 +2679,11 @@ main() {
     # Step 5: Start Relayers (optional)
     local relayers_choice
     if [[ -z "${start_relayers:-}" ]]; then
-        relayers_choice=$(prompt_relayers_selection)
+        if [[ "$force" == "true" ]]; then
+            relayers_choice=0  # default: deploy relayers
+        else
+            relayers_choice=$(prompt_relayers_selection)
+        fi
     else
         relayers_choice=$start_relayers
     fi
