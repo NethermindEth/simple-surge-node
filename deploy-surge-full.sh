@@ -580,9 +580,43 @@ get_machine_ip() {
     echo "$ip"
 }
 
+# Check if an endpoint URL points to a local/private host that needs rewriting.
+# Returns 0 (true) if the hostname is external/public (should NOT be rewritten).
+# Returns 1 (false) if the hostname is local/private (safe to rewrite).
+is_external_endpoint() {
+    local endpoint="$1"
+    local host
+    host=$(echo "$endpoint" | sed -E 's#https?://([^:/]+).*#\1#')
+    
+    # Local/private patterns that ARE safe to rewrite
+    case "$host" in
+        localhost|127.0.0.1|host.docker.internal|0.0.0.0)
+            return 1 ;;  # local — safe to rewrite
+        10.*)
+            return 1 ;;  # private RFC1918
+        172.1[6-9].*|172.2[0-9].*|172.3[0-1].*)
+            return 1 ;;  # private RFC1918
+        192.168.*)
+            return 1 ;;  # private RFC1918
+    esac
+    
+    # If the hostname contains a dot, it's likely a real domain (e.g. quiknode.pro)
+    if echo "$host" | grep -q '\.'; then
+        return 0  # external — do NOT rewrite
+    fi
+    
+    # No dot means it's likely a container/service name (e.g. "el-1-nethermind")
+    return 1  # local — safe to rewrite
+}
+
 # Convert endpoint to docker-internal format (for use inside containers)
 to_docker_internal() {
     local endpoint="$1"
+    # If the endpoint is already an external URL, containers can reach it directly
+    if is_external_endpoint "$endpoint"; then
+        echo "$endpoint"
+        return
+    fi
     # Replace hostname with host.docker.internal, preserving protocol and port
     echo "$endpoint" | sed -E 's#(https?://)([^:/]+)(.*)#\1host.docker.internal\3#'
 }
@@ -599,6 +633,12 @@ format_endpoint_for_context() {
     local endpoint="$1"
     local deployment_type="$2"  # local or remote
     local machine_ip="$3"
+    
+    # If the endpoint is already an external/public URL, return as-is
+    if is_external_endpoint "$endpoint"; then
+        echo "$endpoint"
+        return
+    fi
     
     if [[ "$deployment_type" == "remote" || "$deployment_type" == "1" ]] && [[ -n "$machine_ip" ]]; then
         # Replace hostname with machine IP for remote access
@@ -653,6 +693,8 @@ configure_remote_blockscout() {
         sed -i.tmp "s/else \"localhost:{0}\"/else \"$machine_ip:{0}\"/g" "$BLOCKSCOUT_FILE"
         rm -f "${BLOCKSCOUT_FILE}.tmp"
     fi
+
+    update_env_var "$ENV_FILE" "BLOCKSCOUT_API_HOST" "$machine_ip"
     
     log_success "Blockscout configured for remote access"
 }
@@ -1631,7 +1673,7 @@ generate_l2_genesis() {
 
     update_env_var "$ENV_FILE" "SHASTA_TIMESTAMP" "$HEX_TIMESTAMP"
 
-    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' > "$DEPLOYMENT_DIR/surge_chainspec.json"
+    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/surge-poc/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' > "$DEPLOYMENT_DIR/surge_chainspec.json"
     
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"

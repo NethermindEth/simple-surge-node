@@ -5,6 +5,7 @@ set -e
 export BROADCAST_ARG=""
 if [ "$BROADCAST" = "true" ]; then
     BROADCAST_ARG="--broadcast"
+    GAS_ESTIMATE_MULTIPLIER_ARG="--gas-estimate-multiplier 300"
 fi
 
 # Parameterize verification
