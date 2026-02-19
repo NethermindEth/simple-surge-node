@@ -1221,15 +1221,15 @@ retrieve_guest_data() {
         sp1)
             if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
                 log_info "Retrieving guest data for SP1 - $RAIKO_HOST_ZKVM"
-                export SP1_BLOCK_PROVING_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].sp1.block_program_hash')
-                export SP1_AGGREGATION_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].sp1.aggregation_program_hash')
+                export SP1_BLOCK_PROVING_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.sp1.block_program_hash')
+                export SP1_AGGREGATION_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.sp1.aggregation_program_hash')
             fi
             ;;
         risc0)
             if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
                 log_info "Retrieving guest data for RISC0 - $RAIKO_HOST_ZKVM"
-                export RISC0_AGGREGATION_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].risc0.aggregation_program_hash')
-                export RISC0_BLOCK_PROVING_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].risc0.block_program_hash')
+                export RISC0_AGGREGATION_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.risc0.aggregation_program_hash')
+                export RISC0_BLOCK_PROVING_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.risc0.block_program_hash')
             fi
             ;;
     esac
