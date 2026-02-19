@@ -1,0 +1,96 @@
+name: E2E Full Stack Test
+
+on:
+  pull_request:
+    branches: [main, feat/shasta]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-full-stack:
+    name: E2E Full Stack
+    permissions:
+      contents: read
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      CI_L2_DEPLOYER_TIMEOUT: "300"
+      CI_HEALTH_MAX_RETRIES: "60"
+      CI_HEALTH_RETRY_INTERVAL: "10"
+      CI_BRIDGE_DELIVERY_TIMEOUT: "1200"
+
+    steps:
+      - name: Checkout simple-surge-node
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq bc
+
+      - name: Install Kurtosis CLI
+        run: |
+          echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
+          sudo apt-get update
+          sudo apt-get install -y kurtosis-cli
+          kurtosis version
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Verify prerequisites
+        run: |
+          docker --version
+          docker compose version
+          docker info
+          kurtosis version
+          cast --version
+
+      - name: Run E2E
+        run: ./script/ci-e2e.sh
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          echo "=== Docker Compose Services ==="
+          docker compose ps || true
+          echo "=== Docker Compose Logs (last 200 lines) ==="
+          docker compose logs --tail=200 || true
+          echo "=== Relayer Compose Logs ==="
+          docker compose -f docker-compose-relayer.yml logs --tail=100 || true
+          echo "=== Kurtosis Enclaves ==="
+          kurtosis enclave ls || true
+          echo "=== Kurtosis Inspect ==="
+          kurtosis enclave inspect surge-devnet || true
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-logs
+          path: |
+            deployment/*.json
+            deployment/*.lock
+            *.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose --profile driver --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>/dev/null || true
+          docker compose -f docker-compose-protocol.yml down --remove-orphans 2>/dev/null || true
+          docker compose -f docker-compose-relayer.yml down --remove-orphans 2>/dev/null || true
+          docker network rm surge-network 2>/dev/null || true
+          kurtosis enclave rm surge-devnet --force 2>/dev/null || true
+          kurtosis clean -a 2>/dev/null || true
+          docker system prune -af --volumes 2>/dev/null || true

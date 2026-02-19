@@ -228,7 +228,19 @@ validate_prerequisites() {
         log_error "Please install them first"
         return 1
     fi
-    
+
+    # Verify docker compose v2.1+ (required for --profile support)
+    local compose_version
+    compose_version=$(docker compose version --short 2>/dev/null || echo "0.0.0")
+    local compose_major compose_minor
+    compose_major=$(echo "$compose_version" | cut -d. -f1)
+    compose_minor=$(echo "$compose_version" | cut -d. -f2)
+    if [[ "$compose_major" -lt 2 ]] || [[ "$compose_major" -eq 2 && "$compose_minor" -lt 1 ]]; then
+        log_error "docker compose >= 2.1 required (found: $compose_version)"
+        return 1
+    fi
+    log_info "docker compose version: $compose_version"
+
     # Create required directories
     for dir in "$DEPLOYMENT_DIR" "$CONFIGS_DIR" "driver-data"; do
         if [[ ! -d "$dir" ]]; then
@@ -1912,7 +1924,7 @@ wait_for_l2_blocks() {
     l2_rpc=$(echo "$l2_rpc" | sed 's/host\.docker\.internal/localhost/g')
 
     local waited=0
-    local max_wait=384  # Entire epoch duration
+    local max_wait=600  # 10 minutes
     while [[ $waited -lt $max_wait ]]; do
         local block_number
         block_number=$(cast block-number --rpc-url "$l2_rpc" 2>/dev/null || echo "0")
@@ -1953,12 +1965,12 @@ deploy_l2() {
         # Start L2 deployer in detached mode, then wait for it to finish
         BROADCAST=true docker compose --profile l2-deployer up -d >"$temp_output" 2>&1 &
         local deploy_pid=$!
-
+        
         show_progress $deploy_pid "Deploying L2 contracts..."
-
+        
         wait $deploy_pid
         exit_status=$?
-
+        
         if [[ $exit_status -ne 0 ]]; then
             log_error "Failed to start L2 deployer container (exit code: $exit_status)"
             if [[ -f "$temp_output" ]]; then
@@ -1966,12 +1978,12 @@ deploy_l2() {
             fi
             return 1
         fi
-
+        
         # Wait for the deployer container to finish (up to 600s)
         # The deployer runs forge script --broadcast which needs L2 blocks to confirm txs
         log_info "Waiting for L2 deployer to complete..."
         local waited=0
-        local max_wait=600
+        local max_wait=${CI_L2_DEPLOYER_TIMEOUT:-600}
         while [[ $waited -lt $max_wait ]]; do
             # Check if the deployment artifact appeared on the host (most reliable signal)
             if [[ -f "$DEPLOYMENT_DIR/setup_l2.json" ]]; then
@@ -2005,7 +2017,7 @@ deploy_l2() {
             docker logs surge-l2-deployer 2>&1 | tail -20 >&2
             return 1
         fi
-
+        
         # Verify the deployment artifact was produced
         if [[ -f "$DEPLOYMENT_DIR/setup_l2.json" ]]; then
             log_success "L2 smart contracts deployed successfully"
@@ -2013,7 +2025,7 @@ deploy_l2() {
         else
             log_warning "L2 deployer exited 0 but setup_l2.json not found, continuing..."
         fi
-
+        
         return 0
     fi
 }
@@ -2583,7 +2595,7 @@ main() {
         # Deploy L1 contracts
         local mock_proof
         if [[ "$force" == "true" ]]; then
-            mock_proof=0  # default: mock prover
+            mock_proof=0
         else
             echo
             echo "╔══════════════════════════════════════════════════════════════╗"
