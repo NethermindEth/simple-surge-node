@@ -1912,7 +1912,7 @@ wait_for_l2_blocks() {
     l2_rpc=$(echo "$l2_rpc" | sed 's/host\.docker\.internal/localhost/g')
 
     local waited=0
-    local max_wait=300  # 5 minutes
+    local max_wait=384  # Entire epoch duration
     while [[ $waited -lt $max_wait ]]; do
         local block_number
         block_number=$(cast block-number --rpc-url "$l2_rpc" 2>/dev/null || echo "0")
