@@ -51,6 +51,7 @@ bond_amount=""
 start_relayers=""
 mode=""
 force=""
+steps=""
 # verify_key_only=""
 
 # Colors for output
@@ -77,6 +78,14 @@ log_error() {
     echo -e "\n${RED}[ERROR]${NC} $1" >&2
 }
 
+# Step logging helper
+log_step() {
+    local step="$1"
+    local title="$2"
+    local total_steps=7
+    echo -e "\n${BLUE}[STEP ${step}/${total_steps}]${NC} ${title}"
+}
+
 # Show usage help
 show_help() {
     echo "Usage:"
@@ -96,6 +105,7 @@ show_help() {
     echo "  --deposit-bond BOOL      Deposit bond (devnet only, true|false)"
     echo "  --bond-amount NUM        Bond amount in ETH (default: 1000)"
     echo "  --start-relayers BOOL    Start relayers (true|false)"
+    echo "  --steps LIST             Run selected steps only (comma-separated)"
     echo "  --mode MODE              Execution mode (silence|debug)"
     # echo "  --verify-key-only        Only verify private key, don't deploy"
     echo "  -f, --force              Skip confirmation prompts"
@@ -116,7 +126,75 @@ show_help() {
     echo "Examples:"
     echo "  $0 --environment devnet --deploy-devnet true --mode debug"
     echo "  $0 --environment staging --stack-option 3 --start-relayers true"
+    echo "  $0 --environment devnet --steps preflight,l1-infra,l1-contracts,pacaya"
+    echo
+    echo "Steps:"
+    echo "  preflight    - Validate deps, init submodules, load env, configure endpoints"
+    echo "  l1-infra     - Deploy/check L1 devnet infrastructure (devnet only)"
+    echo "  l1-contracts - Run L1 contracts flow up to broadcast (devnet only)"
+    echo "  pacaya       - Deploy Pacaya contracts + extract + optional provers (devnet only)"
+    echo "  l2-stack     - Start L2 stack"
+    echo "  switch-fork  - Switch fork profile"
+    echo "  l2-contracts - Deploy L2 contracts (devnet only)"
+    echo "  relayers     - Start relayers and bridge UI"
+    echo "  verify       - Verify RPC endpoints"
+    echo "  summary      - Print deployment summary"
     exit 0
+}
+
+custom_steps_mode="false"
+selected_steps=""
+
+configure_selected_steps() {
+    local input_steps="$1"
+    local normalized="${input_steps//,/ }"
+
+    if [[ -z "$normalized" ]]; then
+        log_error "Empty --steps value"
+        return 1
+    fi
+
+    selected_steps=""
+    for raw_step in $normalized; do
+        local step
+        step=$(echo "$raw_step" | tr '[:upper:]' '[:lower:]')
+        case "$step" in
+            preflight|l1-infra|l1-contracts|pacaya|l2-stack|switch-fork|l2-contracts|relayers|verify|summary)
+                if [[ " $selected_steps " != *" $step "* ]]; then
+                    selected_steps="$selected_steps $step"
+                fi
+                ;;
+            all)
+                custom_steps_mode="false"
+                selected_steps=""
+                return 0
+                ;;
+            *)
+                log_error "Invalid step in --steps: $raw_step"
+                log_error "Run with --help to see available steps"
+                return 1
+                ;;
+        esac
+    done
+
+    custom_steps_mode="true"
+
+    # Later steps rely on env and endpoint setup, so ensure preflight is always included.
+    if [[ " $selected_steps " != *" preflight "* ]]; then
+        log_warning "Auto-including preflight for step dependencies"
+        selected_steps=" preflight$selected_steps"
+    fi
+
+    return 0
+}
+
+should_run_step() {
+    local step="$1"
+    if [[ "$custom_steps_mode" != "true" ]]; then
+        return 0
+    fi
+
+    [[ " $selected_steps " == *" $step "* ]]
 }
 
 # Parse command line arguments
@@ -165,6 +243,10 @@ parse_arguments() {
                 ;;
             --mode)
                 mode="$2"
+                shift 2
+                ;;
+            --steps)
+                steps="$2"
                 shift 2
                 ;;
             # --verify-key-only)
@@ -2127,6 +2209,7 @@ start_l2_stack() {
 start_relayers() {
     local should_start_relayers="$1"
     local environment="$2"
+    local skip_l2_contracts="${3:-false}"
     
     if [[ "$should_start_relayers" == "1" ]]; then
         log_info "Skipping relayers as requested"
@@ -2134,7 +2217,7 @@ start_relayers() {
     fi
     
     # Deploy L2 SCs first for devnet environment
-    if [[ "$environment" == "1" || "$environment" == "devnet" ]]; then
+    if [[ "$skip_l2_contracts" != "true" ]] && [[ "$environment" == "1" || "$environment" == "devnet" ]]; then
         if ! deploy_l2; then
             log_error "Failed to deploy L2 contracts, cannot start relayers"
             return 1
@@ -2401,29 +2484,47 @@ main() {
 
     # Parse arguments
     parse_arguments "$@"
+
+    if [[ -n "${steps:-}" ]]; then
+        if ! configure_selected_steps "$steps"; then
+            exit 1
+        fi
+        if [[ "$custom_steps_mode" == "true" ]]; then
+            log_info "Custom steps mode enabled:${selected_steps}"
+        fi
+    fi
     
     log_info "Starting $SCRIPT_NAME..."
 
-    # Validate prerequisites
-    if ! validate_prerequisites; then
-        log_error "Prerequisites validation failed"
-        exit 1
+    local mode_choice="debug"
+    local slow_mode=false
+    local stack_choice=6
+    local mock_proof=0
+
+    # Step 1: Preflight + Environment Selection
+    if should_run_step preflight; then
+        log_step 1 "Preflight, environment selection and base URL configuration"
+
+        # Validate prerequisites
+        if ! validate_prerequisites; then
+            log_error "Prerequisites validation failed"
+            exit 1
+        fi
+
+        # Initialize submodules
+        initialize_submodules
+
+        # If verify-key-only is set, just verify the key and exit (WIP due to using existing chain)
+        # if [[ "$verify_key_only" == "true" ]]; then
+        #     if [[ -z "$deployment_key" ]] || [[ -z "$l1-rpc_url" ]]; then
+        #         log_error "Both --deployment-key and --l1-rpc-url are required for --verify-key-only"
+        #         exit 1
+        #     fi
+        #     verify_private_key_on_chain "$deployment_key" "$l1_rpc_url" "provided chain"
+        #     exit $?
+        # fi
     fi
 
-    # Initialize submodules
-    initialize_submodules
-
-    # If verify-key-only is set, just verify the key and exit (WIP due to using existing chain)
-    # if [[ "$verify_key_only" == "true" ]]; then
-    #     if [[ -z "$deployment_key" ]] || [[ -z "$l1_rpc_url" ]]; then
-    #         log_error "Both --deployment-key and --l1-rpc-url are required for --verify-key-only"
-    #         exit 1
-    #     fi
-    #     verify_private_key_on_chain "$deployment_key" "$l1_rpc_url" "provided chain"
-    #     exit $?
-    # fi
-    
-    # Step 1: Environment Selection
     local env_choice
     if [[ -z "${environment:-}" ]]; then
         if [[ "$force" == "true" ]]; then
@@ -2487,11 +2588,13 @@ main() {
         log_error "Failed to configure environment URLs"
         exit 1
     fi
-    
+
     # Step 2: L1 Infrastructure Decision
+    if should_run_step l1-infra; then
+        log_step 2 "L1 infrastructure decision"
+    fi
     local deploy_devnet_choice
-    local slow_mode
-    if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
+    if should_run_step l1-infra && [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
         # Devnet: prompt for deploy devnet or use existing
         if [[ -z "${deploy_devnet:-}" ]]; then
             if [[ "$force" == "true" ]]; then
@@ -2577,11 +2680,16 @@ main() {
         fi
     fi
     
-    # Step 3: L1 Protocol Deployment (ONLY for devnet)
-    if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
+    # Step 3a/3b: L1 contracts + Pacaya (devnet only)
+    if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]] && { should_run_step l1-contracts || should_run_step pacaya; }; then
+        if [[ -n "${mode:-}" ]]; then
+            case "$mode" in
+                0|"silence"|"silent") mode_choice="silence" ;;
+                1|"debug") mode_choice="debug" ;;
+                *) mode_choice="$mode" ;;
+            esac
+        fi
 
-        # Deploy L1 contracts
-        local mock_proof
         if [[ "$force" == "true" ]]; then
             mock_proof=0  # default: mock prover
         else
@@ -2597,46 +2705,54 @@ main() {
             read -p "Enter choice [0]: " mock_proof
             mock_proof=${mock_proof:-0}
         fi
-        
-        # Run L1 contracts simulation
-        if ! deploy_l1_contracts "$mode_choice" false $mock_proof false; then
-            log_error "Failed to deploy L1 smart contracts"
-            exit 1
+
+        if should_run_step l1-contracts; then
+            log_step 3 "L1 contracts flow (devnet only)"
+
+            # Run L1 contracts simulation
+            if ! deploy_l1_contracts "$mode_choice" false $mock_proof false; then
+                log_error "Failed to deploy L1 smart contracts"
+                exit 1
+            fi
+
+            # Extract L1 deployment results
+            if ! extract_l1_deployment_results; then
+                log_error "Failed to extract L1 deployment results"
+                exit 1
+            fi
+
+            # Generate L2 Genesis
+            if ! generate_l2_genesis "$mode_choice"; then
+                log_error "Failed to generate L2 genesis"
+                exit 1
+            fi
+
+            # Deploy L1 contracts
+            if ! deploy_l1_contracts "$mode_choice" true $mock_proof $slow_mode; then
+                log_error "Failed to deploy L1 smart contracts"
+                exit 1
+            fi
         fi
 
-        # Extract L1 deployment results
-        if ! extract_l1_deployment_results; then
-            log_error "Failed to extract L1 deployment results"
-            exit 1
-        fi
+        if should_run_step pacaya; then
+            log_step 3 "Pacaya + provers flow (devnet only)"
 
-        # Generate L2 Genesis
-        if ! generate_l2_genesis "$mode_choice"; then
-            log_error "Failed to generate L2 genesis"
-            exit 1
-        fi
+            # Deploy Pacaya contracts
+            if ! deploy_pacaya_contracts "$mode_choice" $slow_mode; then
+                log_error "Failed to deploy Pacaya smart contracts"
+                exit 1
+            fi
 
-        # Deploy L1 contracts
-        if ! deploy_l1_contracts "$mode_choice" true $mock_proof $slow_mode; then
-            log_error "Failed to deploy L1 smart contracts"
-            exit 1
-        fi
+            # Extract L1 deployment results
+            if ! extract_l1_deployment_results; then
+                log_error "Failed to extract L1 deployment results"
+                exit 1
+            fi
 
-        # Deploy Pacaya contracts
-        if ! deploy_pacaya_contracts "$mode_choice" $slow_mode; then
-            log_error "Failed to deploy Pacaya smart contracts"
-            exit 1
-        fi
-
-        # Extract L1 deployment results
-        if ! extract_l1_deployment_results; then
-            log_error "Failed to extract L1 deployment results"
-            exit 1
-        fi
-
-        # Deploy Provers (optional) - must be after Pacaya contracts for PACAYA_TAIKO
-        if ! deploy_provers $mock_proof; then
-            log_warning "Prover deployment had issues, but continuing..."
+            # Deploy Provers (optional) - must be after Pacaya contracts for PACAYA_TAIKO
+            if ! deploy_provers $mock_proof; then
+                log_warning "Prover deployment had issues, but continuing..."
+            fi
         fi
 
         # Deposit bond (optional)
@@ -2654,55 +2770,91 @@ main() {
     fi
     
     # Step 4: L2 Stack Deployment (ALL environments)
-    local stack_choice
-    if [[ -z "${stack_option:-}" ]]; then
-        if [[ "$force" == "true" ]]; then
-            stack_choice=6  # default: all components
+    if should_run_step l2-stack; then
+        log_step 4 "L2 stack deployment"
+        if [[ -z "${stack_option:-}" ]]; then
+            if [[ "$force" == "true" ]]; then
+                stack_choice=6  # default: all components
+            else
+                stack_choice=$(prompt_stack_option_selection)
+            fi
         else
-            stack_choice=$(prompt_stack_option_selection)
+            stack_choice=$stack_option
         fi
-    else
-        stack_choice=$stack_option
-    fi
-    
-    if ! start_l2_stack "$stack_choice"; then
-        log_error "Failed to start L2 stack"
-        exit 1
+
+        if ! start_l2_stack "$stack_choice"; then
+            log_error "Failed to start L2 stack"
+            exit 1
+        fi
     fi
 
-    # Switch fork
-    if ! switch_fork "$mode_choice"; then
-        log_error "Failed to switch fork"
-        exit 1
+    # Step 5: Switch fork
+    if should_run_step switch-fork; then
+        log_step 5 "Switch fork profile"
+        if ! switch_fork "$mode_choice"; then
+            log_error "Failed to switch fork"
+            exit 1
+        fi
     fi
 
-    # Step 5: Start Relayers (optional)
-    local relayers_choice
-    if [[ -z "${start_relayers:-}" ]]; then
-        if [[ "$force" == "true" ]]; then
-            relayers_choice=0  # default: deploy relayers
+    # Step 6: L2 contracts (devnet only, optional standalone step)
+    if should_run_step l2-contracts; then
+        log_step 6 "L2 contracts deployment (devnet only)"
+        if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
+            if ! deploy_l2; then
+                log_error "Failed to deploy L2 smart contracts"
+                exit 1
+            fi
         else
-            relayers_choice=$(prompt_relayers_selection)
+            log_info "Skipping l2-contracts step (not devnet)"
         fi
-    else
-        relayers_choice=$start_relayers
     fi
-    
-    if ! start_relayers "$relayers_choice" "$env_choice"; then
-        log_warning "Relayer startup had issues, but continuing..."
+
+    # Step 7: Start Relayers (optional)
+    if should_run_step relayers; then
+        log_step 7 "Relayer startup (optional)"
+        local relayers_choice
+        if [[ -z "${start_relayers:-}" ]]; then
+            if [[ "$force" == "true" ]]; then
+                relayers_choice=0  # default: deploy relayers
+            else
+                relayers_choice=$(prompt_relayers_selection)
+            fi
+        else
+            relayers_choice=$start_relayers
+        fi
+
+        local skip_l2_for_relayer="false"
+        if [[ "$custom_steps_mode" == "true" ]]; then
+            # In custom step mode, keep l2-contracts as an explicit standalone step.
+            skip_l2_for_relayer="true"
+        fi
+
+        if ! start_relayers "$relayers_choice" "$env_choice" "$skip_l2_for_relayer"; then
+            log_warning "Relayer startup had issues, but continuing..."
+        fi
     fi
     
     # Step 5b: Start spammer now that L2 deploy is done (if stack option included it)
-    if [[ "$stack_choice" == "3" || "$stack_choice" == "4" || "$stack_choice" == "6" || -z "$stack_choice" ]]; then
-        log_info "Starting tx spammer..."
-        docker compose --profile spammer up -d tx-spammer >/dev/null 2>&1 || true
+    if should_run_step l2-stack; then
+        log_info "Step 5b: Optional tx spammer startup"
+        if [[ "$stack_choice" == "3" || "$stack_choice" == "4" || "$stack_choice" == "6" || -z "$stack_choice" ]]; then
+            log_info "Starting tx spammer..."
+            docker compose --profile spammer up -d tx-spammer >/dev/null 2>&1 || true
+        fi
     fi
     
-    # Step 6: Verification
-    verify_rpc_endpoints
+    # Step 8: Verification
+    if should_run_step verify; then
+        log_step 8 "RPC verification"
+        verify_rpc_endpoints
+    fi
     
-    # Step 7: Display Summary
-    display_deployment_summary
+    # Step 9: Display Summary
+    if should_run_step summary; then
+        log_step 9 "Deployment summary"
+        display_deployment_summary
+    fi
     
     log_success "Surge Full Stack deployment complete!"
 }
