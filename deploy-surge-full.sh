@@ -1176,8 +1176,8 @@ generate_prover_chain_spec() {
         "RISC0": "$PACAYA_RISC0_RETH_VERIFIER"
       },
       "SHASTA": {
-        "SP1": "$PACAYA_SP1_RETH_VERIFIER",
-        "RISC0": "$PACAYA_RISC0_RETH_VERIFIER"
+        "SP1": "$SHASTA_SP1_VERIFIER",
+        "RISC0": "$SHASTA_RISC0_VERIFIER"
       }
     },
     "genesis_time": 0,
