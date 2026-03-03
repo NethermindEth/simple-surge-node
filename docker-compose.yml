@@ -51,7 +51,7 @@ services:
     image: ${NETHERMIND_CLIENT_IMAGE}
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
-    pull_policy: always
+    pull_policy: never
     stop_grace_period: 3m
     tty: true
     volumes:
@@ -292,7 +292,7 @@ services:
       BASE_CONFIG_FILE: "config.json"
       BASE_CHAINSPEC_FILE: "chain_spec_list_default.json"
       REDIS_URL: "redis://redis-zk:6379"
-      RUST_LOG: "info"
+      RUST_LOG: "info,alethia_reth_evm=info,raiko_lib=info,raiko_core=info"
       MOCK_KEY: ${PRIVATE_KEY}
       ZK: "true"
     entrypoint:

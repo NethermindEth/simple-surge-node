@@ -35,7 +35,8 @@ ARGS="${ARGS} \
     --HealthChecks.Enabled=true \
     --Pruning.PruningBoundary=1000 \
     --log=${EL_LOG_LEVEL} \
-    --logger-config=/nethermind/NLog.config"
+    --logger-config=/nethermind/NLog.config \
+    --Surge.L1EthApiEndpoint=${L1_ENDPOINT_HTTP}"
 
 echo "Starting Nethermind Execution Client with args: ${ARGS}"
 exec ./Nethermind.Runner ${ARGS}
