@@ -1543,7 +1543,15 @@ generate_l2_genesis() {
 
     log_info "Fetching genesis hash..."
     # Get genesis hash first by running Nethermind with the chainspec
-    docker run -d --name nethermind-genesis-hash -v ./deployment/surge_chainspec.json:/chainspec.json "${NETHERMIND_CLIENT_IMAGE}" --config=none --Init.ChainSpecPath=/chainspec.json
+    # Pass L1 endpoint so NMC can initialize L1SLOAD (RIP-7728) when enabled in chainspec
+    local l1_rpc_docker="${L1_ENDPOINT_HTTP_DOCKER:-http://host.docker.internal:32003}"
+    docker run -d --name nethermind-genesis-hash \
+        --add-host=host.docker.internal:host-gateway \
+        -v ./deployment/surge_chainspec.json:/chainspec.json \
+        "${NETHERMIND_CLIENT_IMAGE}" \
+        --config=none \
+        --Init.ChainSpecPath=/chainspec.json \
+        --Surge.L1EthApiEndpoint="$l1_rpc_docker"
     
     sleep 30
 
