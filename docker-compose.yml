@@ -280,7 +280,7 @@ services:
     image: ${RAIKO_IMAGE}
     container_name: l2-raiko-zk-client
     restart: unless-stopped
-    pull_policy: always
+    pull_policy: never
     volumes:
       - ./configs:/raiko/config
     ports:
