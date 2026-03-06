@@ -1937,9 +1937,28 @@ wait_for_l2_blocks() {
         if (( waited % 30 == 0 )); then
             log_info "Still waiting for L2 blocks... (${waited}s elapsed)"
         fi
+        # Dump container diagnostics periodically (every 120s) to aid debugging
+        if (( waited % 120 == 0 )); then
+            log_info "=== L2 container diagnostics (${waited}s elapsed) ==="
+            log_info "--- Container status ---"
+            docker compose ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || true
+            for svc in l2-nethermind-execution-client l2-taiko-consensus-client l2-catalyst-node; do
+                log_info "--- Last 15 lines from $svc ---"
+                docker logs --tail 15 "$svc" 2>&1 || true
+            done
+            log_info "=== End diagnostics ==="
+        fi
     done
 
     log_error "L2 did not start producing blocks within ${max_wait}s"
+    log_error "=== Final L2 container diagnostics ==="
+    log_error "--- Container status ---"
+    docker compose ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || true
+    for svc in l2-nethermind-execution-client l2-taiko-consensus-client l2-catalyst-node; do
+        log_error "--- Last 30 lines from $svc ---"
+        docker logs --tail 30 "$svc" 2>&1 || true
+    done
+    log_error "=== End diagnostics ==="
     return 1
 }
 
@@ -2702,6 +2721,10 @@ main() {
     
     if ! start_relayers "$relayers_choice" "$env_choice"; then
         log_warning "Relayer startup had issues, but continuing..."
+        log_warning "--- Relayer-related container status ---"
+        docker compose ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || true
+        docker compose -f docker-compose-relayer.yml ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || true
+        log_warning "--- End relayer diagnostics ---"
     fi
     
     # Step 5b: Start spammer now that L2 deploy is done (if stack option included it)
