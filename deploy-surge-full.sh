@@ -1942,10 +1942,11 @@ wait_for_l2_blocks() {
             log_info "=== L2 container diagnostics (${waited}s elapsed) ==="
             log_info "--- Container status ---"
             docker compose ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || true
-            for svc in l2-nethermind-execution-client l2-taiko-consensus-client l2-catalyst-node; do
+            while IFS= read -r svc; do
+                [[ -z "$svc" ]] && continue
                 log_info "--- Last 15 lines from $svc ---"
                 docker logs --tail 15 "$svc" 2>&1 || true
-            done
+            done < <(docker compose ps --format "{{.Name}}" 2>/dev/null)
             log_info "=== End diagnostics ==="
         fi
     done
@@ -1954,10 +1955,11 @@ wait_for_l2_blocks() {
     log_error "=== Final L2 container diagnostics ==="
     log_error "--- Container status ---"
     docker compose ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || true
-    for svc in l2-nethermind-execution-client l2-taiko-consensus-client l2-catalyst-node; do
+    while IFS= read -r svc; do
+        [[ -z "$svc" ]] && continue
         log_error "--- Last 30 lines from $svc ---"
         docker logs --tail 30 "$svc" 2>&1 || true
-    done
+    done < <(docker compose ps --format "{{.Name}}" 2>/dev/null)
     log_error "=== End diagnostics ==="
     return 1
 }

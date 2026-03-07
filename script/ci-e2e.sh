@@ -9,11 +9,28 @@ NO_CLEANUP="${NO_CLEANUP:-false}"
 
 log() { echo "[CI-E2E] $(date '+%H:%M:%S') $1"; }
 
+dump_failure_logs() {
+    log "=== Collecting container logs before teardown ==="
+    docker ps -a --format "{{.Names}}\t{{.Status}}" 2>/dev/null || true
+    while IFS= read -r container; do
+        [[ -z "$container" ]] && continue
+        echo ""
+        echo "--- $container (last 100 lines) ---"
+        docker logs --tail 100 "$container" 2>&1 || true
+    done < <(docker ps --format "{{.Names}}" 2>/dev/null)
+    echo ""
+    log "=== End container logs ==="
+}
+
 cleanup() {
     local exit_code=$?
     if [[ "$NO_CLEANUP" == "true" && $exit_code -ne 0 ]]; then
         log "Skipping teardown (NO_CLEANUP=true, exit_code=$exit_code)"
         exit $exit_code
+    fi
+
+    if [[ $exit_code -ne 0 ]]; then
+        dump_failure_logs
     fi
 
     log "Teardown starting (exit_code=$exit_code)..."

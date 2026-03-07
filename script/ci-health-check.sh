@@ -16,6 +16,18 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
 fi
 
 log() { echo "[E2E] $(date '+%H:%M:%S') $1"; }
+
+dump_bridge_logs() {
+    echo "[E2E] === All container logs ===" >&2
+    docker ps -a --format "{{.Names}}\t{{.Status}}" 2>/dev/null >&2 || true
+    while IFS= read -r container; do
+        [[ -z "$container" ]] && continue
+        echo "[E2E] --- $container (last 50 lines) ---" >&2
+        docker logs --tail 50 "$container" 2>&1 >&2 || true
+    done < <(docker ps --format "{{.Names}}" 2>/dev/null)
+    echo "[E2E] === End container logs ===" >&2
+}
+
 fail() { echo "[E2E] FAIL: $1" >&2; exit 1; }
 
 check_rpc() {
@@ -191,6 +203,7 @@ if [[ -n "${SHASTA_BRIDGE:-}" && -n "${PUBLIC_KEY:-}" && -n "${PRIVATE_KEY:-}" &
     done
 
     if [[ "$delivered" != "true" ]]; then
+        dump_bridge_logs
         fail "L1->L2 bridge delivery not confirmed within ${delivery_timeout}s (recipient balance still 0)"
     fi
 else
@@ -270,6 +283,7 @@ if [[ -n "${L2_BRIDGE:-}" && -n "${PUBLIC_KEY:-}" && -n "${PRIVATE_KEY:-}" && -n
     done
 
     if [[ "$l2l1_delivered" != "true" ]]; then
+        dump_bridge_logs
         fail "L2->L1 bridge delivery not confirmed within ${l2l1_delivery_timeout}s (recipient balance still 0)"
     fi
 else
