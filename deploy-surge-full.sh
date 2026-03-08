@@ -1473,8 +1473,18 @@ extract_l1_deployment_results() {
     echo " BRIDGE: $SHASTA_BRIDGE "
     echo " SIGNAL_SERVICE: $SHASTA_SIGNAL_SERVICE "
     echo " PRECONF_WHITELIST: $SHASTA_PRECONF_WHITELIST "
+    echo " RISC0_VERIFIER: $SHASTA_RISC0_VERIFIER "
+    echo " SP1_VERIFIER: $SHASTA_SP1_VERIFIER "
+    echo " PROOF_VERIFIER_DUMMY: $SHASTA_PROOF_VERIFIER_DUMMY "
+    echo " SURGE_VERIFIER: $SHASTA_SURGE_VERIFIER "
     echo ">>>>>>"
     echo
+    if [[ -f "$L1_DEPLOYMENT_FILE" ]]; then
+        echo "=== deploy_l1.json ==="
+        cat "$L1_DEPLOYMENT_FILE"
+        echo ""
+        echo "=== end deploy_l1.json ==="
+    fi
 
     log_info "Updating .env with extracted values..."
 
@@ -1677,8 +1687,7 @@ deploy_provers() {
     local should_run_provers
     
     if [[ "$mock_proof" == "0" ]]; then
-        generate_prover_chain_spec
-        log_info "Skipping provers deployment...using mock prover"
+        log_info "Skipping provers deployment and chain spec (USE_DUMMY_VERIFIER=true)"
         return 0
     fi
 
@@ -2110,7 +2119,13 @@ start_l2_stack() {
     local compose_cmd="docker compose"
     local exit_status=0
     local temp_output="/tmp/surge_l2_stack_output_$$"
-    
+    # Skip raiko when using dummy verifier - no ZK proofs needed
+    local prover_profile="--profile prover"
+    if [[ "${USE_DUMMY_VERIFIER:-false}" == "true" ]]; then
+        log_info "USE_DUMMY_VERIFIER=true: skipping raiko (--profile prover)"
+        prover_profile=""
+    fi
+
     case "$stack_option" in
         1)
             log_info "Starting driver only"
@@ -2126,15 +2141,15 @@ start_l2_stack() {
             ;;
         4)
             log_info "Starting driver + proposer + prover (spammer deferred until after L2 deploy)"
-            $compose_cmd --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
+            $compose_cmd --profile catalyst $prover_profile --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         5)
             log_info "Starting all except spammer"
-            $compose_cmd --profile driver --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
+            $compose_cmd --profile driver --profile catalyst $prover_profile --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         *)
             log_info "Starting all components (spammer deferred until after L2 deploy)"
-            $compose_cmd --profile driver --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
+            $compose_cmd --profile driver --profile catalyst $prover_profile --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
     esac
     
