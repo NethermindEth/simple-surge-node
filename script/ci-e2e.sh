@@ -104,6 +104,7 @@ log "Applying CI overrides to .env.devnet..."
 sed -i 's/^USE_DUMMY_VERIFIER=.*/USE_DUMMY_VERIFIER=true/' .env.devnet
 sed -i 's/^DEPLOY_RISC0_RETH_VERIFIER=.*/DEPLOY_RISC0_RETH_VERIFIER=false/' .env.devnet
 sed -i 's/^DEPLOY_SP1_RETH_VERIFIER=.*/DEPLOY_SP1_RETH_VERIFIER=false/' .env.devnet
+sed -i 's/^NUM_PROOFS_THRESHOLD=.*/NUM_PROOFS_THRESHOLD=0/' .env.devnet
 
 # --- Deploy ---
 log "Deploying full stack..."
