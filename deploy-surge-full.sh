@@ -1127,6 +1127,12 @@ generate_prover_chain_spec() {
     local l1_beacon_docker="${L1_BEACON_HTTP_DOCKER:-http://host.docker.internal:33001}"
     local l2_rpc_docker="${L2_ENDPOINT_HTTP_DOCKER:-http://host.docker.internal:8547}"
 
+    # Resolve verifier addresses - use zero address as fallback when not deployed (dummy verifier mode)
+    local shasta_sp1_verifier="${SHASTA_SP1_VERIFIER:-}"
+    local shasta_risc0_verifier="${SHASTA_RISC0_VERIFIER:-}"
+    [[ -z "$shasta_sp1_verifier" || "$shasta_sp1_verifier" == "null" ]] && shasta_sp1_verifier="0x0000000000000000000000000000000000000000"
+    [[ -z "$shasta_risc0_verifier" || "$shasta_risc0_verifier" == "null" ]] && shasta_risc0_verifier="0x0000000000000000000000000000000000000000"
+
     # Generate chain spec list
     cat > "$CONFIGS_DIR/chain_spec_list_default.json" << EOF
 [
@@ -1188,8 +1194,8 @@ generate_prover_chain_spec() {
         "RISC0": "$PACAYA_RISC0_RETH_VERIFIER"
       },
       "SHASTA": {
-        "SP1": "$SHASTA_SP1_VERIFIER",
-        "RISC0": "$SHASTA_RISC0_VERIFIER"
+        "SP1": "$shasta_sp1_verifier",
+        "RISC0": "$shasta_risc0_verifier"
       }
     },
     "genesis_time": 0,
@@ -1687,7 +1693,8 @@ deploy_provers() {
     local should_run_provers
     
     if [[ "$mock_proof" == "0" ]]; then
-        log_info "Skipping provers deployment and chain spec (USE_DUMMY_VERIFIER=true)"
+        log_info "USE_DUMMY_VERIFIER=true: generating chain spec for raiko mock mode, skipping ZK verifier setup"
+        generate_prover_chain_spec
         return 0
     fi
 
@@ -2119,12 +2126,7 @@ start_l2_stack() {
     local compose_cmd="docker compose"
     local exit_status=0
     local temp_output="/tmp/surge_l2_stack_output_$$"
-    # Skip raiko when using dummy verifier - no ZK proofs needed
     local prover_profile="--profile prover"
-    if [[ "${USE_DUMMY_VERIFIER:-false}" == "true" ]]; then
-        log_info "USE_DUMMY_VERIFIER=true: skipping raiko (--profile prover)"
-        prover_profile=""
-    fi
 
     case "$stack_option" in
         1)
