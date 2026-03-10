@@ -225,17 +225,19 @@ send_bridge_tx() {
 
     local nonce="$9"
 
-    if cast send "$bridge_address" \
+    local tx_output
+    if tx_output=$(cast send "$bridge_address" \
         "sendMessage((uint64,uint64,uint32,address,uint64,address,uint64,address,address,uint256,bytes))" \
         "(0,$FEE_WEI,$GAS_LIMIT,$ZERO_ADDRESS,0,$PUBLIC_KEY,$dest_chain_id,$PUBLIC_KEY,$PUBLIC_KEY,$amount_wei,0x)" \
         --value "$total_value_wei" \
         --rpc-url "$rpc_url" \
         --private-key "$PRIVATE_KEY" \
-        --nonce "$nonce" >/dev/null 2>&1; then
+        --nonce "$nonce" 2>&1); then
         log_tx "[$tx_num/$total] $label bridge tx sent successfully ✓"
         return 0
     else
         log_error "[$tx_num/$total] $label bridge tx failed ✗"
+        log_error "Reason: $tx_output"
         return 1
     fi
 }

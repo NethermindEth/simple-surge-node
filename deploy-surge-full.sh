@@ -1176,8 +1176,8 @@ generate_prover_chain_spec() {
         "RISC0": "$PACAYA_RISC0_RETH_VERIFIER"
       },
       "SHASTA": {
-        "SP1": "$PACAYA_SP1_RETH_VERIFIER",
-        "RISC0": "$PACAYA_RISC0_RETH_VERIFIER"
+        "SP1": "$SHASTA_SP1_VERIFIER",
+        "RISC0": "$SHASTA_RISC0_VERIFIER"
       }
     },
     "genesis_time": 0,
@@ -1221,15 +1221,15 @@ retrieve_guest_data() {
         sp1)
             if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
                 log_info "Retrieving guest data for SP1 - $RAIKO_HOST_ZKVM"
-                export SP1_BLOCK_PROVING_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].sp1.block_program_hash')
-                export SP1_AGGREGATION_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].sp1.aggregation_program_hash')
+                export SP1_BLOCK_PROVING_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.sp1.block_program_hash')
+                export SP1_AGGREGATION_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.sp1.shasta_aggregation_program_hash')
             fi
             ;;
         risc0)
             if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
                 log_info "Retrieving guest data for RISC0 - $RAIKO_HOST_ZKVM"
-                export RISC0_AGGREGATION_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].risc0.aggregation_program_hash')
-                export RISC0_BLOCK_PROVING_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].risc0.block_program_hash')
+                export RISC0_AGGREGATION_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.risc0.shasta_aggregation_program_hash')
+                export RISC0_BLOCK_PROVING_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.risc0.block_program_hash')
             fi
             ;;
     esac
@@ -1533,7 +1533,7 @@ generate_l2_genesis() {
 
     update_env_var "$ENV_FILE" "SHASTA_TIMESTAMP" "$HEX_TIMESTAMP"
 
-    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' | jq '.params.rip7728TransitionTimestamp = "0x0"' > "$DEPLOYMENT_DIR/surge_chainspec.json"
+    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, useSurgeGasPriceOracle: true, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' | jq '.params.rip7728TransitionTimestamp = "0x0"' > "$DEPLOYMENT_DIR/surge_chainspec.json"
     
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
@@ -1920,7 +1920,7 @@ wait_for_l2_blocks() {
     l2_rpc=$(echo "$l2_rpc" | sed 's/host\.docker\.internal/localhost/g')
 
     local waited=0
-    local max_wait=300  # 5 minutes
+    local max_wait=384  # Entire epoch duration
     while [[ $waited -lt $max_wait ]]; do
         local block_number
         block_number=$(cast block-number --rpc-url "$l2_rpc" 2>/dev/null || echo "0")
