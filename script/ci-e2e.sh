@@ -98,15 +98,15 @@ kurtosis clean -a 2>/dev/null || true
 docker network create surge-network 2>/dev/null || true
 
 # --- CI overrides ---
-# Use dummy verifier in CI: avoids dependency on SP1/RISC0 ZK verifier contracts.
-# PROVER_DUMMY=true makes the prover submit dummy proofs (no ZK computation).
-# Raiko still starts for mock signing; chainspec uses zero addresses for null verifiers.
+# Use dummy verifier in CI: deploys ProofVerifierDummy that accepts ECDSA signatures.
+# Raiko runs in mock mode (ZK=true, MOCK_KEY=PRIVATE_KEY) and signs commitments with
+# PRIVATE_KEY. ProofVerifierDummy accepts these signatures since DUMMY_VERIFIER_SIGNER=PUBLIC_KEY.
+# DEPLOY_RISC0_RETH_VERIFIER and DEPLOY_SP1_RETH_VERIFIER must stay true so ProofVerifierDummy
+# gets registered in SurgeVerifier for both bit flags (otherwise Surge_InvalidProofBitFlag).
+# NUM_PROOFS_THRESHOLD=0 so finalization requires 0 proof types (any valid proofs suffice).
 log "Applying CI overrides to .env.devnet..."
 sed -i 's/^USE_DUMMY_VERIFIER=.*/USE_DUMMY_VERIFIER=true/' .env.devnet
-sed -i 's/^DEPLOY_RISC0_RETH_VERIFIER=.*/DEPLOY_RISC0_RETH_VERIFIER=false/' .env.devnet
-sed -i 's/^DEPLOY_SP1_RETH_VERIFIER=.*/DEPLOY_SP1_RETH_VERIFIER=false/' .env.devnet
 sed -i 's/^NUM_PROOFS_THRESHOLD=.*/NUM_PROOFS_THRESHOLD=0/' .env.devnet
-sed -i 's/^PROVER_DUMMY=.*/PROVER_DUMMY=true/' .env.devnet
 
 # --- Deploy ---
 log "Deploying full stack..."
