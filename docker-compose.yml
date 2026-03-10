@@ -51,7 +51,7 @@ services:
     image: ${NETHERMIND_CLIENT_IMAGE}
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
-    pull_policy: never
+    pull_policy: always
     stop_grace_period: 3m
     tty: true
     volumes:
@@ -221,10 +221,6 @@ services:
       TAIKO_WRAPPER_ADDRESS: ${PACAYA_TAIKO_WRAPPER}
       FORCED_INCLUSION_STORE_ADDRESS: ${PACAYA_FORCED_INCLUSION_STORE}
       TAIKO_BRIDGE_L2_ADDRESS: ${SHASTA_BRIDGE}
-      MAX_BLOCKS_PER_BATCH: 1
-      PRECONF_MIN_TXS: 1
-      MIN_BYTES_PER_TX_LIST: 128
-      RUST_LOG: "info"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -280,7 +276,7 @@ services:
     image: ${RAIKO_IMAGE}
     container_name: l2-raiko-zk-client
     restart: unless-stopped
-    pull_policy: never
+    pull_policy: always
     volumes:
       - ./configs:/raiko/config
     ports:
@@ -292,7 +288,7 @@ services:
       BASE_CONFIG_FILE: "config.json"
       BASE_CHAINSPEC_FILE: "chain_spec_list_default.json"
       REDIS_URL: "redis://redis-zk:6379"
-      RUST_LOG: "info,alethia_reth_evm=info,raiko_lib=info,raiko_core=info"
+      RUST_LOG: "info"
       MOCK_KEY: ${PRIVATE_KEY}
       ZK: "true"
     entrypoint:
