@@ -223,6 +223,8 @@ send_bridge_tx() {
 
     log_tx "[$tx_num/$total] Sending $label bridge tx..."
 
+    local nonce="$9"
+
     local tx_output
     if tx_output=$(cast send "$bridge_address" \
         "sendMessage((uint64,uint64,uint32,address,uint64,address,uint64,address,address,uint256,bytes))" \
@@ -230,11 +232,11 @@ send_bridge_tx() {
         --value "$total_value_wei" \
         --rpc-url "$rpc_url" \
         --private-key "$PRIVATE_KEY" \
-        2>&1); then
-        log_tx "[$tx_num/$total] $label bridge tx sent successfully"
+        --nonce "$nonce" 2>&1); then
+        log_tx "[$tx_num/$total] $label bridge tx sent successfully ✓"
         return 0
     else
-        log_error "[$tx_num/$total] $label bridge tx failed"
+        log_error "[$tx_num/$total] $label bridge tx failed ✗"
         log_error "Reason: $tx_output"
         return 1
     fi
@@ -263,28 +265,37 @@ run_bridge_spam() {
 
     local success_count=0
     local fail_count=0
-    local max_retries=5
-    local retry_delay=5
 
+    # Get starting nonce to avoid nonce collisions when sending rapid txs.
+    # We use pending nonce and increment locally, with retry on nonce conflicts
+    # (the same key may be used by proposer/prover, causing contention).
+    local current_nonce
+    current_nonce=$(cast nonce "$PUBLIC_KEY" --rpc-url "$rpc_url" --pending 2>/dev/null || cast nonce "$PUBLIC_KEY" --rpc-url "$rpc_url")
+    log_info "Starting nonce: $current_nonce"
+
+    local max_retries=3
     for ((i = 1; i <= count; i++)); do
         local attempt=0
         local sent=false
         while [[ "$sent" == "false" && $attempt -lt $max_retries ]]; do
             if send_bridge_tx "$bridge_address" "$rpc_url" "$dest_chain_id" \
-                "$amount_wei" "$total_value_wei" "$direction_label" "$i" "$count"; then
+                "$amount_wei" "$total_value_wei" "$direction_label" "$i" "$count" "$current_nonce"; then
                 ((success_count++)) || true
                 sent=true
             else
                 ((attempt++)) || true
                 if [[ $attempt -lt $max_retries ]]; then
-                    log_info "Retrying in ${retry_delay}s (attempt $((attempt+1))/$max_retries)..."
-                    sleep "$retry_delay"
+                    # Brief pause to allow pending txs to be mined before refreshing nonce
+                    sleep 2
+                    current_nonce=$(cast nonce "$PUBLIC_KEY" --rpc-url "$rpc_url" --pending 2>/dev/null || cast nonce "$PUBLIC_KEY" --rpc-url "$rpc_url")
+                    log_info "Retrying with refreshed nonce: $current_nonce (attempt $((attempt+1))/$max_retries)"
                 fi
             fi
         done
         if [[ "$sent" == "false" ]]; then
             ((fail_count++)) || true
         fi
+        ((current_nonce++)) || true
     done
 
     echo
@@ -297,7 +308,6 @@ run_bridge_spam() {
 
     if [[ $fail_count -gt 0 ]]; then
         log_warning "$fail_count transactions failed for $direction_label"
-        return 1
     else
         log_success "All $direction_label transactions completed successfully"
     fi
@@ -407,8 +417,6 @@ main() {
     l1_rpc=$(echo "$l1_rpc" | sed 's/host\.docker\.internal/localhost/g')
     l2_rpc=$(echo "$l2_rpc" | sed 's/host\.docker\.internal/localhost/g')
 
-    log_info "Using deployer wallet: $PUBLIC_KEY"
-
     # Map direction to label
     local dir_label
     case "$dir_choice" in
@@ -421,18 +429,19 @@ main() {
     confirm_execution "$tx_count" "$dir_label" "$eth_amount"
 
     # Execute bridge spam
-    local has_failures=false
+    local total_success=0
+    local total_fail=0
 
     case "$dir_choice" in
         1)
             # L1 -> L2: call L1 bridge, dest = L2 chain
             run_bridge_spam "L1 → L2" "$SHASTA_BRIDGE" "$l1_rpc" "$L2_CHAIN_ID" \
-                "$amount_wei" "$total_value_wei" "$tx_count" || has_failures=true
+                "$amount_wei" "$total_value_wei" "$tx_count"
             ;;
         2)
             # L2 -> L1: call L2 bridge, dest = L1 chain
             run_bridge_spam "L2 → L1" "$L2_BRIDGE" "$l2_rpc" "$L1_CHAIN_ID" \
-                "$amount_wei" "$total_value_wei" "$tx_count" || has_failures=true
+                "$amount_wei" "$total_value_wei" "$tx_count"
             ;;
         3)
             # Both directions: send full count in each direction
@@ -440,11 +449,11 @@ main() {
 
             # L1 -> L2
             run_bridge_spam "L1 → L2" "$SHASTA_BRIDGE" "$l1_rpc" "$L2_CHAIN_ID" \
-                "$amount_wei" "$total_value_wei" "$tx_count" || has_failures=true
+                "$amount_wei" "$total_value_wei" "$tx_count"
 
             # L2 -> L1
             run_bridge_spam "L2 → L1" "$L2_BRIDGE" "$l2_rpc" "$L1_CHAIN_ID" \
-                "$amount_wei" "$total_value_wei" "$tx_count" || has_failures=true
+                "$amount_wei" "$total_value_wei" "$tx_count"
             ;;
     esac
 
@@ -455,12 +464,7 @@ main() {
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo
 
-    if [[ "$has_failures" == "true" ]]; then
-        log_error "Bridge transaction spamming finished with failures"
-        exit 1
-    else
-        log_success "Bridge transaction spamming complete!"
-    fi
+    log_success "Bridge transaction spamming complete!"
 }
 
 # Run main function
