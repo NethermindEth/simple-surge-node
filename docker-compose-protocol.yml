@@ -56,6 +56,7 @@ services:
       CONTRACT_OWNER: ${PUBLIC_KEY}
       PRIVATE_KEY: ${PRIVATE_KEY}
       PERMISSIONLESS_PROVING_DELAY: 42300
+      GENESIS_BLOCK_HASH: ${L2_GENESIS_HASH}
     networks:
       - surge
     extra_hosts:

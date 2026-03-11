@@ -1573,9 +1573,11 @@ extract_l1_deployment_results() {
     export SHASTA_SIGNAL_SERVICE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.signal_service')
     export SHASTA_SP1_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.sp1_verifier')
     export SHASTA_SUCCINCT_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.succinct_verifier')
-    export SHASTA_SURGE_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox')
+    # export SHASTA_SURGE_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox')
     export SHASTA_SURGE_INBOX_IMPL=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox_impl')
     export SHASTA_SURGE_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_verifier')
+
+    export SHASTA_SURGE_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.real_time_inbox')
 
     echo
     echo ">>>>>>"
