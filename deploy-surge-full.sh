@@ -1103,6 +1103,13 @@ trap cleanup EXIT
 generate_prover_chain_spec() {
     log_info "Generating prover chain spec list json..."
 
+    # Sanitize "null" values from jq extraction (mock mode may not deploy real verifiers)
+    local zero_addr="0x0000000000000000000000000000000000000000"
+    [[ "${SHASTA_SP1_VERIFIER:-}" == "null" || -z "${SHASTA_SP1_VERIFIER:-}" ]] && export SHASTA_SP1_VERIFIER="$zero_addr"
+    [[ "${SHASTA_RISC0_VERIFIER:-}" == "null" || -z "${SHASTA_RISC0_VERIFIER:-}" ]] && export SHASTA_RISC0_VERIFIER="$zero_addr"
+    [[ "${PACAYA_SP1_RETH_VERIFIER:-}" == "null" || -z "${PACAYA_SP1_RETH_VERIFIER:-}" ]] && export PACAYA_SP1_RETH_VERIFIER="$zero_addr"
+    [[ "${PACAYA_RISC0_RETH_VERIFIER:-}" == "null" || -z "${PACAYA_RISC0_RETH_VERIFIER:-}" ]] && export PACAYA_RISC0_RETH_VERIFIER="$zero_addr"
+
     local genesis_time
     local beacon_endpoint="${L1_BEACON_HTTP_EXTERNAL:-${L1_BEACON_HTTP:-http://localhost:33001}}"
     if ! genesis_time=$(curl -s "${beacon_endpoint}/eth/v1/beacon/genesis" | jq -r '.data.genesis_time' 2>/dev/null); then
