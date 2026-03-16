@@ -57,6 +57,7 @@ services:
       PRIVATE_KEY: ${PRIVATE_KEY}
       PERMISSIONLESS_PROVING_DELAY: 42300
       GENESIS_BLOCK_HASH: ${L2_GENESIS_HASH}
+      NUM_PROOF_THRESHOLD: 1
     networks:
       - surge
     extra_hosts:
