@@ -341,7 +341,7 @@ remove_l2_stack() {
     # Try docker compose down first (works when .env is present)
     {
         docker compose --profile driver --profile catalyst --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>&1
-        docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile pacaya-deployer --profile genesis-generator --profile switch-fork --profile accept-ownership --profile proposer-wrapper-deployer --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
+        docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile pacaya-deployer --profile genesis-generator --profile switch-fork --profile accept-ownership --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
     } >/dev/null 2>&1 || true
 
     # Always follow up with force-remove to catch anything compose missed (e.g. .env was gone)
