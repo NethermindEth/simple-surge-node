@@ -1,13 +1,13 @@
 # This script to switch the fork to the Shasta fork
 set -e
 
-echo "Adding operators to whitelist..."
+# echo "Adding operators to whitelist..."
 
-cast send $SHASTA_PRECONF_WHITELIST "addOperator(address,address)" \
-  $OPERATOR_PUBLIC_KEY $OPERATOR_PUBLIC_KEY \
-  --rpc-url $L1_ENDPOINT_HTTP \
-  --private-key $PRIVATE_KEY \
-  --confirmations 1
+# cast send $SHASTA_PRECONF_WHITELIST "addOperator(address,address)" \
+#   $OPERATOR_PUBLIC_KEY $OPERATOR_PUBLIC_KEY \
+#   --rpc-url $L1_ENDPOINT_HTTP \
+#   --private-key $PRIVATE_KEY \
+#   --confirmations 1
 
 # cast send $SHASTA_PRECONF_WHITELIST "removeOperator(uint256)" \
 #     0 \
@@ -23,7 +23,7 @@ cast send $SHASTA_PRECONF_WHITELIST "addOperator(address,address)" \
 #   --private-key $OPERATOR_PRIVATE_KEY
 
 # Get the Shasta Inbox address from deployment
-SHASTA_INBOX=$(jq -r '.surge_inbox' /deployment/deploy_l1.json)
+SHASTA_INBOX=$(jq -r '.real_time_inbox' /deployment/deploy_l1.json)
 
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
