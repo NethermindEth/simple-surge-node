@@ -339,10 +339,17 @@ remove_l2_stack() {
     log_info "Removing L2 stack containers..."
 
     # Try docker compose down first (works when .env is present)
-    {
-        docker compose --profile driver --profile catalyst --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>&1
-        docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile pacaya-deployer --profile genesis-generator --profile switch-fork --profile accept-ownership --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
-    } >/dev/null 2>&1 || true
+    if [[ "$mode_choice" == "debug" ]]; then
+        {
+            docker compose --profile driver --profile catalyst --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>&1
+            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile pacaya-deployer --profile genesis-generator --profile switch-fork --profile accept-ownership --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
+        } || true
+    else
+        {
+            docker compose --profile driver --profile catalyst --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>&1
+            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile pacaya-deployer --profile genesis-generator --profile switch-fork --profile accept-ownership --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
+        } >/dev/null 2>&1 || true
+    fi
 
     # Always follow up with force-remove to catch anything compose missed (e.g. .env was gone)
     force_remove_containers "${L2_CONTAINERS[@]}"
@@ -358,10 +365,17 @@ remove_relayers() {
     log_info "Removing relayer containers..."
 
     # Try docker compose down first
-    {
-        docker compose -f docker-compose-relayer.yml --profile relayer-l1 --profile relayer-l2 --profile relayer-api --profile bridge-ui down --remove-orphans 2>&1
-        docker compose -f docker-compose-relayer.yml --profile relayer-init --profile relayer-migrations down --remove-orphans 2>&1
-    } >/dev/null 2>&1 || true
+    if [[ "$mode_choice" == "debug" ]]; then
+        {
+            docker compose -f docker-compose-relayer.yml --profile relayer-l1 --profile relayer-l2 --profile relayer-api --profile bridge-ui down --remove-orphans 2>&1
+            docker compose -f docker-compose-relayer.yml --profile relayer-init --profile relayer-migrations down --remove-orphans 2>&1
+        } || true
+    else
+        {
+            docker compose -f docker-compose-relayer.yml --profile relayer-l1 --profile relayer-l2 --profile relayer-api --profile bridge-ui down --remove-orphans 2>&1
+            docker compose -f docker-compose-relayer.yml --profile relayer-init --profile relayer-migrations down --remove-orphans 2>&1
+        } >/dev/null 2>&1 || true
+    fi
 
     # Force-remove to catch anything compose missed
     force_remove_containers "${RELAYER_CONTAINERS[@]}"
