@@ -272,126 +272,172 @@ cleanup_kurtosis_resources() {
     fi
 }
 
+# Force-remove containers by name (fallback when docker compose down fails)
+force_remove_containers() {
+    local containers=("$@")
+    local found=()
+
+    for name in "${containers[@]}"; do
+        if docker inspect "$name" >/dev/null 2>&1; then
+            found+=("$name")
+        fi
+    done
+
+    if [[ ${#found[@]} -gt 0 ]]; then
+        docker rm -f "${found[@]}" >/dev/null 2>&1 || true
+    fi
+}
+
+# Known L2 stack container names (from docker-compose.yml and docker-compose-protocol.yml)
+readonly L2_CONTAINERS=(
+    surge-l2-deployer
+    l2-nethermind-execution-client
+    l2-taiko-consensus-client
+    web3signer-l1
+    web3signer-l2
+    l2-catalyst-node
+    l2-taiko-prover-relayer-client
+    l2-raiko-zk-client
+    redis-zk
+    l2-tx-spammer
+    l2-blockscout-postgres
+    l2-blockscout-verif
+    l2-blockscout
+    l2-blockscout-frontend
+    surge-l1-deployer
+    pacaya-deployer
+    surge-genesis-generator
+    nethermind-genesis-hash
+    surge-switch-fork
+    surge-bond-deposit
+    surge-accept-ownership
+    surge-sp1-verifier-setup
+    surge-risc0-verifier-setup
+    surge-sgx-reth-verifier-setup
+    surge-sgx-geth-verifier-setup
+    surge-proposer-wrapper-deployer
+)
+
+# Known relayer container names (from docker-compose-relayer.yml)
+readonly RELAYER_CONTAINERS=(
+    relayer-l1-indexer
+    relayer-l1-processor
+    relayer-l1-api
+    relayer-l2-indexer
+    relayer-l2-processor
+    relayer-l2-api
+    relayer-migrations
+    relayer-db
+    relayer-rabbitmq
+    bridge-ui
+)
+
 # Remove L2 stack containers
 remove_l2_stack() {
     local mode_choice="$1"
-    
+
     log_info "Removing L2 stack containers..."
-    
-    local exit_status=0
-    local temp_output="/tmp/surge_remove_l2_output_$$"
-    
+
+    # Try docker compose down first (works when .env is present)
     if [[ "$mode_choice" == "debug" ]]; then
-        # Debug mode: run in foreground with full output
         {
-            docker compose --profile driver --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>&1
-            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile proposer-wrapper-deployer --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
-        } | tee "$temp_output"
-        exit_status=${PIPESTATUS[0]}
+            docker compose --profile driver --profile catalyst --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>&1
+            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile pacaya-deployer --profile genesis-generator --profile switch-fork --profile accept-ownership --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
+        } || true
     else
-        # Silent mode: run in background with progress indicator
         {
-            docker compose --profile driver --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>&1
-            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile proposer-wrapper-deployer --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
-        } >"$temp_output" 2>&1 &
-        local remove_pid=$!
-        
-        show_progress $remove_pid "Removing L2 stack containers..."
-        
-        wait $remove_pid
-        exit_status=$?
+            docker compose --profile driver --profile catalyst --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>&1
+            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile pacaya-deployer --profile genesis-generator --profile switch-fork --profile accept-ownership --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
+        } >/dev/null 2>&1 || true
     fi
-    
-    if [[ $exit_status -eq 0 ]]; then
-        log_success "L2 stack containers removed successfully"
-        return 0
-    else
-        log_error "Failed to remove L2 stack containers (exit code: $exit_status)"
-        if [[ "$mode_choice" == "silence" ]]; then
-            log_error "Run with debug mode for more details: --mode debug"
-        fi
-        if [[ -f "$temp_output" ]]; then
-            log_error "Removal output saved in: $temp_output"
-        fi
-        return 1
-    fi
+
+    # Always follow up with force-remove to catch anything compose missed (e.g. .env was gone)
+    force_remove_containers "${L2_CONTAINERS[@]}"
+
+    log_success "L2 stack containers removed"
+    return 0
 }
 
 # Remove relayer containers
 remove_relayers() {
     local mode_choice="$1"
-    
+
     log_info "Removing relayer containers..."
-    
-    local exit_status=0
-    local temp_output="/tmp/surge_remove_relayers_output_$$"
-    
+
+    # Try docker compose down first
     if [[ "$mode_choice" == "debug" ]]; then
-        # Debug mode: run in foreground with full output
         {
             docker compose -f docker-compose-relayer.yml --profile relayer-l1 --profile relayer-l2 --profile relayer-api --profile bridge-ui down --remove-orphans 2>&1
             docker compose -f docker-compose-relayer.yml --profile relayer-init --profile relayer-migrations down --remove-orphans 2>&1
-        } | tee "$temp_output"
-        exit_status=${PIPESTATUS[0]}
+        } || true
     else
-        # Silent mode: run in background with progress indicator
         {
             docker compose -f docker-compose-relayer.yml --profile relayer-l1 --profile relayer-l2 --profile relayer-api --profile bridge-ui down --remove-orphans 2>&1
             docker compose -f docker-compose-relayer.yml --profile relayer-init --profile relayer-migrations down --remove-orphans 2>&1
-        } >"$temp_output" 2>&1 &
-        local remove_pid=$!
-        
-        show_progress $remove_pid "Removing relayer containers..."
-        
-        wait $remove_pid
-        exit_status=$?
+        } >/dev/null 2>&1 || true
     fi
-    
-    if [[ $exit_status -eq 0 ]]; then
-        log_success "Relayer containers removed successfully"
+
+    # Force-remove to catch anything compose missed
+    force_remove_containers "${RELAYER_CONTAINERS[@]}"
+
+    log_success "Relayer containers removed"
+    return 0
+}
+
+# Remove a directory, falling back to docker-based removal for root-owned files
+remove_dir_force() {
+    local dir="$1"
+    local abs_dir
+    abs_dir="$(cd "$(dirname "$dir")" && pwd)/$(basename "$dir")"
+    local parent_dir
+    parent_dir="$(dirname "$abs_dir")"
+    local base_name
+    base_name="$(basename "$abs_dir")"
+
+    # Try normal rm first
+    if rm -rf "$dir" 2>/dev/null && [[ ! -d "$dir" ]]; then
         return 0
-    else
-        log_error "Failed to remove relayer containers (exit code: $exit_status)"
-        if [[ "$mode_choice" == "silence" ]]; then
-            log_error "Run with debug mode for more details: --mode debug"
-        fi
-        if [[ -f "$temp_output" ]]; then
-            log_error "Removal output saved in: $temp_output"
-        fi
-        return 1
     fi
+
+    # Fallback: mount the parent dir so we can delete the target dir entirely
+    log_info "Using Docker to remove root-owned directory: $dir"
+    if docker run --rm -v "$parent_dir:/host_parent" alpine rm -rf "/host_parent/$base_name" 2>/dev/null; then
+        [[ ! -d "$dir" ]] && return 0
+    fi
+
+    return 1
 }
 
 # Remove persistent data directories
 remove_data() {
     log_info "Removing persistent data directories..."
-    
+
     local removed_dirs=()
     local failed_dirs=()
-    
+
     for dir in "${DATA_DIRS[@]}"; do
         if [[ -d "$dir" ]]; then
-            if rm -rf "$dir" 2>/dev/null; then
+            if remove_dir_force "$dir"; then
                 removed_dirs+=("$dir")
             else
                 failed_dirs+=("$dir")
             fi
         fi
     done
-    
+
     if [[ ${#removed_dirs[@]} -gt 0 ]]; then
         log_success "Removed data directories: ${removed_dirs[*]}"
     fi
-    
+
     if [[ ${#failed_dirs[@]} -gt 0 ]]; then
         log_error "Failed to remove data directories: ${failed_dirs[*]}"
         return 1
     fi
-    
+
     if [[ ${#removed_dirs[@]} -eq 0 ]]; then
         log_info "No data directories found to remove"
     fi
-    
+
     return 0
 }
 
@@ -668,14 +714,19 @@ main() {
         has_relayers=true
     fi
     
-    # Get component selection if not specified
-    local components_to_remove
-    if [[ -z "${remove_l1_devnet:-}${remove_l2_stack:-}${remove_relayers:-}${remove_data:-}${remove_configs:-}${remove_env:-}" ]]; then
+    # Get component selection
+    if [[ "$force" == "true" ]]; then
+        # With --force, default unset flags to "true" (remove everything)
+        [[ -z "$remove_l1_devnet" ]] && remove_l1_devnet="true"
+        [[ -z "$remove_l2_stack" ]]  && remove_l2_stack="true"
+        [[ -z "$remove_relayers" ]]  && remove_relayers="true"
+        [[ -z "$remove_data" ]]      && remove_data="true"
+        [[ -z "$remove_configs" ]]   && remove_configs="true"
+        # Note: remove_env is NOT defaulted — only removed when explicitly requested
+    elif [[ -z "${remove_l1_devnet:-}${remove_l2_stack:-}${remove_relayers:-}${remove_data:-}${remove_configs:-}${remove_env:-}" ]]; then
+        # Interactive mode: prompt for component selection
+        local components_to_remove
         components_to_remove=$(prompt_component_selection)
-    fi
-    
-    # Parse component selection
-    if [[ -n "${components_to_remove:-}" ]]; then
         local COMPONENTS=()
         IFS=',' read -ra COMPONENTS <<< "$components_to_remove"
         for component in "${COMPONENTS[@]}"; do
@@ -693,7 +744,11 @@ main() {
     # Get mode choice
     local mode_choice
     if [[ -z "${mode:-}" ]]; then
-        mode_choice=$(prompt_mode_selection)
+        if [[ "$force" == "true" ]]; then
+            mode_choice="silence"
+        else
+            mode_choice=$(prompt_mode_selection)
+        fi
     else
         mode_choice=$mode
     fi

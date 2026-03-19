@@ -1103,6 +1103,13 @@ trap cleanup EXIT
 generate_prover_chain_spec() {
     log_info "Generating prover chain spec list json..."
 
+    # Sanitize "null" values from jq extraction (mock mode may not deploy real verifiers)
+    local zero_addr="0x0000000000000000000000000000000000000000"
+    [[ "${SHASTA_SP1_VERIFIER:-}" == "null" || -z "${SHASTA_SP1_VERIFIER:-}" ]] && export SHASTA_SP1_VERIFIER="$zero_addr"
+    [[ "${SHASTA_RISC0_VERIFIER:-}" == "null" || -z "${SHASTA_RISC0_VERIFIER:-}" ]] && export SHASTA_RISC0_VERIFIER="$zero_addr"
+    [[ "${PACAYA_SP1_RETH_VERIFIER:-}" == "null" || -z "${PACAYA_SP1_RETH_VERIFIER:-}" ]] && export PACAYA_SP1_RETH_VERIFIER="$zero_addr"
+    [[ "${PACAYA_RISC0_RETH_VERIFIER:-}" == "null" || -z "${PACAYA_RISC0_RETH_VERIFIER:-}" ]] && export PACAYA_RISC0_RETH_VERIFIER="$zero_addr"
+
     local genesis_time
     local beacon_endpoint="${L1_BEACON_HTTP_EXTERNAL:-${L1_BEACON_HTTP:-http://localhost:33001}}"
     if ! genesis_time=$(curl -s "${beacon_endpoint}/eth/v1/beacon/genesis" | jq -r '.data.genesis_time' 2>/dev/null); then
@@ -1533,7 +1540,7 @@ generate_l2_genesis() {
 
     update_env_var "$ENV_FILE" "SHASTA_TIMESTAMP" "$HEX_TIMESTAMP"
 
-    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, useSurgeGasPriceOracle: true, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' > "$DEPLOYMENT_DIR/surge_chainspec.json"
+    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, useSurgeGasPriceOracle: true, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' | jq '.params.rip7728TransitionTimestamp = "0x0"' > "$DEPLOYMENT_DIR/surge_chainspec.json"
     
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
@@ -1543,7 +1550,15 @@ generate_l2_genesis() {
 
     log_info "Fetching genesis hash..."
     # Get genesis hash first by running Nethermind with the chainspec
-    docker run -d --name nethermind-genesis-hash -v ./deployment/surge_chainspec.json:/chainspec.json "${NETHERMIND_CLIENT_IMAGE}" --config=none --Init.ChainSpecPath=/chainspec.json
+    # Pass L1 endpoint so NMC can initialize L1SLOAD (RIP-7728) when enabled in chainspec
+    local l1_rpc_docker="${L1_ENDPOINT_HTTP_DOCKER:-http://host.docker.internal:32003}"
+    docker run -d --name nethermind-genesis-hash \
+        --add-host=host.docker.internal:host-gateway \
+        -v ./deployment/surge_chainspec.json:/chainspec.json \
+        "${NETHERMIND_CLIENT_IMAGE}" \
+        --config=none \
+        --Init.ChainSpecPath=/chainspec.json \
+        --Surge.L1EthApiEndpoint="$l1_rpc_docker"
     
     sleep 30
 
