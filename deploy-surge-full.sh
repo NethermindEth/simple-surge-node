@@ -1366,6 +1366,8 @@ deploy_l1_contracts() {
     
     local exit_status=0
     local temp_output="/tmp/surge_l1_deploy_output_$$"
+
+    source .env
     
     # Deploy L1 contracts based on mode
     if [[ "$mode" == "debug" ]]; then
