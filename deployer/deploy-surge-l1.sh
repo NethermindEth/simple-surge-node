@@ -20,7 +20,7 @@ if [ "$SLOW" = "true" ]; then
     SLOW_ARG="--slow"
 fi
 
-forge script ./script/layer1/surge/DeploySurgeL1.s.sol:DeploySurgeL1 \
+forge script ./script/layer1/surge/DeployRealTimeSurgeL1.s.sol:DeployRealTimeSurgeL1 \
     $GAS_ESTIMATE_MULTIPLIER_ARG \
     --fork-url $FORK_URL \
     $BROADCAST_ARG \
