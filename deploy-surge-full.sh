@@ -580,9 +580,43 @@ get_machine_ip() {
     echo "$ip"
 }
 
+# Check if an endpoint URL points to a local/private host that needs rewriting.
+# Returns 0 (true) if the hostname is external/public (should NOT be rewritten).
+# Returns 1 (false) if the hostname is local/private (safe to rewrite).
+is_external_endpoint() {
+    local endpoint="$1"
+    local host
+    host=$(echo "$endpoint" | sed -E 's#https?://([^:/]+).*#\1#')
+    
+    # Local/private patterns that ARE safe to rewrite
+    case "$host" in
+        localhost|127.0.0.1|host.docker.internal|0.0.0.0)
+            return 1 ;;  # local — safe to rewrite
+        10.*)
+            return 1 ;;  # private RFC1918
+        172.1[6-9].*|172.2[0-9].*|172.3[0-1].*)
+            return 1 ;;  # private RFC1918
+        192.168.*)
+            return 1 ;;  # private RFC1918
+    esac
+    
+    # If the hostname contains a dot, it's likely a real domain (e.g. quiknode.pro)
+    if echo "$host" | grep -q '\.'; then
+        return 0  # external — do NOT rewrite
+    fi
+    
+    # No dot means it's likely a container/service name (e.g. "el-1-nethermind")
+    return 1  # local — safe to rewrite
+}
+
 # Convert endpoint to docker-internal format (for use inside containers)
 to_docker_internal() {
     local endpoint="$1"
+    # If the endpoint is already an external URL, containers can reach it directly
+    if is_external_endpoint "$endpoint"; then
+        echo "$endpoint"
+        return
+    fi
     # Replace hostname with host.docker.internal, preserving protocol and port
     echo "$endpoint" | sed -E 's#(https?://)([^:/]+)(.*)#\1host.docker.internal\3#'
 }
@@ -599,6 +633,12 @@ format_endpoint_for_context() {
     local endpoint="$1"
     local deployment_type="$2"  # local or remote
     local machine_ip="$3"
+    
+    # If the endpoint is already an external/public URL, return as-is
+    if is_external_endpoint "$endpoint"; then
+        echo "$endpoint"
+        return
+    fi
     
     if [[ "$deployment_type" == "remote" || "$deployment_type" == "1" ]] && [[ -n "$machine_ip" ]]; then
         # Replace hostname with machine IP for remote access
@@ -653,6 +693,8 @@ configure_remote_blockscout() {
         sed -i.tmp "s/else \"localhost:{0}\"/else \"$machine_ip:{0}\"/g" "$BLOCKSCOUT_FILE"
         rm -f "${BLOCKSCOUT_FILE}.tmp"
     fi
+
+    update_env_var "$ENV_FILE" "BLOCKSCOUT_API_HOST" "$machine_ip"
     
     log_success "Blockscout configured for remote access"
 }
@@ -1324,6 +1366,8 @@ deploy_l1_contracts() {
     
     local exit_status=0
     local temp_output="/tmp/surge_l1_deploy_output_$$"
+
+    source .env
     
     # Deploy L1 contracts based on mode
     if [[ "$mode" == "debug" ]]; then
@@ -1531,9 +1575,11 @@ extract_l1_deployment_results() {
     export SHASTA_SIGNAL_SERVICE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.signal_service')
     export SHASTA_SP1_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.sp1_verifier')
     export SHASTA_SUCCINCT_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.succinct_verifier')
-    export SHASTA_SURGE_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox')
+    # export SHASTA_SURGE_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox')
     export SHASTA_SURGE_INBOX_IMPL=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox_impl')
     export SHASTA_SURGE_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_verifier')
+
+    export SHASTA_SURGE_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.real_time_inbox')
 
     echo
     echo ">>>>>>"
@@ -1631,7 +1677,7 @@ generate_l2_genesis() {
 
     update_env_var "$ENV_FILE" "SHASTA_TIMESTAMP" "$HEX_TIMESTAMP"
 
-    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' > "$DEPLOYMENT_DIR/surge_chainspec.json"
+    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/surge-poc/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' > "$DEPLOYMENT_DIR/surge_chainspec.json"
     
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
@@ -2561,17 +2607,17 @@ main() {
 
         # Deploy L1 contracts
         local mock_proof
-        echo
-        echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "  ⚠️ Using mock prover?                                         "
-        echo "║══════════════════════════════════════════════════════════════║"
-        echo "║  0 for Using mock prover                                     ║"
-        echo "║  1 for Using real prover                                     ║"
-        echo "║ [default: 0]                                                 ║"
-        echo "╚══════════════════════════════════════════════════════════════╝"
-        echo
-        read -p "Enter choice [0]: " mock_proof
-        mock_proof=${mock_proof:-0}
+        # echo
+        # echo "╔══════════════════════════════════════════════════════════════╗"
+        # echo "  ⚠️ Using mock prover?                                         "
+        # echo "║══════════════════════════════════════════════════════════════║"
+        # echo "║  0 for Using mock prover                                     ║"
+        # echo "║  1 for Using real prover                                     ║"
+        # echo "║ [default: 0]                                                 ║"
+        # echo "╚══════════════════════════════════════════════════════════════╝"
+        # echo
+        # read -p "Enter choice [0]: " mock_proof
+        mock_proof=${mock_proof:-1}
         
         # Run L1 contracts simulation
         if ! deploy_l1_contracts "$mode_choice" false $mock_proof false; then
@@ -2614,11 +2660,11 @@ main() {
             exit 1
         fi
 
-        # Deploy Pacaya contracts
-        if ! deploy_pacaya_contracts "$mode_choice" $slow_mode; then
-            log_error "Failed to deploy Pacaya smart contracts"
-            exit 1
-        fi
+        # # Deploy Pacaya contracts
+        # if ! deploy_pacaya_contracts "$mode_choice" $slow_mode; then
+        #     log_error "Failed to deploy Pacaya smart contracts"
+        #     exit 1
+        # fi
 
         # Extract L1 deployment results
         if ! extract_l1_deployment_results; then
@@ -2653,11 +2699,11 @@ main() {
         exit 1
     fi
 
-    # Switch fork
-    if ! switch_fork "$mode_choice"; then
-        log_error "Failed to switch fork"
-        exit 1
-    fi
+    # # Switch fork
+    # if ! switch_fork "$mode_choice"; then
+    #     log_error "Failed to switch fork"
+    #     exit 1
+    # fi
 
     # Step 5: Start Relayers (optional)
     local relayers_choice

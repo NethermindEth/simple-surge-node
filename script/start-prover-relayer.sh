@@ -7,8 +7,8 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         --l1.ws ${L1_ENDPOINT_WS}
         --l2.ws ws://l2-nethermind-execution-client:${L2_WS_PORT}
         --l2.http http://l2-nethermind-execution-client:${L2_HTTP_PORT}
-        --shastaInbox ${SHASTA_SURGE_INBOX}
-        --pacayaInbox ${PACAYA_TAIKO}
+        --fork realtime
+        --realtimeInbox ${SHASTA_SURGE_INBOX}
         --taikoAnchor ${TAIKO_ANCHOR}
         --taikoToken 0x0000000000000000000000000000000000000000
         --l1.proverPrivKey ${L1_PROVER_PRIVATE_KEY}
