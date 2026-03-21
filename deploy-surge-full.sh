@@ -2607,17 +2607,17 @@ main() {
 
         # Deploy L1 contracts
         local mock_proof
-        echo
-        echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "  ⚠️ Using mock prover?                                         "
-        echo "║══════════════════════════════════════════════════════════════║"
-        echo "║  0 for Using mock prover                                     ║"
-        echo "║  1 for Using real prover                                     ║"
-        echo "║ [default: 0]                                                 ║"
-        echo "╚══════════════════════════════════════════════════════════════╝"
-        echo
-        read -p "Enter choice [0]: " mock_proof
-        mock_proof=${mock_proof:-0}
+        # echo
+        # echo "╔══════════════════════════════════════════════════════════════╗"
+        # echo "  ⚠️ Using mock prover?                                         "
+        # echo "║══════════════════════════════════════════════════════════════║"
+        # echo "║  0 for Using mock prover                                     ║"
+        # echo "║  1 for Using real prover                                     ║"
+        # echo "║ [default: 0]                                                 ║"
+        # echo "╚══════════════════════════════════════════════════════════════╝"
+        # echo
+        # read -p "Enter choice [0]: " mock_proof
+        mock_proof=${mock_proof:-1}
         
         # Run L1 contracts simulation
         if ! deploy_l1_contracts "$mode_choice" false $mock_proof false; then
@@ -2660,11 +2660,11 @@ main() {
             exit 1
         fi
 
-        # Deploy Pacaya contracts
-        if ! deploy_pacaya_contracts "$mode_choice" $slow_mode; then
-            log_error "Failed to deploy Pacaya smart contracts"
-            exit 1
-        fi
+        # # Deploy Pacaya contracts
+        # if ! deploy_pacaya_contracts "$mode_choice" $slow_mode; then
+        #     log_error "Failed to deploy Pacaya smart contracts"
+        #     exit 1
+        # fi
 
         # Extract L1 deployment results
         if ! extract_l1_deployment_results; then
@@ -2699,11 +2699,11 @@ main() {
         exit 1
     fi
 
-    # Switch fork
-    if ! switch_fork "$mode_choice"; then
-        log_error "Failed to switch fork"
-        exit 1
-    fi
+    # # Switch fork
+    # if ! switch_fork "$mode_choice"; then
+    #     log_error "Failed to switch fork"
+    #     exit 1
+    # fi
 
     # Step 5: Start Relayers (optional)
     local relayers_choice
