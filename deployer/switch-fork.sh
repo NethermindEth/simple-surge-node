@@ -21,6 +21,7 @@ set -e
 #   --value 100000000000000000 \
 #   --rpc-url $L1_ENDPOINT_HTTP \
 #   --private-key $OPERATOR_PRIVATE_KEY
+# https://demerzelsolutions.slack.com/archives/D07BYJK5V40/p1770884749521069
 
 # Get the Shasta Inbox address from deployment
 SHASTA_INBOX=$(jq -r '.real_time_inbox' /deployment/deploy_l1.json)
