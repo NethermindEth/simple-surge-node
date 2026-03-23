@@ -228,7 +228,19 @@ validate_prerequisites() {
         log_error "Please install them first"
         return 1
     fi
-    
+
+    # Verify docker compose v2.1+ (required for --profile support)
+    local compose_version
+    compose_version=$(docker compose version --short 2>/dev/null || echo "0.0.0")
+    local compose_major compose_minor
+    compose_major=$(echo "$compose_version" | cut -d. -f1)
+    compose_minor=$(echo "$compose_version" | cut -d. -f2)
+    if [[ "$compose_major" -lt 2 ]] || [[ "$compose_major" -eq 2 && "$compose_minor" -lt 1 ]]; then
+        log_error "docker compose >= 2.1 required (found: $compose_version)"
+        return 1
+    fi
+    log_info "docker compose version: $compose_version"
+
     # Create required directories
     for dir in "$DEPLOYMENT_DIR" "$CONFIGS_DIR" "driver-data"; do
         if [[ ! -d "$dir" ]]; then
@@ -1115,6 +1127,12 @@ generate_prover_chain_spec() {
     local l1_beacon_docker="${L1_BEACON_HTTP_DOCKER:-http://host.docker.internal:33001}"
     local l2_rpc_docker="${L2_ENDPOINT_HTTP_DOCKER:-http://host.docker.internal:8547}"
 
+    # Resolve verifier addresses - use zero address as fallback when not deployed (dummy verifier mode)
+    local shasta_sp1_verifier="${SHASTA_SP1_VERIFIER:-}"
+    local shasta_risc0_verifier="${SHASTA_RISC0_VERIFIER:-}"
+    [[ -z "$shasta_sp1_verifier" || "$shasta_sp1_verifier" == "null" ]] && shasta_sp1_verifier="0x0000000000000000000000000000000000000000"
+    [[ -z "$shasta_risc0_verifier" || "$shasta_risc0_verifier" == "null" ]] && shasta_risc0_verifier="0x0000000000000000000000000000000000000000"
+
     # Generate chain spec list
     cat > "$CONFIGS_DIR/chain_spec_list_default.json" << EOF
 [
@@ -1176,8 +1194,8 @@ generate_prover_chain_spec() {
         "RISC0": "$PACAYA_RISC0_RETH_VERIFIER"
       },
       "SHASTA": {
-        "SP1": "$SHASTA_SP1_VERIFIER",
-        "RISC0": "$SHASTA_RISC0_VERIFIER"
+        "SP1": "$shasta_sp1_verifier",
+        "RISC0": "$shasta_risc0_verifier"
       }
     },
     "genesis_time": 0,
@@ -1461,8 +1479,18 @@ extract_l1_deployment_results() {
     echo " BRIDGE: $SHASTA_BRIDGE "
     echo " SIGNAL_SERVICE: $SHASTA_SIGNAL_SERVICE "
     echo " PRECONF_WHITELIST: $SHASTA_PRECONF_WHITELIST "
+    echo " RISC0_VERIFIER: $SHASTA_RISC0_VERIFIER "
+    echo " SP1_VERIFIER: $SHASTA_SP1_VERIFIER "
+    echo " PROOF_VERIFIER_DUMMY: $SHASTA_PROOF_VERIFIER_DUMMY "
+    echo " SURGE_VERIFIER: $SHASTA_SURGE_VERIFIER "
     echo ">>>>>>"
     echo
+    if [[ -f "$L1_DEPLOYMENT_FILE" ]]; then
+        echo "=== deploy_l1.json ==="
+        cat "$L1_DEPLOYMENT_FILE"
+        echo ""
+        echo "=== end deploy_l1.json ==="
+    fi
 
     log_info "Updating .env with extracted values..."
 
@@ -1665,8 +1693,8 @@ deploy_provers() {
     local should_run_provers
     
     if [[ "$mock_proof" == "0" ]]; then
+        log_info "USE_DUMMY_VERIFIER=true: generating chain spec for raiko mock mode, skipping ZK verifier setup"
         generate_prover_chain_spec
-        log_info "Skipping provers deployment...using mock prover"
         return 0
     fi
 
@@ -1912,7 +1940,7 @@ wait_for_l2_blocks() {
     l2_rpc=$(echo "$l2_rpc" | sed 's/host\.docker\.internal/localhost/g')
 
     local waited=0
-    local max_wait=384  # Entire epoch duration
+    local max_wait=600  # 10 minutes
     while [[ $waited -lt $max_wait ]]; do
         local block_number
         block_number=$(cast block-number --rpc-url "$l2_rpc" 2>/dev/null || echo "0")
@@ -1925,9 +1953,30 @@ wait_for_l2_blocks() {
         if (( waited % 30 == 0 )); then
             log_info "Still waiting for L2 blocks... (${waited}s elapsed)"
         fi
+        # Dump container diagnostics periodically (every 120s) to aid debugging
+        if (( waited % 120 == 0 )); then
+            log_info "=== L2 container diagnostics (${waited}s elapsed) ==="
+            log_info "--- Container status ---"
+            docker compose ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || true
+            while IFS= read -r svc; do
+                [[ -z "$svc" ]] && continue
+                log_info "--- Last 15 lines from $svc ---"
+                docker logs --tail 15 "$svc" 2>&1 || true
+            done < <(docker compose ps --format "{{.Name}}" 2>/dev/null)
+            log_info "=== End diagnostics ==="
+        fi
     done
 
     log_error "L2 did not start producing blocks within ${max_wait}s"
+    log_error "=== Final L2 container diagnostics ==="
+    log_error "--- Container status ---"
+    docker compose ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || true
+    while IFS= read -r svc; do
+        [[ -z "$svc" ]] && continue
+        log_error "--- Last 30 lines from $svc ---"
+        docker logs --tail 30 "$svc" 2>&1 || true
+    done < <(docker compose ps --format "{{.Name}}" 2>/dev/null)
+    log_error "=== End diagnostics ==="
     return 1
 }
 
@@ -1953,12 +2002,12 @@ deploy_l2() {
         # Start L2 deployer in detached mode, then wait for it to finish
         BROADCAST=true docker compose --profile l2-deployer up -d >"$temp_output" 2>&1 &
         local deploy_pid=$!
-
+        
         show_progress $deploy_pid "Deploying L2 contracts..."
-
+        
         wait $deploy_pid
         exit_status=$?
-
+        
         if [[ $exit_status -ne 0 ]]; then
             log_error "Failed to start L2 deployer container (exit code: $exit_status)"
             if [[ -f "$temp_output" ]]; then
@@ -1966,12 +2015,12 @@ deploy_l2() {
             fi
             return 1
         fi
-
+        
         # Wait for the deployer container to finish (up to 600s)
         # The deployer runs forge script --broadcast which needs L2 blocks to confirm txs
         log_info "Waiting for L2 deployer to complete..."
         local waited=0
-        local max_wait=600
+        local max_wait=${CI_L2_DEPLOYER_TIMEOUT:-600}
         while [[ $waited -lt $max_wait ]]; do
             # Check if the deployment artifact appeared on the host (most reliable signal)
             if [[ -f "$DEPLOYMENT_DIR/setup_l2.json" ]]; then
@@ -2005,7 +2054,7 @@ deploy_l2() {
             docker logs surge-l2-deployer 2>&1 | tail -20 >&2
             return 1
         fi
-
+        
         # Verify the deployment artifact was produced
         if [[ -f "$DEPLOYMENT_DIR/setup_l2.json" ]]; then
             log_success "L2 smart contracts deployed successfully"
@@ -2013,7 +2062,7 @@ deploy_l2() {
         else
             log_warning "L2 deployer exited 0 but setup_l2.json not found, continuing..."
         fi
-
+        
         return 0
     fi
 }
@@ -2077,7 +2126,8 @@ start_l2_stack() {
     local compose_cmd="docker compose"
     local exit_status=0
     local temp_output="/tmp/surge_l2_stack_output_$$"
-    
+    local prover_profile="--profile prover"
+
     case "$stack_option" in
         1)
             log_info "Starting driver only"
@@ -2093,15 +2143,15 @@ start_l2_stack() {
             ;;
         4)
             log_info "Starting driver + proposer + prover (spammer deferred until after L2 deploy)"
-            $compose_cmd --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
+            $compose_cmd --profile catalyst $prover_profile --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         5)
             log_info "Starting all except spammer"
-            $compose_cmd --profile driver --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
+            $compose_cmd --profile driver --profile catalyst $prover_profile --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         *)
             log_info "Starting all components (spammer deferred until after L2 deploy)"
-            $compose_cmd --profile driver --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
+            $compose_cmd --profile driver --profile catalyst $prover_profile --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
     esac
     
@@ -2583,7 +2633,7 @@ main() {
         # Deploy L1 contracts
         local mock_proof
         if [[ "$force" == "true" ]]; then
-            mock_proof=0  # default: mock prover
+            mock_proof=0
         else
             echo
             echo "╔══════════════════════════════════════════════════════════════╗"
@@ -2690,6 +2740,10 @@ main() {
     
     if ! start_relayers "$relayers_choice" "$env_choice"; then
         log_warning "Relayer startup had issues, but continuing..."
+        log_warning "--- Relayer-related container status ---"
+        docker compose ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || true
+        docker compose -f docker-compose-relayer.yml ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || true
+        log_warning "--- End relayer diagnostics ---"
     fi
     
     # Step 5b: Start spammer now that L2 deploy is done (if stack option included it)

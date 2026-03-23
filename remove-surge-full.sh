@@ -528,11 +528,11 @@ prompt_component_selection() {
     echo "║  4. Persistent data directories                              ║" >&2
     echo "║  5. Configuration files                                      ║" >&2
     echo "║  6. Environment file (.env)                                  ║" >&2
-    echo "║ [default: Remove all except environment file]                ║" >&2
+    echo "║ [default: Remove L2 stack, keep L1 devnet]                    ║" >&2
     echo "╚══════════════════════════════════════════════════════════════╝" >&2
     echo >&2
-    read -p "Enter components to remove (1-6, comma-separated) [1,2,3,4,5]: " components
-    components=${components:-"1,2,3,4,5"}
+    read -p "Enter components to remove (1-6, comma-separated) [2,3,4,5]: " components
+    components=${components:-"2,3,4,5"}
     echo $components
 }
 
@@ -671,7 +671,13 @@ main() {
     # Get component selection if not specified
     local components_to_remove
     if [[ -z "${remove_l1_devnet:-}${remove_l2_stack:-}${remove_relayers:-}${remove_data:-}${remove_configs:-}${remove_env:-}" ]]; then
-        components_to_remove=$(prompt_component_selection)
+        if [[ "$force" == "true" ]]; then
+            # With --force and no component flags, use default (keep L1 devnet)
+            components_to_remove="2,3,4,5"
+            log_info "Using default: remove L2 stack, relayers, data, configs (keeping L1 devnet)"
+        else
+            components_to_remove=$(prompt_component_selection)
+        fi
     fi
     
     # Parse component selection
