@@ -1618,6 +1618,8 @@ extract_l1_deployment_results() {
     update_env_var "$ENV_FILE" "MULTICALL_ADDRESS" "$MULTICALL_ADDRESS"
     export USEROPS_SUBMITTER_FACTORY_ADDRESS=$(cat "$COMPOSABILITY_USEROPS_SUBMITTER_FILE" | jq -r '.userops_submitter_factory')
     update_env_var "$ENV_FILE" "USEROPS_SUBMITTER_FACTORY_ADDRESS" "$USEROPS_SUBMITTER_FACTORY_ADDRESS"
+    export REALTIME_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.real_time_inbox')
+    update_env_var "$ENV_FILE" "REALTIME_INBOX" "$REALTIME_INBOX"
 
     update_env_var "catalyst.env" "TAIKO_INBOX_ADDRESS" "$PACAYA_TAIKO"
     update_env_var "catalyst.env" "PRECONF_WHITELIST_ADDRESS" "$PACAYA_PRECONF_WHITELIST"
@@ -1705,7 +1707,6 @@ generate_l2_genesis() {
         return 0
     else
         log_error "Failed to generate Surge genesis (exit code: $exit_status)"
-        return 1
         if [[ "$mode" == "silence" ]]; then
             log_error "Run with debug mode for more details: --mode debug"
         fi

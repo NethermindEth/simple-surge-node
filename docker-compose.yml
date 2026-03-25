@@ -181,6 +181,13 @@ services:
       CATALYST_NODE_ECDSA_PRIVATE_KEY: ${OPERATOR_PRIVATE_KEY}
       PROPOSER_MULTICALL_ADDRESS: ${MULTICALL_ADDRESS}
       L1_BRIDGE_ADDRESS: ${SHASTA_BRIDGE}
+      REALTIME_INBOX_ADDRESS: ${REALTIME_INBOX}
+      PRECONF_ONLY: false
+      PROOF_REQUEST_BYPASS: false
+      PROOF_TYPE: zisk
+      RAIKO_URL: ${RAIKO_HOST_ZKVM}
+      RAIKO_L2_NETWORK: surge_dev
+      RAIKO_L1_NETWORK: surge_dev_l1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
