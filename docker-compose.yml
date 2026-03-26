@@ -185,6 +185,8 @@ services:
       PRECONF_ONLY: false
       PROOF_REQUEST_BYPASS: false
       PROOF_TYPE: zisk
+      RAIKO_POLL_INTERVAL_MS: 500
+      RAIKO_MAX_RETRIES: 100
       RAIKO_URL: ${RAIKO_HOST_ZKVM}
       RAIKO_L2_NETWORK: surge_dev
       RAIKO_L1_NETWORK: surge_dev_l1
