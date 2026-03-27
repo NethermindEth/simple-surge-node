@@ -245,6 +245,37 @@ services:
     profiles:
       - bond-deposit
 
+  surge-zisk-setup:
+    image: ${PROTOCOL_IMAGE}
+    container_name: surge-zisk-setup
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/setup-zisk.sh
+    env_file:
+      - .env
+    environment:
+      FOUNDRY_PROFILE: layer1
+      BROADCAST: ${BROADCAST}
+      VERIFY: ${VERIFY}
+      VERIFY_ARG: ${VERIFY_ARG}
+      ZISK_VERIFIER_ADDRESS: ${ZISK_VERIFIER}
+      ZISK_BATCH_VKEY: ${ZISK_BATCH_VKEY}
+      FORK_URL: ${L1_ENDPOINT_HTTP}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - zisk-setup
+
   surge-risc0-verifier-setup:
     image: ${PROTOCOL_IMAGE}
     container_name: surge-risc0-verifier-setup

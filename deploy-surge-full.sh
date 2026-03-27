@@ -1186,6 +1186,9 @@ generate_prover_chain_spec() {
         },
         "PACAYA": {
             "Block": 1
+        },
+        "REALTIME": {
+            "Block": 1
         }
     },
     "eip_1559_constants": {
@@ -1195,7 +1198,7 @@ generate_prover_chain_spec() {
       "elasticity_multiplier": "0x2"
     },
     "l1_contract": {
-      "SHASTA": "$SHASTA_SURGE_INBOX",
+      "SHASTA": "$REALTIME_INBOX",
       "PACAYA": "$PACAYA_TAIKO"
     },
     "l2_contract": "$TAIKO_ANCHOR",
@@ -1212,7 +1215,13 @@ generate_prover_chain_spec() {
       },
       "SHASTA": {
         "SP1": "$PACAYA_SP1_RETH_VERIFIER",
-        "RISC0": "$PACAYA_RISC0_RETH_VERIFIER"
+        "RISC0": "$PACAYA_RISC0_RETH_VERIFIER",
+        "ZISK": "$ZISK_VERIFIER"
+      },
+      "REALTIME": {
+        "SP1": "$PACAYA_SP1_RETH_VERIFIER",
+        "RISC0": "$PACAYA_RISC0_RETH_VERIFIER",
+        "ZISK": "$ZISK_VERIFIER"
       }
     },
     "genesis_time": 0,
@@ -1225,7 +1234,7 @@ EOF
         # Generate config.json for raiko
     cat > "$CONFIGS_DIR/config.json" << EOF
 {
-	"address": "0.0.0.0:8080",
+	"address": "0.0.0.0:8081",
 	"network": "surge_dev",
 	"concurrency_limit": 1,
 	"l1_network": "surge_dev_l1",
@@ -1237,6 +1246,50 @@ EOF
 	"redis_url": "redis://redis-zk:6379",
 	"redis_ttl": 3600,
 	"enable_redis_pool": false,
+	"sgx": {
+		"instance_ids": {
+			"ONTAKE": 0,
+			"PACAYA": 0
+		},
+		"setup": false,
+		"bootstrap": false,
+		"prove": true
+	},
+	"sgxgeth": {
+		"instance_ids": {
+			"PACAYA": 0
+		},
+		"setup": false,
+		"bootstrap": false,
+		"prove": true
+	},
+	"tdx": {
+		"instance_ids": {
+			"ONTAKE": 0,
+			"PACAYA": 0,
+			"SHASTA": 0
+		},
+		"bootstrap": false,
+		"prove": true
+	},
+	"zisk": {
+		"batch_snark": true
+	},
+	"risc0": {
+		"boundless": false,
+		"bonsai": false,
+		"snark": true,
+		"profile": false,
+		"execution_po2": 22
+	},
+	"sp1": {
+		"recursion": "core",
+		"prover": "local",
+		"verify": true
+	},
+	"native": {
+		"json_guest_input": null
+	},
 	"queue_limit": 1000,
 	"api_keys": "",
 	"ballot_zk": "{\"Sp1\":[1, 0]}",
@@ -1246,6 +1299,7 @@ EOF
 
     log_success "Prover chain spec list json and config json generated successfully"
     log_info "Saved to: $CONFIGS_DIR/chain_spec_list_default.json and $CONFIGS_DIR/config.json"
+    log_info "Please copy the json files above to set up the prover"
 }
 
 # Retrieve guest data from prover endpoints
@@ -1253,6 +1307,12 @@ retrieve_guest_data() {
     local prover_type="$1"
     
     case "$prover_type" in
+        zisk)
+            if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
+                log_info "Retrieving guest data for ZISK - $RAIKO_HOST_ZKVM"
+                export ZISK_BATCH_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].zisk.batch_vkey')
+            fi
+            ;;
         sp1)
             if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
                 log_info "Retrieving guest data for SP1 - $RAIKO_HOST_ZKVM"
@@ -1498,7 +1558,7 @@ deploy_userops_submitter_contract() {
 
 # Extract L1 deployment results from JSON file
 extract_l1_deployment_results() {
-    log_info "Extracting Pacaya and Surge L1 SCs deployment results..."
+    log_info "Extracting Surge L1 SCs deployment results..."
     
     if [[ -f "$PACAYA_DEPLOYMENT_FILE" ]]; then
         # Extract L1 deployment results from deploy_l1_pacaya.json
@@ -1586,7 +1646,6 @@ extract_l1_deployment_results() {
     echo " SURGE_INBOX: $SHASTA_SURGE_INBOX "
     echo " BRIDGE: $SHASTA_BRIDGE "
     echo " SIGNAL_SERVICE: $SHASTA_SIGNAL_SERVICE "
-    echo " PRECONF_WHITELIST: $SHASTA_PRECONF_WHITELIST "
     echo ">>>>>>"
     echo
 
@@ -1618,8 +1677,12 @@ extract_l1_deployment_results() {
     update_env_var "$ENV_FILE" "MULTICALL_ADDRESS" "$MULTICALL_ADDRESS"
     export USEROPS_SUBMITTER_FACTORY_ADDRESS=$(cat "$COMPOSABILITY_USEROPS_SUBMITTER_FILE" | jq -r '.userops_submitter_factory')
     update_env_var "$ENV_FILE" "USEROPS_SUBMITTER_FACTORY_ADDRESS" "$USEROPS_SUBMITTER_FACTORY_ADDRESS"
+    
+    # Real time
     export REALTIME_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.real_time_inbox')
     update_env_var "$ENV_FILE" "REALTIME_INBOX" "$REALTIME_INBOX"
+    export ZISK_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.zisk_verifier')
+    update_env_var "$ENV_FILE" "ZISK_VERIFIER" "$ZISK_VERIFIER"
 
     update_env_var "catalyst.env" "TAIKO_INBOX_ADDRESS" "$PACAYA_TAIKO"
     update_env_var "catalyst.env" "PRECONF_WHITELIST_ADDRESS" "$PACAYA_PRECONF_WHITELIST"
@@ -1834,67 +1897,93 @@ deploy_provers() {
         generate_prover_chain_spec
 
         if [[ "$mock_proof" == "1" ]]; then
-            if [[ ! -f "$DEPLOYMENT_DIR/sp1_verifier_setup.lock" ]]; then
+            if [[ ! -f "$DEPLOYMENT_DIR/zisk_setup.lock" ]]; then
                 echo
                 echo "╔══════════════════════════════════════════════════════════════╗"
-                echo "  ⚠️ Running SP1?                                               "
+                echo "  ⚠️ Running ZISK?                                               "
                 echo "║══════════════════════════════════════════════════════════════║"
-                echo "║  0 for Deploy SP1                                            ║"
-                echo "║  1 for Skip SP1                                              ║"
+                echo "║  0 for Deploy ZISK                                           ║"
+                echo "║  1 for Skip ZISK                                             ║"
                 echo "║ [default: 0]                                                 ║"
                 echo "╚══════════════════════════════════════════════════════════════╝"
                 echo
-                read -p "Enter choice [0]: " running_sp1
-                running_sp1=${running_sp1:-0}
+                read -p "Enter choice [0]: " running_zisk
+                running_zisk=${running_zisk:-0}
 
-                if [[ "$running_sp1" == "0" ]]; then
-                    retrieve_guest_data sp1
+                if [[ "$running_zisk" == "0" ]]; then
+                    retrieve_guest_data zisk
                     
-                    if [[ -z "${SP1_BLOCK_PROVING_PROGRAM_VKEY:-}" ]] || [[ -z "${SP1_AGGREGATION_PROGRAM_VKEY:-}" ]]; then
-                        log_error "SP1 guest data is missing"
+                    if [[ -z "${ZISK_BATCH_VKEY:-}" ]]; then
+                        log_error "ZISK guest data is missing"
                         return 1
                     fi
 
-                    BROADCAST=true docker compose -f docker-compose-protocol.yml --profile sp1-verifier-setup up
-                    touch "$DEPLOYMENT_DIR/sp1_verifier_setup.lock"
+                    BROADCAST=true docker compose -f docker-compose-protocol.yml --profile zisk-setup up
+                    touch "$DEPLOYMENT_DIR/zisk_setup.lock"
                 fi
             fi
 
-            if [[ ! -f "$DEPLOYMENT_DIR/risc0_verifier_setup.lock" ]]; then
-                echo
-                echo "╔══════════════════════════════════════════════════════════════╗"
-                echo "  ⚠️ Running RISC0?                                             "
-                echo "║══════════════════════════════════════════════════════════════║"
-                echo "║  0 for Deploy RISC0                                          ║"
-                echo "║  1 for Skip RISC0                                            ║"
-                echo "║ [default: 0]                                                 ║"
-                echo "╚══════════════════════════════════════════════════════════════╝"
-                echo
-                read -p "Enter choice [0]: " running_risc0
-                running_risc0=${running_risc0:-0}
+            # if [[ ! -f "$DEPLOYMENT_DIR/sp1_verifier_setup.lock" ]]; then
+            #     echo
+            #     echo "╔══════════════════════════════════════════════════════════════╗"
+            #     echo "  ⚠️ Running SP1?                                               "
+            #     echo "║══════════════════════════════════════════════════════════════║"
+            #     echo "║  0 for Deploy SP1                                            ║"
+            #     echo "║  1 for Skip SP1                                              ║"
+            #     echo "║ [default: 0]                                                 ║"
+            #     echo "╚══════════════════════════════════════════════════════════════╝"
+            #     echo
+            #     read -p "Enter choice [0]: " running_sp1
+            #     running_sp1=${running_sp1:-0}
 
-                if [[ "$running_risc0" == "0" ]]; then
-                    retrieve_guest_data risc0
+            #     if [[ "$running_sp1" == "0" ]]; then
+            #         retrieve_guest_data sp1
                     
-                    if [[ -z "${RISC0_BLOCK_PROVING_IMAGE_ID:-}" ]] || [[ -z "${RISC0_AGGREGATION_IMAGE_ID:-}" ]]; then
-                        log_error "RISC0 guest data is missing"
-                        return 1
-                    fi
+            #         if [[ -z "${SP1_BLOCK_PROVING_PROGRAM_VKEY:-}" ]] || [[ -z "${SP1_AGGREGATION_PROGRAM_VKEY:-}" ]]; then
+            #             log_error "SP1 guest data is missing"
+            #             return 1
+            #         fi
 
-                    BROADCAST=true docker compose -f docker-compose-protocol.yml --profile risc0-verifier-setup up
-                    touch "$DEPLOYMENT_DIR/risc0_verifier_setup.lock"
-                fi
-            fi
+            #         BROADCAST=true docker compose -f docker-compose-protocol.yml --profile sp1-verifier-setup up
+            #         touch "$DEPLOYMENT_DIR/sp1_verifier_setup.lock"
+            #     fi
+            # fi
 
-            log_info "Generating prover env vars..."
-            echo
-            echo ">>>>>>"
-            echo "export GROTH16_VERIFIER_ADDRESS=$SHASTA_RISC0_GROTH16_VERIFIER"
-            echo "export SP1_VERIFIER_ADDRESS=$SHASTA_SUCCINCT_VERIFIER"
-            echo ">>>>>>"
-            echo
-            log_success "Prover env vars generated successfully"
-            log_info "Please copy and paste them when you start the provers"
+            # if [[ ! -f "$DEPLOYMENT_DIR/risc0_verifier_setup.lock" ]]; then
+            #     echo
+            #     echo "╔══════════════════════════════════════════════════════════════╗"
+            #     echo "  ⚠️ Running RISC0?                                             "
+            #     echo "║══════════════════════════════════════════════════════════════║"
+            #     echo "║  0 for Deploy RISC0                                          ║"
+            #     echo "║  1 for Skip RISC0                                            ║"
+            #     echo "║ [default: 0]                                                 ║"
+            #     echo "╚══════════════════════════════════════════════════════════════╝"
+            #     echo
+            #     read -p "Enter choice [0]: " running_risc0
+            #     running_risc0=${running_risc0:-0}
+
+            #     if [[ "$running_risc0" == "0" ]]; then
+            #         retrieve_guest_data risc0
+                    
+            #         if [[ -z "${RISC0_BLOCK_PROVING_IMAGE_ID:-}" ]] || [[ -z "${RISC0_AGGREGATION_IMAGE_ID:-}" ]]; then
+            #             log_error "RISC0 guest data is missing"
+            #             return 1
+            #         fi
+
+            #         BROADCAST=true docker compose -f docker-compose-protocol.yml --profile risc0-verifier-setup up
+            #         touch "$DEPLOYMENT_DIR/risc0_verifier_setup.lock"
+            #     fi
+            # fi
+
+            # log_info "Generating prover env vars..."
+            # echo
+            # echo ">>>>>>"
+            # echo "export GROTH16_VERIFIER_ADDRESS=$SHASTA_RISC0_GROTH16_VERIFIER"
+            # echo "export SP1_VERIFIER_ADDRESS=$SHASTA_SUCCINCT_VERIFIER"
+            # echo ">>>>>>"
+            # echo
+            # log_success "Prover env vars generated successfully"
+            # log_info "Please copy and paste them when you start the provers"
         fi
     fi
 }
@@ -2067,16 +2156,12 @@ prompt_stack_option_selection() {
     echo "╔══════════════════════════════════════════════════════════════╗" >&2
     echo "║ Enter L2 stack option:                                       ║" >&2
     echo "║ 1 for driver only                                            ║" >&2
-    echo "║ 2 for driver + proposer                                      ║" >&2
-    echo "║ 3 for driver + proposer + spammer                            ║" >&2
-    echo "║ 4 for driver + proposer + prover + spammer                   ║" >&2
-    echo "║ 5 for all except spammer                                     ║" >&2
-    echo "║ 6 for all components                                         ║" >&2
-    echo "║ [default: all]                                               ║" >&2
+    echo "║ 2 for driver + catalyst                                      ║" >&2
+    echo "║ [default: 2]                                                 ║" >&2
     echo "╚══════════════════════════════════════════════════════════════╝" >&2
     echo >&2
-    read -p "Enter choice [6]: " choice
-    choice=${choice:-6}
+    read -p "Enter choice [2]: " choice
+    choice=${choice:-2}
     echo $choice
 }
 
@@ -2130,24 +2215,8 @@ start_l2_stack() {
             $compose_cmd --profile driver --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
         2)
-            log_info "Starting driver + proposer"
+            log_info "Starting driver + catalyst"
             $compose_cmd --profile catalyst --profile blockscout up -d  >"$temp_output" 2>&1 &
-            ;;
-        3)
-            log_info "Starting driver + proposer + spammer"
-            $compose_cmd --profile catalyst --profile spammer --profile blockscout up -d  >"$temp_output" 2>&1 &
-            ;;
-        4)
-            log_info "Starting driver + proposer + prover + spammer"
-            $compose_cmd --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
-            ;;
-        5)
-            log_info "Starting all except spammer"
-            $compose_cmd --profile driver --profile catalyst --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
-            ;;
-        *)
-            log_info "Starting all components"
-            $compose_cmd --profile driver --profile catalyst --profile spammer --profile prover --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
     esac
     
@@ -2425,8 +2494,6 @@ display_deployment_summary() {
     echo "   • L1 Explorer:   ${L1_EXPLORER:-N/A}                         "
     echo "   • L2 RPC:        ${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-N/A}}                             "
     echo "   • L2 Explorer:   ${L2_EXPLORER:-N/A}                        "
-    echo "   • L1 Relayer:    ${L1_RELAYER:-N/A}                         "
-    echo "   • L2 Relayer:    ${L2_RELAYER:-N/A}                         "
     
     if [[ -n "${DEPLOYMENT_ADDRESS:-}" ]]; then
         echo "║                                                              ║"
@@ -2707,16 +2774,16 @@ main() {
     # fi
 
     # Step 5: Start Relayers (optional)
-    local relayers_choice
-    if [[ -z "${start_relayers:-}" ]]; then
-        relayers_choice=$(prompt_relayers_selection)
-    else
-        relayers_choice=$start_relayers
-    fi
+    # local relayers_choice
+    # if [[ -z "${start_relayers:-}" ]]; then
+    #     relayers_choice=$(prompt_relayers_selection)
+    # else
+    #     relayers_choice=$start_relayers
+    # fi
     
-    if ! start_relayers "$relayers_choice" "$env_choice"; then
-        log_warning "Relayer startup had issues, but continuing..."
-    fi
+    # if ! start_relayers "$relayers_choice" "$env_choice"; then
+    #     log_warning "Relayer startup had issues, but continuing..."
+    # fi
     
     # Step 6: Verification
     verify_rpc_endpoints
