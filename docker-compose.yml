@@ -261,7 +261,7 @@ services:
     volumes:
       - ./blockscout-postgres-data:/var/lib/postgresql
     ports:
-      - ${POSTGRES_PORT}:${POSTGRES_PORT}
+      - ${POSTGRES_PORT}:5432
     environment:
       POSTGRES_DB: blockscout
       POSTGRES_USER: postgres
