@@ -1556,6 +1556,87 @@ deploy_userops_submitter_contract() {
     fi
 }
 
+
+# Deploy Safe infrastructure contracts on L1 and L2
+deploy_safe_contracts() {
+    local mode="$1"
+    local slow_mode="$2"
+    
+    if [[ "$slow_mode" != "true" ]]; then
+        slow_mode=false
+    fi
+
+    if [[ -f "$DEPLOYMENT_DIR/safe-infra.json" ]]; then
+        log_info "Safe infrastructure already deployed..."
+        return 0
+    fi
+
+    log_info "Deploying Safe infrastructure on L1 and L2..."
+    log_warning "Requires SAFE_DEPLOYER_PRIVATE_KEY with nonce 0 on both chains!"
+
+    local exit_status=0
+    local temp_output="/tmp/safe_deploy_output_$$"
+    
+    if [[ "$mode" == "debug" ]]; then
+        BROADCAST=true VERIFY=false SLOW=$slow_mode docker compose -f docker-compose-protocol.yml --profile safe-deployer up 2>&1 | tee "$temp_output"
+        exit_status=${PIPESTATUS[0]}
+    else
+        BROADCAST=true VERIFY=false SLOW=$slow_mode docker compose -f docker-compose-protocol.yml --profile safe-deployer up >"$temp_output" 2>&1 &
+        local deploy_pid=$!
+        show_progress $deploy_pid "Deploying Safe infrastructure..."
+        wait $deploy_pid
+        exit_status=$?
+    fi
+    
+    if [[ $exit_status -eq 0 ]]; then
+        log_success "Safe infrastructure deployed successfully"
+        return 0
+    else
+        log_error "Failed to deploy Safe infrastructure (exit code: $exit_status)"
+        if [[ -f "$temp_output" ]]; then
+            log_error "Deployment output saved in: $temp_output"
+        fi
+        return 1
+    fi
+}
+
+# Deploy CrossChainRelay on L2
+deploy_relay_contract() {
+    local mode="$1"
+    local slow_mode="$2"
+    
+    if [[ "$slow_mode" != "true" ]]; then
+        slow_mode=false
+    fi
+
+    log_info "Deploying CrossChainRelay on L2..."
+
+    local exit_status=0
+    local temp_output="/tmp/relay_deploy_output_$$"
+    
+    if [[ "$mode" == "debug" ]]; then
+        BROADCAST=true VERIFY=false SLOW=$slow_mode docker compose -f docker-compose-protocol.yml --profile relay-deployer up 2>&1 | tee "$temp_output"
+        exit_status=${PIPESTATUS[0]}
+    else
+        BROADCAST=true VERIFY=false SLOW=$slow_mode docker compose -f docker-compose-protocol.yml --profile relay-deployer up >"$temp_output" 2>&1 &
+        local deploy_pid=$!
+        show_progress $deploy_pid "Deploying CrossChainRelay..."
+        wait $deploy_pid
+        exit_status=$?
+    fi
+    
+    if [[ $exit_status -eq 0 ]]; then
+        log_success "CrossChainRelay deployed successfully"
+        return 0
+    else
+        log_error "Failed to deploy CrossChainRelay (exit code: $exit_status)"
+        if [[ -f "$temp_output" ]]; then
+            log_error "Deployment output saved in: $temp_output"
+        fi
+        return 1
+    fi
+}
+
 # Extract L1 deployment results from JSON file
 extract_l1_deployment_results() {
     log_info "Extracting Surge L1 SCs deployment results..."
@@ -2725,6 +2806,18 @@ main() {
         # Deploy UserOpsSubmitter contract
         if ! deploy_userops_submitter_contract "$mode_choice" $slow_mode; then
             log_error "Failed to deploy UserOpsSubmitter smart contracts"
+            exit 1
+        fi
+
+        # Deploy Safe infrastructure on L1 and L2
+        if ! deploy_safe_contracts "$mode_choice" $slow_mode; then
+            log_error "Failed to deploy Safe infrastructure"
+            exit 1
+        fi
+
+        # Deploy CrossChainRelay on L2
+        if ! deploy_relay_contract "$mode_choice" $slow_mode; then
+            log_error "Failed to deploy CrossChainRelay"
             exit 1
         fi
 
