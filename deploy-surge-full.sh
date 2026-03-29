@@ -1587,6 +1587,9 @@ deploy_relay_contract() {
         return 0
     else
         log_error "Failed to deploy CrossChainRelay (exit code: $exit_status)"
+        if [[ "$mode" == "silence" ]]; then
+            log_error "Run with debug mode for more details: --mode debug"
+        fi
         if [[ -f "$temp_output" ]]; then
             log_error "Deployment output saved in: $temp_output"
         fi

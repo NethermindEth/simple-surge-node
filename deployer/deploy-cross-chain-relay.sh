@@ -22,13 +22,12 @@ echo "╔═══════════════════════�
 echo "║  Deploying CrossChainRelay on L2                             ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 
-FOUNDRY_PROFILE=shared forge script ./script/shared/surge/DeployCrossChainRelay.s.sol:DeployCrossChainRelay \
+forge script ./script/shared/surge/DeployCrossChainRelay.s.sol:DeployCrossChainRelay \
     --fork-url $FORK_URL \
     --evm-version paris \
     $BROADCAST_ARG \
     $VERIFY_ARG \
     $SLOW_ARG \
-    $LOG_LEVEL \
     --private-key $PRIVATE_KEY
 
 echo
