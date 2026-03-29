@@ -149,7 +149,7 @@ services:
       BROADCAST: ${BROADCAST}
       VERIFY: ${VERIFY}
       SLOW: ${SLOW}
-      FORK_URL: http://surge-l2-execution:8547
+      FORK_URL: ${L2_ENDPOINT_HTTP}
       PRIVATE_KEY: ${PRIVATE_KEY}
     networks:
       - surge

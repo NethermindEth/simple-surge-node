@@ -22,6 +22,7 @@ echo "╔═══════════════════════�
 echo "║  Deploying CrossChainRelay on L2                             ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 
+# --evm-version paris: L2 does not support PUSH0 (Shanghai) or MCOPY (Cancun)
 forge script ./script/shared/surge/DeployCrossChainRelay.s.sol:DeployCrossChainRelay \
     --fork-url $FORK_URL \
     --evm-version paris \
@@ -29,6 +30,9 @@ forge script ./script/shared/surge/DeployCrossChainRelay.s.sol:DeployCrossChainR
     $VERIFY_ARG \
     $SLOW_ARG \
     --private-key $PRIVATE_KEY
+
+# Copy deployment results to /deployment
+cp ./deployments/relay.json /deployment/deployment_relay.json
 
 echo
 echo "╔══════════════════════════════════════════════════════════════╗"
