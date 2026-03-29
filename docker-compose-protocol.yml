@@ -131,37 +131,6 @@ services:
     profiles:
       - userops-submitter-deployer
 
-  surge-safe-deployer:
-    image: ${PROTOCOL_IMAGE}
-    container_name: surge-safe-deployer
-    pull_policy: always
-    volumes:
-      - ./deployer:/deployer
-      - ./deployment:/deployment
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /deployer/deploy-safe-infra.sh
-    env_file:
-      - .env
-    environment:
-      BROADCAST: ${BROADCAST}
-      VERIFY: ${VERIFY}
-      SLOW: ${SLOW}
-      VERIFY_ARG: ${VERIFY_ARG}
-      L1_FORK_URL: ${L1_ENDPOINT_HTTP}
-      L2_FORK_URL: http://surge-l2-execution:8547
-      PRIVATE_KEY: ${SAFE_DEPLOYER_PRIVATE_KEY}
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - safe-deployer
-
   surge-relay-deployer:
     image: ${PROTOCOL_IMAGE}
     container_name: surge-relay-deployer
