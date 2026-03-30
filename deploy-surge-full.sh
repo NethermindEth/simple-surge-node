@@ -2870,6 +2870,20 @@ main() {
                 fi
             fi
 
+            if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                local machine_ip
+                machine_ip=$(get_machine_ip)
+                
+                if [[ -z "$machine_ip" ]]; then
+                    log_error "Could not determine machine IP address"
+                    return 1
+                fi
+                
+                configure_remote_blockscout "$machine_ip"
+            else
+                configure_remote_blockscout "localhost"
+            fi
+
             # log_warning "Using existing chain is still a work in progress"
             # exit 0
         fi
@@ -2977,10 +2991,10 @@ main() {
     fi
 
     # Deploy Cross Chain Dex Contracts on L1 and L2
-    # if ! deploy_cross_chain_dex "$mode_choice"; then
-    #     log_error "Failed to deploy Cross Chain Dex Contracts on L1 and L2"
-    #     exit 1
-    # fi
+    if ! deploy_cross_chain_dex "$mode_choice"; then
+        log_error "Failed to deploy Cross Chain Dex Contracts on L1 and L2"
+        exit 1
+    fi
 
     # Extract L1 deployment results
     if ! extract_l1_deployment_results; then
