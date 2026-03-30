@@ -2740,11 +2740,6 @@ main() {
             exit 1
         fi
 
-        # Deploy Provers (optional)
-        if ! deploy_provers $mock_proof; then
-            log_warning "Prover deployment had issues, but continuing..."
-        fi
-
         # Generate L2 Genesis
         if ! generate_l2_genesis "$mode_choice"; then
             log_error "Failed to generate L2 genesis"
@@ -2755,6 +2750,11 @@ main() {
         if ! deploy_l1_contracts "$mode_choice" true $mock_proof $slow_mode; then
             log_error "Failed to deploy L1 smart contracts"
             exit 1
+        fi
+
+        # Deploy Provers (optional)
+        if ! deploy_provers $mock_proof; then
+            log_warning "Prover deployment had issues, but continuing..."
         fi
 
         # Deploy Multicall contract
