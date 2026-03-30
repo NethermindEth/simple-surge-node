@@ -489,6 +489,24 @@ services:
     profiles:
       - blockscout
 
+  dex:
+    build:
+      context: ./surge-taiko-mono/packages/cross-chain-dex-ui
+      dockerfile: Dockerfile.dex
+      target: dev
+    container_name: dex
+    restart: always
+    ports:
+      - 8080:5173
+    env_file:
+      - ./surge-taiko-mono/packages/cross-chain-dex-ui/.env
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - dex
+
 networks:
   surge:
     name: surge-network

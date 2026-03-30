@@ -38,7 +38,7 @@ forge script ./script/layer1/surge/DeployRealTimeSurgeL1.s.sol:DeployRealTimeSur
 cp ./deployments/deploy_l1.json /deployment/deploy_l1.json
 
 echo
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║ ✅ Surge L1 SCs deployment completed successfully            ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
+echo "============================================="
+echo " ✅ Surge L1 SCs deployment completed successfully"
+echo "============================================="
 echo

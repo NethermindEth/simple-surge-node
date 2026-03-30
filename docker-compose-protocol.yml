@@ -372,6 +372,34 @@ services:
     profiles:
       - sp1-verifier-setup
 
+  surge-cross-chain-dex-deployer:
+    image: ${PROTOCOL_IMAGE}
+    container_name: surge-cross-chain-dex-deployer
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/setup-cross-chain-dex.sh
+    env_file:
+      - .env
+    environment:
+      PRIVATE_KEY: ${PRIVATE_KEY}
+      L1_RPC: ${L1_ENDPOINT_HTTP}
+      L2_RPC: ${L2_ENDPOINT_HTTP}
+      L1_BRIDGE: ${SHASTA_BRIDGE}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - cross-chain-dex-deployer
+
 networks:
   surge:
     name: surge-network

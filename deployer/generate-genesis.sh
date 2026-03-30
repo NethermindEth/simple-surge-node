@@ -25,7 +25,7 @@ pnpm genesis:gen
 cp /app/test/genesis/data/genesis.json /deployment/surge_genesis.json
 
 echo
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║ ✅ Surge L2 genesis generation completed successfully        ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
+echo "============================================="
+echo " ✅ Surge L2 genesis generation completed successfully"
+echo "============================================="
 echo

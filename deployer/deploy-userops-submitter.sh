@@ -33,7 +33,7 @@ forge script ./script/shared/surge/DeployUserOpsSubmitter.s.sol:DeployUserOpsSub
 cp ./deployments/composability.json /deployment/composability_userops_submitter.json
 
 echo
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║ ✅ User Ops Submitter deployment completed successfully      ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
+echo "============================================="
+echo " ✅ User Ops Submitter deployment completed successfully"
+echo "============================================="
 echo

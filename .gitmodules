@@ -1,7 +1,7 @@
 [submodule "surge-taiko-mono"]
 	path = surge-taiko-mono
 	url = https://github.com/NethermindEth/surge-taiko-mono.git
-	branch = surge-alethia-real-time-driver
+	branch = main
 [submodule "ethereum-package"]
 	path = ethereum-package
 	url = https://github.com/ethpandaops/ethereum-package.git

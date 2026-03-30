@@ -6,6 +6,9 @@ readonly SCRIPT_NAME="$(basename "$0")"
 readonly DEPLOYMENT_DIR="deployment"
 readonly ETHEREUM_PACKAGE_DIR="ethereum-package"
 readonly CONFIGS_DIR="configs"
+readonly DEX_NGINX_CONF="surge-taiko-mono/packages/cross-chain-dex-ui/nginx.conf"
+readonly DEX_ENV="surge-taiko-mono/packages/cross-chain-dex-ui/.env"
+readonly DEX_DOCKERFILE="surge-taiko-mono/packages/cross-chain-dex-ui/Dockerfile.dex"
 
 # L1 Devnet
 readonly NETWORK_PARAMS="./configs/network_params.yaml"
@@ -35,6 +38,8 @@ readonly L2_DEPLOYMENT_FILE="$DEPLOYMENT_DIR/setup_l2.json"
 readonly SURGE_PROTOCOL_IMAGE="nethermind/surge-protocol:sha-91d3867"
 readonly COMPOSABILITY_MULTICALL_FILE="$DEPLOYMENT_DIR/composability_multicall.json"
 readonly COMPOSABILITY_USEROPS_SUBMITTER_FILE="$DEPLOYMENT_DIR/composability_userops_submitter.json"
+readonly CROSS_CHAIN_DEX_L1_FILE="$DEPLOYMENT_DIR/cross-chain-dex-l1.json"
+readonly CROSS_CHAIN_DEX_L2_FILE="$DEPLOYMENT_DIR/cross-chain-dex-l2.json"
 
 # Default values for command line arguments
 environment=""
@@ -846,6 +851,13 @@ configure_environment_urls() {
                     export L2_RELAYER="http://localhost:4103"
                 fi
             fi
+            if [[ -z "${L2_CATALYST:-}" ]]; then
+                if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                    export L2_CATALYST="http://$machine_ip:4545"
+                else
+                    export L2_CATALYST="http://localhost:4545"
+                fi
+            fi
             ;;
         2|"staging")
             log_info "Using Staging Environment"
@@ -1234,7 +1246,7 @@ EOF
         # Generate config.json for raiko
     cat > "$CONFIGS_DIR/config.json" << EOF
 {
-	"address": "0.0.0.0:8081",
+	"address": "0.0.0.0:8080",
 	"network": "surge_dev",
 	"concurrency_limit": 1,
 	"l1_network": "surge_dev_l1",
@@ -1566,6 +1578,11 @@ deploy_relay_contract() {
         slow_mode=false
     fi
 
+    if [[ -f "$DEPLOYMENT_DIR/deployment_relay.json" ]]; then
+        log_info "CrossChainRelay already deployed..."
+        return 0
+    fi
+
     log_info "Deploying CrossChainRelay on L2..."
 
     local exit_status=0
@@ -1587,6 +1604,46 @@ deploy_relay_contract() {
         return 0
     else
         log_error "Failed to deploy CrossChainRelay (exit code: $exit_status)"
+        if [[ "$mode" == "silence" ]]; then
+            log_error "Run with debug mode for more details: --mode debug"
+        fi
+        if [[ -f "$temp_output" ]]; then
+            log_error "Deployment output saved in: $temp_output"
+        fi
+        return 1
+    fi
+}
+
+# Deploy Cross-Chain DEX contracts on L1 and L2
+deploy_cross_chain_dex() {
+    local mode="$1"
+
+    if [[ -f "$CROSS_CHAIN_DEX_L1_FILE" && -f "$CROSS_CHAIN_DEX_L2_FILE" && -f "$DEPLOYMENT_DIR/cross_chain_dex.lock" ]]; then
+        log_info "CrossChainDex contracts already deployed..."
+        return 0
+    fi
+
+    log_info "Deploying CrossChainDex contracts..."
+
+    local exit_status=0
+    local temp_output="/tmp/cross_chain_dex_deploy_output_$$"
+
+    if [[ "$mode" == "debug" ]]; then
+        docker compose -f docker-compose-protocol.yml --profile cross-chain-dex-deployer up 2>&1 | tee "$temp_output"
+        exit_status=${PIPESTATUS[0]}
+    else
+        docker compose -f docker-compose-protocol.yml --profile cross-chain-dex-deployer up >"$temp_output" 2>&1 &
+        local deploy_pid=$!
+        show_progress $deploy_pid "Deploying CrossChainDex contracts..."
+        wait $deploy_pid
+        exit_status=$?
+    fi
+
+    if [[ $exit_status -eq 0 ]]; then
+        log_success "CrossChainDex contracts deployed successfully"
+        return 0
+    else
+        log_error "Failed to deploy CrossChainDex contracts (exit code: $exit_status)"
         if [[ "$mode" == "silence" ]]; then
             log_error "Run with debug mode for more details: --mode debug"
         fi
@@ -1714,10 +1771,14 @@ extract_l1_deployment_results() {
     # Add more as needed...
 
     # POC
-    export MULTICALL_ADDRESS=$(cat "$COMPOSABILITY_MULTICALL_FILE" | jq -r '.multicall')
-    update_env_var "$ENV_FILE" "MULTICALL_ADDRESS" "$MULTICALL_ADDRESS"
-    export USEROPS_SUBMITTER_FACTORY_ADDRESS=$(cat "$COMPOSABILITY_USEROPS_SUBMITTER_FILE" | jq -r '.userops_submitter_factory')
-    update_env_var "$ENV_FILE" "USEROPS_SUBMITTER_FACTORY_ADDRESS" "$USEROPS_SUBMITTER_FACTORY_ADDRESS"
+    if [[ -f "$COMPOSABILITY_MULTICALL_FILE" ]]; then
+        export MULTICALL_ADDRESS=$(cat "$COMPOSABILITY_MULTICALL_FILE" | jq -r '.multicall')
+        update_env_var "$ENV_FILE" "MULTICALL_ADDRESS" "$MULTICALL_ADDRESS"
+    fi
+    if [[ -f "$COMPOSABILITY_USEROPS_SUBMITTER_FILE" ]]; then
+        export USEROPS_SUBMITTER_FACTORY_ADDRESS=$(cat "$COMPOSABILITY_USEROPS_SUBMITTER_FILE" | jq -r '.userops_submitter_factory')
+        update_env_var "$ENV_FILE" "USEROPS_SUBMITTER_FACTORY_ADDRESS" "$USEROPS_SUBMITTER_FACTORY_ADDRESS"
+    fi
     
     # Real time
     export REALTIME_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.real_time_inbox')
@@ -1725,16 +1786,26 @@ extract_l1_deployment_results() {
     export ZISK_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.zisk_verifier')
     update_env_var "$ENV_FILE" "ZISK_VERIFIER" "$ZISK_VERIFIER"
 
-    update_env_var "catalyst.env" "TAIKO_INBOX_ADDRESS" "$PACAYA_TAIKO"
-    update_env_var "catalyst.env" "PRECONF_WHITELIST_ADDRESS" "$PACAYA_PRECONF_WHITELIST"
-    update_env_var "catalyst.env" "PRECONF_ROUTER_ADDRESS" "$PACAYA_PRECONF_ROUTER"
-    update_env_var "catalyst.env" "TAIKO_WRAPPER_ADDRESS" "$PACAYA_TAIKO_WRAPPER"
-    update_env_var "catalyst.env" "FORCED_INCLUSION_STORE_ADDRESS" "$PACAYA_FORCED_INCLUSION_STORE"
+    if [[ -f "$DEPLOYMENT_DIR/deployment_relay.lock" ]]; then
+        export CROSS_CHAIN_RELAY=$(cat "$DEPLOYMENT_DIR/deployment_relay.json" | jq -r '.cross_chain_relay')
+        update_env_var "$ENV_FILE" "CROSS_CHAIN_RELAY" "$CROSS_CHAIN_RELAY"
+    fi
 
-    update_env_var "catalyst.env" "SHASTA_INBOX_ADDRESS" "$SHASTA_SURGE_INBOX"
-    update_env_var "catalyst.env" "PROPOSER_MULTICALL_ADDRESS" "$MULTICALL_ADDRESS"
-    update_env_var "catalyst.env" "L1_BRIDGE_ADDRESS" "$SHASTA_BRIDGE"
-    update_env_var "catalyst.env" "USEROPS_SUBMITTER_FACTORY_ADDRESS" "$USEROPS_SUBMITTER_FACTORY_ADDRESS"
+    if [[ -f "$CROSS_CHAIN_DEX_L1_FILE" ]]; then
+        export L1_VAULT=$(jq -r '.CrossChainSwapVaultL1' "$CROSS_CHAIN_DEX_L1_FILE")
+        update_env_var "$ENV_FILE" "L1_VAULT" "$L1_VAULT"
+        export L1_TOKEN=$(jq -r '.SwapToken' "$CROSS_CHAIN_DEX_L1_FILE")
+        update_env_var "$ENV_FILE" "L1_TOKEN" "$L1_TOKEN"
+    fi
+
+    if [[ -f "$CROSS_CHAIN_DEX_L2_FILE" ]]; then
+        export L2_TOKEN=$(jq -r '.SwapTokenL2' "$CROSS_CHAIN_DEX_L2_FILE")
+        update_env_var "$ENV_FILE" "L2_TOKEN" "$L2_TOKEN"
+        export L2_DEX=$(jq -r '.SimpleDEX' "$CROSS_CHAIN_DEX_L2_FILE")
+        update_env_var "$ENV_FILE" "L2_DEX" "$L2_DEX"
+        export L2_VAULT=$(jq -r '.CrossChainSwapVaultL2' "$CROSS_CHAIN_DEX_L2_FILE")
+        update_env_var "$ENV_FILE" "L2_VAULT" "$L2_VAULT"
+    fi
 
     log_success "L1 deployment results extracted and updated in .env"
 }
@@ -1775,7 +1846,6 @@ generate_l2_genesis() {
     NEW_TIMESTAMP=$(($(date +%s) + 60))
 
     update_env_var "$ENV_FILE" "SHASTA_TIMESTAMP_SEC" "$NEW_TIMESTAMP"
-    update_env_var "catalyst.env" "SHASTA_TIMESTAMP_SEC" "$NEW_TIMESTAMP"
 
     HEX_TIMESTAMP=$(printf "0x%X" "$NEW_TIMESTAMP")
 
@@ -2485,6 +2555,95 @@ EOF
     log_success "Bridge UI configs generated successfully"
 }
 
+# Prepare DEX UI configs
+prepare_dex_ui_configs() {
+    local l1_endpoint="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-}}"
+    local l2_endpoint="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-}}"
+
+    log_info "Preparing DEX UI configs..."
+
+    cp "Dockerfile.dex" "$DEX_DOCKERFILE"
+
+    cat > "$DEX_NGINX_CONF" << 'EOF'
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Prevent nginx from issuing absolute http:// redirects (e.g. trailing-slash 301s)
+    # when TLS is terminated upstream (the pod only speaks HTTP internally).
+    absolute_redirect off;
+
+    # Proxy /api/builder to the builder service.
+    # BUILDER_URL is injected at container start via envsubst (set it as a
+    # runtime env var, e.g. BUILDER_URL=https://catalyst.realtime.surge.wtf).
+    # Using a variable for proxy_pass forces per-request DNS resolution so the
+    # container starts cleanly even if the upstream is temporarily unreachable.
+    location /api/builder/ {
+        resolver          1.1.1.1 8.8.8.8 valid=30s ipv6=off;
+        set $builder_upstream ${BUILDER_URL};
+        proxy_pass              $builder_upstream/;
+        proxy_ssl_server_name   on;
+        proxy_redirect          off;
+        proxy_set_header        Host              catalyst.realtime.surge.wtf;
+        proxy_set_header        X-Real-IP         $remote_addr;
+        proxy_set_header        X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+    }
+
+    # Serve static assets with long-lived caching (Vite content-hashes filenames)
+    location ~* \.(js|css|png|svg|ico|woff2?)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # SPA fallback — all other routes serve index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+EOF
+
+    cat > "$DEX_ENV" << EOF
+# L1 RPC URL (for reading balances, creating smart wallet)
+VITE_L1_RPC_URL=${l1_endpoint}
+
+# L2 RPC URL (for reading DEX reserves)
+VITE_L2_RPC_URL=${l2_endpoint}
+
+# Builder RPC URL (for sending UserOps)
+VITE_BUILDER_RPC_URL=${L2_CATALYST}
+
+# Chain ID for L1
+VITE_CHAIN_ID=${L1_CHAIN_ID}
+
+# L1 chain display config (defaults: Gnosis / xDAI if not set)
+VITE_L1_CHAIN_NAME=Surge Devnet
+VITE_L1_NATIVE_SYMBOL=ETH
+VITE_L1_NATIVE_NAME=Ether
+
+# Safe contract addresses (same on both chains)
+VITE_SAFE_PROXY_FACTORY=${SAFE_PROXY_FACTORY}
+VITE_SAFE_SINGLETON=${SAFE_SINGLETON}
+VITE_SAFE_MULTISEND=${SAFE_MULTISEND}
+VITE_SAFE_FALLBACK_HANDLER=${SAFE_FALLBACK_HANDLER}
+
+# Contract addresses (update after deployment)
+VITE_L1_VAULT=${L1_VAULT}
+VITE_USDC_TOKEN=${SWAP_TOKEN}
+VITE_USDC_DECIMALS=${TOKEN_DECIMALS}
+VITE_SIMPLE_DEX=${L2_DEX}
+
+# WalletConnect Project ID (get from https://cloud.walletconnect.com)
+VITE_WALLETCONNECT_PROJECT_ID=${WALLETCONNECT_PROJECT_ID}
+EOF
+    
+    # Generate configuredCustomTokens.json (empty array for now)
+}
+
 # Verify RPC endpoints
 verify_rpc_endpoints() {
     log_info "Verifying RPC endpoints..."
@@ -2578,29 +2737,29 @@ main() {
     # fi
     
     # Step 1: Environment Selection
-    local env_choice
-    if [[ -z "${environment:-}" ]]; then
-        env_choice=$(prompt_environment_selection)
-    else
-        case "$environment" in
-            1|"devnet") env_choice=1 ;;
-            2|"staging") env_choice=2 ;;
-            3|"testnet") env_choice=3 ;;
-            *) log_error "Invalid environment: $environment"; exit 1 ;;
-        esac
-    fi
+    local env_choice="devnet"
+    # if [[ -z "${environment:-}" ]]; then
+    #     env_choice=$(prompt_environment_selection)
+    # else
+    #     case "$environment" in
+    #         1|"devnet") env_choice=1 ;;
+    #         2|"staging") env_choice=2 ;;
+    #         3|"testnet") env_choice=3 ;;
+    #         *) log_error "Invalid environment: $environment"; exit 1 ;;
+    #     esac
+    # fi
     
-    # Map env_choice to name
-    local env_name
-    case "$env_choice" in
-        1|"devnet") env_name="devnet" ;;
-        2|"staging") env_name="staging" ;;
-        3|"testnet") env_name="testnet" ;;
-        *) log_error "Invalid environment choice: $env_choice"; exit 1 ;;
-    esac
+    # # Map env_choice to name
+    # local env_name
+    # case "$env_choice" in
+    #     1|"devnet") env_name="devnet" ;;
+    #     2|"staging") env_name="staging" ;;
+    #     3|"testnet") env_name="testnet" ;;
+    #     *) log_error "Invalid environment choice: $env_choice"; exit 1 ;;
+    # esac
 
     # Load environment file
-    if ! check_env_file "$env_name"; then
+    if ! check_env_file "devnet"; then
         log_error "Failed to load environment file, please ensure the .env file is present"
         exit 1
     fi
@@ -2635,19 +2794,19 @@ main() {
     fi
     
     # Step 2: L1 Infrastructure Decision
-    local deploy_devnet_choice
+    local deploy_devnet_choice=1
     local slow_mode
     if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
-        # Devnet: prompt for deploy devnet or use existing
-        if [[ -z "${deploy_devnet:-}" ]]; then
-            deploy_devnet_choice=$(prompt_l1_deployment_mode)
-        else
-            case "$deploy_devnet" in
-                true|"true"|"0"|0) deploy_devnet_choice=0 ;;
-                false|"false"|"1"|1) deploy_devnet_choice=1 ;;
-                *) log_error "Invalid deploy-devnet: $deploy_devnet"; exit 1 ;;
-            esac
-        fi
+        # # Devnet: prompt for deploy devnet or use existing
+        # if [[ -z "${deploy_devnet:-}" ]]; then
+        #     deploy_devnet_choice=$(prompt_l1_deployment_mode)
+        # else
+        #     case "$deploy_devnet" in
+        #         true|"true"|"0"|0) deploy_devnet_choice=0 ;;
+        #         false|"false"|"1"|1) deploy_devnet_choice=1 ;;
+        #         *) log_error "Invalid deploy-devnet: $deploy_devnet"; exit 1 ;;
+        #     esac
+        # fi
         
         if [[ "$deploy_devnet_choice" == "0" ]]; then
             # Option A: Deploy new L1 devnet
@@ -2769,12 +2928,6 @@ main() {
             exit 1
         fi
 
-        # Deploy CrossChainRelay on L2
-        if ! deploy_relay_contract "$mode_choice" $slow_mode; then
-            log_error "Failed to deploy CrossChainRelay"
-            exit 1
-        fi
-
         # # Deploy Pacaya contracts
         # if ! deploy_pacaya_contracts "$mode_choice" $slow_mode; then
         #     log_error "Failed to deploy Pacaya smart contracts"
@@ -2797,8 +2950,6 @@ main() {
         #     log_error "Failed to accept ownership"
         #     exit 1
         # fi
-
-
     fi
     
     # Step 4: L2 Stack Deployment (ALL environments)
@@ -2811,6 +2962,24 @@ main() {
     
     if ! start_l2_stack "$stack_choice"; then
         log_error "Failed to start L2 stack"
+        exit 1
+    fi
+
+    # Deploy CrossChainRelay on L2
+    if ! deploy_relay_contract "$mode_choice" $slow_mode; then
+        log_error "Failed to deploy CrossChainRelay"
+        exit 1
+    fi
+
+    # Deploy Cross Chain Dex Contracts on L1 and L2
+    # if ! deploy_cross_chain_dex "$mode_choice"; then
+    #     log_error "Failed to deploy Cross Chain Dex Contracts on L1 and L2"
+    #     exit 1
+    # fi
+
+    # Extract L1 deployment results
+    if ! extract_l1_deployment_results; then
+        log_error "Failed to extract L1 deployment results"
         exit 1
     fi
 
@@ -2831,6 +3000,15 @@ main() {
     # if ! start_relayers "$relayers_choice" "$env_choice"; then
     #     log_warning "Relayer startup had issues, but continuing..."
     # fi
+
+    # Start DEX UI
+    prepare_dex_ui_configs
+    log_info "Starting DEX UI..."
+    if ! docker compose -f docker-compose.yml --profile dex up -d --build >/dev/null 2>&1; then
+        log_warning "Failed to start DEX UI"
+    else
+        log_success "DEX UI started successfully"
+    fi
     
     # Step 6: Verification
     verify_rpc_endpoints
