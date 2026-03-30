@@ -7,7 +7,7 @@ FROM node:20-slim AS dev
 WORKDIR /app
 
 COPY package.json ./
-RUN npm install
+RUN npm install --ignore-scripts
 
 # Source is mounted as a volume at runtime for hot-module reload;
 # the COPY here is a fallback when running without a mount.
@@ -45,7 +45,7 @@ ARG VITE_L2_CHAIN_ID
 WORKDIR /app
 
 COPY package.json ./
-RUN npm install
+RUN npm install --ignore-scripts
 
 COPY . .
 
