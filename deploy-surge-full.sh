@@ -858,6 +858,13 @@ configure_environment_urls() {
                     export L2_CATALYST="http://localhost:4545"
                 fi
             fi
+            if [[ -z "${L2_DEX_UI:-}" ]]; then
+                if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                    export L2_DEX_UI="http://$machine_ip:8080"
+                else
+                    export L2_DEX_UI="http://localhost:8080"
+                fi
+            fi
             ;;
         2|"staging")
             log_info "Using Staging Environment"
@@ -2696,9 +2703,10 @@ display_deployment_summary() {
     echo "║                                                              ║"
     echo "║  Key Service Endpoints:                                      ║"
     echo "   • L1 RPC:        ${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-N/A}}                              "
-    echo "   • L1 Explorer:   ${L1_EXPLORER:-N/A}                         "
     echo "   • L2 RPC:        ${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-N/A}}                             "
+    echo "   • L2 Catalyst:   ${L2_CATALYST:-N/A}                        "
     echo "   • L2 Explorer:   ${L2_EXPLORER:-N/A}                        "
+    echo "   • L2 Dex UI:     ${L2_DEX_UI:-N/A}                        "
     
     if [[ -n "${DEPLOYMENT_ADDRESS:-}" ]]; then
         echo "║                                                              ║"
