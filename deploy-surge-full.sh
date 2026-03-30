@@ -1322,7 +1322,7 @@ retrieve_guest_data() {
         zisk)
             if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
                 log_info "Retrieving guest data for ZISK - $RAIKO_HOST_ZKVM"
-                export ZISK_BATCH_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].zisk.batch_vkey')
+                export ZISK_BATCH_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.zisk.batch_vkey')
             fi
             ;;
         sp1)
