@@ -131,6 +131,36 @@ services:
     profiles:
       - userops-submitter-deployer
 
+  surge-relay-deployer:
+    image: ${PROTOCOL_IMAGE}
+    container_name: surge-relay-deployer
+    pull_policy: always
+    volumes:
+      - ./deployer:/deployer
+      - ./deployment:/deployment
+    entrypoint:
+      - /bin/sh
+      - -c
+      - /deployer/deploy-cross-chain-relay.sh
+    env_file:
+      - .env
+    environment:
+      FOUNDRY_PROFILE: shared
+      BROADCAST: ${BROADCAST}
+      VERIFY: ${VERIFY}
+      SLOW: ${SLOW}
+      FORK_URL: ${L2_ENDPOINT_HTTP}
+      PRIVATE_KEY: ${PRIVATE_KEY}
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    profiles:
+      - relay-deployer
+
   surge-genesis-generator:
     image: ${PROTOCOL_IMAGE}
     container_name: surge-genesis-generator
