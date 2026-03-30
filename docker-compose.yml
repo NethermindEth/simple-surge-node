@@ -190,6 +190,7 @@ services:
       RAIKO_URL: ${RAIKO_HOST_ZKVM}
       RAIKO_L2_NETWORK: surge_dev
       RAIKO_L1_NETWORK: surge_dev_l1
+      FORK: realtime
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
