@@ -3022,11 +3022,11 @@ main() {
         return 0
     fi
 
-    # Deploy CrossChainRelay on L2
-    if ! deploy_relay_contract "$mode_choice" $slow_mode; then
-        log_error "Failed to deploy CrossChainRelay"
-        exit 1
-    fi
+    # # Deploy CrossChainRelay on L2
+    # if ! deploy_relay_contract "$mode_choice" $slow_mode; then
+    #     log_error "Failed to deploy CrossChainRelay"
+    #     exit 1
+    # fi
 
     # Deploy Cross Chain Dex Contracts on L1 and L2
     if ! deploy_cross_chain_dex "$mode_choice"; then
