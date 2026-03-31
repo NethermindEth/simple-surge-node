@@ -2354,7 +2354,7 @@ start_l2_stack() {
         if [[ "$stack_option" == "3" ]]; then
             log_info "Waiting for L2 to produce blocks..."
             sleep 60
-            log_info "L2 at block $(cast block-number --rpc-url $L2_ENDPOINT_HTTP)"
+            log_info "L2 at block $(cast block-number --rpc-url $l2_rpc_ui)"
         fi
         return 0
     else
