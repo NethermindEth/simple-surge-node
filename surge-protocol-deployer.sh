@@ -201,7 +201,6 @@ generate_prover_chain_spec() {
   {
     "name": "surge_dev_l1",
     "chain_id": $L1_CHAINID,
-    "max_spec_id": "CANCUN",
     "hard_forks": {},
     "eip_1559_constants": {
       "base_fee_change_denominator": "0x8",
@@ -221,7 +220,6 @@ generate_prover_chain_spec() {
   {
     "name": "surge_dev",
     "chain_id": $L2_CHAINID,
-    "max_spec_id": "PACAYA",
     "hard_forks": {
         "ONTAKE": {
             "Block": 1
@@ -277,10 +275,19 @@ generate_prover_env_vars() {
     export SGX_INSTANCE_ID="0"
   fi
 
+  # Set SGX_GETH_INSTANCE_ID from the JSON file
+  if [ -f "deployment/sgx_geths_instances.json" ]; then
+    export SGX_GETH_INSTANCE_ID=$(cat deployment/sgx_geth_instances.json | jq -r '.sgx_instance_id // "0"')
+  else
+    export SGX_GETH_INSTANCE_ID="0"
+  fi
+
   echo ">>>>>>"
   echo "export SGX_INSTANCE_ID=$SGX_INSTANCE_ID"
   echo "export SGX_ONTAKE_INSTANCE_ID=${SGX_INSTANCE_ID}"
   echo "export SGX_PACAYA_INSTANCE_ID=${SGX_INSTANCE_ID}"
+  echo "export SGX_GETH_INSTANCE_ID=${SGX_GETH_INSTANCE_ID}"
+  echo 
   echo "export GROTH16_VERIFIER_ADDRESS=$RISC0_GROTH16_VERIFIER"
   echo "export SP1_VERIFIER_ADDRESS=$SUCCINCT_VERIFIER"
   echo ">>>>>>"
@@ -583,6 +590,9 @@ deploy_provers() {
   if [ "$RUNNING_PROVERS" = "true" ]; then
     generate_prover_chain_spec
 
+    # Generate prover env vars before setting up the verifiers
+    generate_prover_env_vars
+
     if [ ! -f "deployment/sgx_reth_verifier_setup.lock" ]; then
       # Prompt user for running SGX Raiko
       echo
@@ -594,6 +604,13 @@ deploy_provers() {
       RUNNING_SGX_RAIKO=${running_sgx_raiko:-false}
 
       if [ "$RUNNING_SGX_RAIKO" = "true" ]; then
+        # Save the instance ID before registration
+        if [ -f "deployment/sgx_instances.json" ]; then
+          PREV_SGX_RETH_INSTANCE_ID=$(cat deployment/sgx_instances.json | jq -r '.sgx_instance_id // "0"')
+        else
+          PREV_SGX_RETH_INSTANCE_ID="0"
+        fi
+
         # Retrieve guest data from prover endpoint
         retrieve_guest_data sgx_reth
         if [ "$MR_ENCLAVE_RETH" = "" ] && [ "$MR_ENCLAVE" = "" ]; then
@@ -636,6 +653,27 @@ deploy_provers() {
         fi
 
         SGX_VERIFIER_ADDRESS=${SGX_RETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_RETH} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile sgx-reth-verifier-setup up
+
+        # Check if instance ID changed after registration
+        if [ -f "deployment/sgx_instances.json" ]; then
+          NEW_SGX_RETH_INSTANCE_ID=$(cat deployment/sgx_instances.json | jq -r '.sgx_instance_id // "0"')
+          
+          if [ "$PREV_SGX_RETH_INSTANCE_ID" != "$NEW_SGX_RETH_INSTANCE_ID" ]; then
+            echo
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "  ⚠️  SGX RETH Instance ID has changed after registration       "
+            echo "║══════════════════════════════════════════════════════════════║"
+            echo "  Previous Instance ID: $PREV_SGX_RETH_INSTANCE_ID              "
+            echo "  New Instance ID:      $NEW_SGX_RETH_INSTANCE_ID               "
+            echo "║                                                              ║"
+            echo "║ Please update your prover .env values with the new IDs:      ║"
+            echo "  export SGX_INSTANCE_ID=$NEW_SGX_RETH_INSTANCE_ID"
+            echo "  export SGX_ONTAKE_INSTANCE_ID=$NEW_SGX_RETH_INSTANCE_ID"
+            echo "  export SGX_PACAYA_INSTANCE_ID=$NEW_SGX_RETH_INSTANCE_ID"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            echo
+          fi
+        fi
       fi
     fi
 
@@ -652,6 +690,13 @@ deploy_provers() {
       RUNNING_SGX_GAIKO=${running_sgx_gaiko:-false}
 
       if [ "$RUNNING_SGX_GAIKO" = "true" ]; then
+        # Save the instance ID before registration
+        if [ -f "deployment/sgx_geth_instances.json" ]; then
+          PREV_SGX_GETH_INSTANCE_ID=$(cat deployment/sgx_geth_instances.json | jq -r '.sgx_instance_id // "0"')
+        else
+          PREV_SGX_GETH_INSTANCE_ID="0"
+        fi
+
         retrieve_guest_data sgx_geth
         if [ "$MR_ENCLAVE_GETH" = "" ] && [ "$MR_ENCLAVE" = "" ]; then
           echo
@@ -693,6 +738,25 @@ deploy_provers() {
         fi
 
         SGX_VERIFIER_ADDRESS=${SGX_GETH_VERIFIER} AUTOMATA_PROXY_ADDRESS=${AUTOMATA_DCAP_ATTESTATION_GETH} BROADCAST=true VERIFY=false docker compose -f docker-compose-protocol.yml --profile sgx-geth-verifier-setup up
+
+        # Check if instance ID changed after registration
+        if [ -f "deployment/sgx_geth_instances.json" ]; then
+          NEW_SGX_GETH_INSTANCE_ID=$(cat deployment/sgx_geth_instances.json | jq -r '.sgx_instance_id // "0"')
+          
+          if [ "$PREV_SGX_GETH_INSTANCE_ID" != "$NEW_SGX_GETH_INSTANCE_ID" ]; then
+            echo
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "  ⚠️  SGX GETH Instance ID has changed after registration       "
+            echo "║══════════════════════════════════════════════════════════════║"
+            echo "  Previous Instance ID: $PREV_SGX_GETH_INSTANCE_ID              "
+            echo "  New Instance ID:      $NEW_SGX_GETH_INSTANCE_ID               "
+            echo "║                                                              ║"
+            echo "  Please update your prover configuration with the new ID:"
+            echo "  export SGX_GETH_INSTANCE_ID=$NEW_SGX_GETH_INSTANCE_ID"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            echo
+          fi
+        fi
       fi
     fi
 
@@ -771,8 +835,6 @@ deploy_provers() {
       fi
     fi
 
-    # Generate prover env vars once set up the verifiers
-    generate_prover_env_vars
   fi
 }
 
