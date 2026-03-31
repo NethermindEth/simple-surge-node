@@ -15,6 +15,7 @@ ARGS="${ARGS} \
     --l1.beacon ${L1_BEACON_HTTP} \
     --l2.auth http://l2-nethermind-execution-client:${L2_ENGINE_API_PORT} \
     --fork realtime \
+    --genesis.l1Height ${GENESIS_L1_HEIGHT} \
     --realtimeInbox ${REALTIME_INBOX} \
     --taikoAnchor ${TAIKO_ANCHOR} \
     --preconfirmation.whitelist ${SHASTA_PRECONF_WHITELIST} \
