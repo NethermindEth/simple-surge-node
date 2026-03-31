@@ -3002,6 +3002,26 @@ main() {
         exit 1
     fi
 
+    # Prompt to continue DEX deployments TODO: Remove this after testing
+    local dex_choice
+    if [[ -z "${dex_option:-}" ]]; then
+        echo "╔══════════════════════════════════════════════════════════════╗" >&2
+        echo "║ Do you want to continue with DEX deployments?                ║" >&2
+        echo "║ 0 for Yes                                                    ║" >&2
+        echo "║ 1 for No                                                     ║" >&2
+        echo "╚══════════════════════════════════════════════════════════════╝" >&2
+        echo >&2
+        read -p "Enter choice [0]: " dex_choice
+        dex_choice=${dex_choice:-0}
+    else
+        dex_choice=$dex_option
+    fi
+
+    if [[ "$dex_choice" == "1" ]]; then
+        log_info "Skipping DEX deployments"
+        return 0
+    fi
+
     # Deploy CrossChainRelay on L2
     if ! deploy_relay_contract "$mode_choice" $slow_mode; then
         log_error "Failed to deploy CrossChainRelay"
