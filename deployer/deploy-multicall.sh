@@ -32,7 +32,7 @@ forge script ./script/shared/surge/DeployMulticall.s.sol:DeployMulticall \
 cp ./deployments/composability.json /deployment/composability_multicall.json
 
 echo
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║ ✅ Multicall contract deployment completed successfully      ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
+echo "============================================="
+echo " ✅ Multicall contract deployment completed successfully"
+echo "============================================="
 echo

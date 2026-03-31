@@ -28,9 +28,9 @@ set -e
 # Configuration
 # ---------------------------------------------------------------
 
-DEPLOY_DIR="/deployment"
-L1_DEPLOY_JSON="$DEPLOY_DIR/cross-chain-dex-l1.json"
-L2_DEPLOY_JSON="$DEPLOY_DIR/cross-chain-dex-l2.json"
+DEPLOYMENT_DIR="/deployment"
+L1_DEPLOY_JSON="$DEPLOYMENT_DIR/cross-chain-dex-l1.json"
+L2_DEPLOY_JSON="$DEPLOYMENT_DIR/cross-chain-dex-l2.json"
 
 # ---------------------------------------------------------------
 # Derived values

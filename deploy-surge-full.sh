@@ -2871,7 +2871,7 @@ main() {
                 esac
             fi
 
-            slow_mode=true
+            slow_mode=false
 
             # Verify L1 RPC endpoints (use external endpoint for health check from host)
             if [[ -n "${L1_ENDPOINT_HTTP:-}" ]]; then
