@@ -2275,6 +2275,7 @@ prompt_stack_option_selection() {
     echo "║ Enter L2 stack option:                                       ║" >&2
     echo "║ 1 for driver only                                            ║" >&2
     echo "║ 2 for driver + catalyst                                      ║" >&2
+    echo "║ 3 for driver + catalyst + spammer                            ║" >&2
     echo "║ [default: 2]                                                 ║" >&2
     echo "╚══════════════════════════════════════════════════════════════╝" >&2
     echo >&2
@@ -2336,6 +2337,10 @@ start_l2_stack() {
             log_info "Starting driver + catalyst"
             $compose_cmd --profile catalyst --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
+        3)
+            log_info "Starting driver + catalyst + spammer"
+            $compose_cmd --profile catalyst --profile spammer --profile blockscout up -d  >"$temp_output" 2>&1 &
+            ;;
     esac
     
     local docker_pid=$!
@@ -2346,6 +2351,11 @@ start_l2_stack() {
     
     if [[ $exit_status -eq 0 ]]; then
         log_success "L2 stack started successfully"
+        if [[ "$stack_option" == "3" ]]; then
+            log_info "Waiting for L2 to produce blocks..."
+            sleep 60
+            log_info "L2 at block $(cast block-number --rpc-url $L2_ENDPOINT_HTTP)"
+        fi
         return 0
     else
         log_error "Failed to start L2 stack (exit code: $exit_status)"
