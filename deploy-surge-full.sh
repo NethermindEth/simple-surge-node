@@ -729,9 +729,9 @@ extract_l1_deployment_results() {
 
     # Extract L1 deployment results from deploy_l1.json
     export SHASTA_BRIDGE; SHASTA_BRIDGE=$(_jq_required "$L1_DEPLOYMENT_FILE" '.bridge' "SHASTA_BRIDGE") || return 1
-    export SHASTA_BRIDGED_ERC1155; SHASTA_BRIDGED_ERC1155=$(_jq_required "$L1_DEPLOYMENT_FILE" '.bridged_erc1155' "SHASTA_BRIDGED_ERC1155") || return 1
-    export SHASTA_BRIDGED_ERC20; SHASTA_BRIDGED_ERC20=$(_jq_required "$L1_DEPLOYMENT_FILE" '.bridged_erc20' "SHASTA_BRIDGED_ERC20") || return 1
-    export SHASTA_BRIDGED_ERC721; SHASTA_BRIDGED_ERC721=$(_jq_required "$L1_DEPLOYMENT_FILE" '.bridged_erc721' "SHASTA_BRIDGED_ERC721") || return 1
+    # export SHASTA_BRIDGED_ERC1155; SHASTA_BRIDGED_ERC1155=$(_jq_required "$L1_DEPLOYMENT_FILE" '.bridged_erc1155' "SHASTA_BRIDGED_ERC1155") || return 1
+    # export SHASTA_BRIDGED_ERC20; SHASTA_BRIDGED_ERC20=$(_jq_required "$L1_DEPLOYMENT_FILE" '.bridged_erc20' "SHASTA_BRIDGED_ERC20") || return 1
+    # export SHASTA_BRIDGED_ERC721; SHASTA_BRIDGED_ERC721=$(_jq_required "$L1_DEPLOYMENT_FILE" '.bridged_erc721' "SHASTA_BRIDGED_ERC721") || return 1
     export SHASTA_EMPTY_IMPL; SHASTA_EMPTY_IMPL=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.empty_impl')
     export SHASTA_ERC1155_VAULT; SHASTA_ERC1155_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc1155_vault')
     export SHASTA_ERC20_VAULT; SHASTA_ERC20_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc20_vault')
@@ -739,15 +739,13 @@ extract_l1_deployment_results() {
     export SHASTA_PRECONF_WHITELIST; SHASTA_PRECONF_WHITELIST=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.preconf_whitelist')
     export SHASTA_RISC0_GROTH16_VERIFIER; SHASTA_RISC0_GROTH16_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.risc0_groth16_verifier')
     export SHASTA_RISC0_VERIFIER; SHASTA_RISC0_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.risc0_verifier')
-    export SHASTA_PROOF_VERIFIER_DUMMY; SHASTA_PROOF_VERIFIER_DUMMY=$(_jq_required "$L1_DEPLOYMENT_FILE" '.proof_verifier_dummy' "SHASTA_PROOF_VERIFIER_DUMMY") || return 1
+    # export SHASTA_PROOF_VERIFIER_DUMMY; SHASTA_PROOF_VERIFIER_DUMMY=$(_jq_required "$L1_DEPLOYMENT_FILE" '.proof_verifier_dummy' "SHASTA_PROOF_VERIFIER_DUMMY") || return 1
     export SHASTA_SHARED_RESOLVER; SHASTA_SHARED_RESOLVER=$(_jq_required "$L1_DEPLOYMENT_FILE" '.shared_resolver' "SHASTA_SHARED_RESOLVER") || return 1
     export SHASTA_SIGNAL_SERVICE; SHASTA_SIGNAL_SERVICE=$(_jq_required "$L1_DEPLOYMENT_FILE" '.signal_service' "SHASTA_SIGNAL_SERVICE") || return 1
     export SHASTA_SP1_VERIFIER; SHASTA_SP1_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.sp1_verifier')
     export SHASTA_SUCCINCT_VERIFIER; SHASTA_SUCCINCT_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.succinct_verifier')
-    # export SHASTA_SURGE_INBOX; SHASTA_SURGE_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox')
     export SHASTA_SURGE_INBOX_IMPL; SHASTA_SURGE_INBOX_IMPL=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox_impl')
     export SHASTA_SURGE_VERIFIER; SHASTA_SURGE_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_verifier')
-
     export SHASTA_SURGE_INBOX; SHASTA_SURGE_INBOX=$(_jq_required "$L1_DEPLOYMENT_FILE" '.real_time_inbox' "SHASTA_SURGE_INBOX") || return 1
 
     echo
