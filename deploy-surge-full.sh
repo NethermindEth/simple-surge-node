@@ -629,7 +629,7 @@ deploy_relay_contract() {
 deploy_cross_chain_dex() {
     local mode="$1"
 
-    if [[ -f "$CROSS_CHAIN_DEX_L1_FILE" && -f "$CROSS_CHAIN_DEX_L2_FILE" && -f "$DEPLOYMENT_DIR/cross_chain_dex.lock" ]]; then
+    if [[ -f "$CROSS_CHAIN_DEX_L1_FILE" && -f "$CROSS_CHAIN_DEX_L2_FILE" && -f "$DEPLOYMENT_DIR/cross_chain_dex.lock" && -f "$DEPLOYMENT_DIR/link_vaults_l1.lock" && -f "$DEPLOYMENT_DIR/link_vaults_l2.lock" && -f "$DEPLOYMENT_DIR/setup_l2.lock" ]]; then
         log_info "CrossChainDex contracts already deployed..."
         return 0
     fi
