@@ -155,7 +155,7 @@ if [[ ! -f "$DEPLOYMENT_DIR/link_vaults_l1.lock" ]]; then
         --rpc-url "$L1_RPC" > /dev/null
 
     touch "$DEPLOYMENT_DIR/link_vaults_l1.lock"
-else
+fi
 
 if [[ ! -f "$DEPLOYMENT_DIR/link_vaults_l2.lock" ]]; then
     echo "Setting L1 vault on L2 vault..."
