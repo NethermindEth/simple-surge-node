@@ -1,7 +1,6 @@
 services:
-  # L2 deployer
   surge-l2-deployer:
-    image: nethermind/surge-protocol:sha-93f0d57
+    image: ${PROTOCOL_IMAGE}
     container_name: surge-l2-deployer
     pull_policy: always
     volumes:
@@ -12,7 +11,7 @@ services:
         condition: service_healthy
       taiko_client_driver:
         condition: service_started
-      taiko_client_proposer:
+      catalyst:
         condition: service_started
     entrypoint:
       - /bin/sh
@@ -21,12 +20,13 @@ services:
     env_file:
       - .env
     environment:
-      L1_BRIDGE: ${BRIDGE}
-      L1_SIGNAL_SERVICE: ${SIGNAL_SERVICE}
-      L1_ERC1155_VAULT: ${ERC1155_VAULT}
-      L1_ERC20_VAULT: ${ERC20_VAULT}
-      L1_ERC721_VAULT: ${ERC721_VAULT}
-      L1_OWNER: ${L1_OWNER}
+      L1_CHAINID: ${L1_CHAIN_ID}
+      L1_BRIDGE: ${SHASTA_BRIDGE}
+      L1_SIGNAL_SERVICE: ${SHASTA_SIGNAL_SERVICE}
+      L1_ERC1155_VAULT: ${SHASTA_ERC1155_VAULT}
+      L1_ERC20_VAULT: ${SHASTA_ERC20_VAULT}
+      L1_ERC721_VAULT: ${SHASTA_ERC721_VAULT}
+      L1_OWNER: ${PUBLIC_KEY}
       FORK_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
       BROADCAST: ${BROADCAST}
       FOUNDRY_PROFILE: layer2
@@ -48,7 +48,7 @@ services:
 
   # L2 stack components
   nethermind_execution_client:
-    image: nethermindeth/nethermind:v25.0.0-surge
+    image: ${NETHERMIND_CLIENT_IMAGE}
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
     pull_policy: always
@@ -90,7 +90,7 @@ services:
       start_period: 10s
     profiles:
       - driver
-      - proposer
+      - catalyst
       - prover
       - spammer
       - blockscout
@@ -100,7 +100,7 @@ services:
       - relayer-api
 
   taiko_client_driver:
-    image: nethermind/taiko-client:v25.1.2
+    image: ${TAIKO_CLIENT_IMAGE}
     container_name: l2-taiko-consensus-client
     restart: unless-stopped
     pull_policy: always
@@ -109,6 +109,7 @@ services:
         condition: service_healthy
         restart: true
     volumes:
+      - ./driver-data:/driver-data
       - ./execution-data:/data/surge
       - ./static/jwtsecret:/tmp/jwt/jwtsecret
       - ./script:/script
@@ -133,7 +134,7 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - driver
-      - proposer
+      - catalyst
       - prover
       - spammer
       - blockscout
@@ -142,9 +143,55 @@ services:
       - relayer-l2
       - relayer-api
 
-  taiko_client_proposer:
-    image: nethermind/taiko-client:v25.1.2
-    container_name: l2-taiko-proposer-client
+  web3signer-l1:
+    container_name: web3signer-l1
+    image: consensys/web3signer:25.11.0
+    restart: unless-stopped
+    pull_policy: missing
+    volumes:
+      - ./configs/web3signer:/config:ro
+    networks:
+      - surge
+    command:
+      - '--key-store-path=/config'
+      - '--http-host-allowlist=*'
+      - 'eth1'
+      - '--chain-id=${L1_CHAIN_ID}'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/upcheck || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    profiles:
+      - catalyst
+
+  web3signer-l2:
+    container_name: web3signer-l2
+    image: consensys/web3signer:25.11.0
+    restart: unless-stopped
+    pull_policy: missing
+    volumes:
+      - ./configs/web3signer:/config:ro
+    networks:
+      - surge
+    command:
+      - '--key-store-path=/config'
+      - '--http-host-allowlist=*'
+      - 'eth1'
+      - '--chain-id=${L2_CHAIN_ID}'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/upcheck || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    profiles:
+      - catalyst
+
+  catalyst:
+    image: ${CATALYST_IMAGE}
+    container_name: l2-catalyst-node
     restart: unless-stopped
     pull_policy: always
     depends_on:
@@ -154,40 +201,42 @@ services:
       taiko_client_driver:
         condition: service_started
     volumes:
-      - ./execution-data:/data/taiko-nethermind
-      - ./static/jwtsecret:/tmp/jwt/jwtsecret
+      - ./static/jwtsecret:/tmp/jwtsecret
       - ./script:/script
     ports:
-      - 6061:6061
+      - 9898:9898
     env_file:
       - .env
     environment:
-      TAIKO_INBOX: ${TAIKO_INBOX}
-      L1_SIGNAL_SERVICE: ${SIGNAL_SERVICE}
-      L1_BRIDGE: ${BRIDGE}
-      TAIKO_WRAPPER: ${TAIKO_WRAPPER}
-      FORCED_INCLUSION_STORE: ${FORCED_INCLUSION_STORE}
-      SURGE_PROPOSER_WRAPPER: ${SURGE_PROPOSER_WRAPPER}
+      TAIKO_GETH_RPC_URL: ${L2_ENDPOINT_WS}
+      TAIKO_GETH_AUTH_RPC_URL: ${L2_AUTH_HTTP}
+      L1_RPC_URLS: ${L1_ENDPOINT_WS}
+      L1_BEACON_URL: ${L1_BEACON_HTTP}
+      TAIKO_INBOX_ADDRESS: ${SHASTA_SURGE_INBOX}
+      TAIKO_ANCHOR_ADDRESS: ${TAIKO_ANCHOR}
+      SHASTA_INBOX_ADDRESS: ${SHASTA_SURGE_INBOX}
+      ANCHOR_ADDRESS: ${TAIKO_ANCHOR}
+      PRECONF_WHITELIST_ADDRESS: ${SHASTA_PRECONF_WHITELIST}
+      PRECONF_ROUTER_ADDRESS: ${PACAYA_PRECONF_ROUTER}
+      TAIKO_WRAPPER_ADDRESS: ${PACAYA_TAIKO_WRAPPER}
+      FORCED_INCLUSION_STORE_ADDRESS: ${PACAYA_FORCED_INCLUSION_STORE}
+      TAIKO_BRIDGE_L2_ADDRESS: ${SHASTA_BRIDGE}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    entrypoint:
-      - /bin/sh
-      - -c
-      - "/script/start-proposer.sh"
     networks:
       - surge
     labels:
       com.kurtosistech.custom.metrics_enabled: "true"
-      com.kurtosistech.custom.metrics_port: "6061"
+      com.kurtosistech.custom.metrics_port: "9898"
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
-      - proposer
+      - catalyst
       - spammer
       - l2-deployer
 
   taiko_client_prover_relayer:
-    image: nethermind/taiko-client:v25.1.2
+    image: ${TAIKO_CLIENT_IMAGE}
     container_name: l2-taiko-prover-relayer-client
     restart: unless-stopped
     pull_policy: always
@@ -222,6 +271,54 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - prover
+  
+  raiko:
+    image: ${RAIKO_IMAGE}
+    container_name: l2-raiko-zk-client
+    restart: unless-stopped
+    pull_policy: always
+    volumes:
+      - ./configs:/raiko/config
+    ports:
+      - 8082:8080
+    env_file:
+      - .env
+    environment:
+      RAIKO_CONF_DIR: "/raiko/config"
+      BASE_CONFIG_FILE: "config.json"
+      BASE_CHAINSPEC_FILE: "chain_spec_list_default.json"
+      REDIS_URL: "redis://redis-zk:6379"
+      RUST_LOG: "info"
+      MOCK_KEY: ${PRIVATE_KEY}
+      ZK: "true"
+    entrypoint:
+      - /opt/raiko/bin/raiko-host
+      - --config-path=/raiko/config/config.json
+      - --chain-spec-path=/raiko/config/chain_spec_list_default.json
+    networks:
+      - surge
+    profiles:
+      - prover
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  
+  redis-zk:
+    image: redis
+    container_name: redis-zk
+    ports:
+      - "6379:6379"
+    profiles:
+      - prover
+    networks:
+      - surge
+    labels:
+      com.kurtosistech.custom.logs_enabled: "true"
+      com.kurtosistech.custom.custom_network: "devnet"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   tx-spammer:
     image: ethpandaops/spamoor:master
@@ -233,12 +330,12 @@ services:
         condition: service_healthy
       taiko_client_driver:
         condition: service_started
-      taiko_client_proposer:
+      catalyst:
         condition: service_started
     volumes:
       - ./static/spamoor:/config
     ports:
-      - 8080:8080
+      - 8083:8080
     entrypoint:
       - ./spamoor-daemon
     command:
@@ -390,7 +487,7 @@ services:
     environment:
       PORT: ${BLOCKSCOUT_FRONTEND_PORT}
       NEXT_PUBLIC_NETWORK_ICON: https://docs.surge.wtf/img/favicon.ico
-      NEXT_PUBLIC_NETWORK_ID: ${L2_CHAINID}
+      NEXT_PUBLIC_NETWORK_ID: ${L2_CHAIN_ID}
       NEXT_PUBLIC_APP_PROTOCOL: http
       HOSTNAME: 0.0.0.0
       NEXT_PUBLIC_AD_BANNER_PROVIDER: none

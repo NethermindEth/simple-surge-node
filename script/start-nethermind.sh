@@ -34,9 +34,9 @@ ARGS="${ARGS} \
     --Sync.SnapSync=false \
     --HealthChecks.Enabled=true \
     --Pruning.PruningBoundary=1000 \
-    --Surge.L1EthApiEndpoint=${L1_ENDPOINT_HTTP} \
-    --Surge.TaikoInboxAddress=${TAIKO_INBOX} \
     --log=${EL_LOG_LEVEL} \
+    --Surge.L1EthApiEndpoint=${L1_ENDPOINT_HTTP} \
+    --Surge.TaikoInboxAddress=${SHASTA_SURGE_INBOX} \
     --logger-config=/nethermind/NLog.config"
 
 echo "Starting Nethermind Execution Client with args: ${ARGS}"

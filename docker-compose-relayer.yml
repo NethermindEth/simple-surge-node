@@ -54,7 +54,7 @@ services:
       - relayer-init
 
   relayer-l1-processor:
-    image: nethermind/surge-relayer:v25.1.1
+    image: nethermind/surge-relayer:surge-shasta
     container_name: relayer-l1-processor
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]
@@ -76,7 +76,7 @@ services:
       - --queue.port=${RABBITMQ_PORT}
       - --queue.username=${RABBITMQ_USER}
       - --processorPrivateKey=${PROCESSOR_PRIVATE_KEY}
-      - --srcSignalServiceAddress=${SIGNAL_SERVICE}
+      - --srcSignalServiceAddress=${SHASTA_SIGNAL_SERVICE}
       - --srcRpcUrl=http://host.docker.internal:32003
       - --destBridgeAddress=${L2_BRIDGE}
       - --destERC20VaultAddress=${L2_ERC20_VAULT}
@@ -100,7 +100,7 @@ services:
       - relayer-l1
 
   relayer-l1-indexer:
-    image: nethermind/surge-relayer:v25.1.1
+    image: nethermind/surge-relayer:surge-shasta
     container_name: relayer-l1-indexer
     restart: always
     env_file:
@@ -123,9 +123,10 @@ services:
       - --queue.password=${RABBITMQ_PASSWORD}
       - --queue.port=${RABBITMQ_PORT}
       - --queue.username=${RABBITMQ_USER}
-      - --srcBridgeAddress=${BRIDGE}
-      - --srcTaikoAddress=${TAIKO_INBOX}
-      - --srcSignalServiceAddress=${SIGNAL_SERVICE}
+      - --srcBridgeAddress=${SHASTA_BRIDGE}
+      - --srcTaikoAddress=${SHASTA_SURGE_INBOX}
+      - --srcSignalServiceAddress=${SHASTA_SIGNAL_SERVICE}
+      - --srcSignalServiceForkRouterAddress=${SHASTA_SIGNAL_SERVICE}
       - --srcRpcUrl=http://host.docker.internal:32003
       - --destBridgeAddress=${L2_BRIDGE}
       - --destRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
@@ -145,7 +146,7 @@ services:
       - relayer-l1
 
   relayer-l1-api:
-    image: nethermind/surge-relayer:v25.1.1
+    image: nethermind/surge-relayer:surge-shasta
     container_name: relayer-l1-api
     restart: always
     env_file:
@@ -181,7 +182,7 @@ services:
       - relayer-api
 
   relayer-l2-api:
-    image: nethermind/surge-relayer:v25.1.1
+    image: nethermind/surge-relayer:surge-shasta
     container_name: relayer-l2-api
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]
@@ -201,7 +202,7 @@ services:
       - --db.username=${MYSQL_USER}
       - --srcRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
       - --destRpcUrl=http://host.docker.internal:32003
-      - --destTaikoAddress=${TAIKO_INBOX}
+      - --destTaikoAddress=${SHASTA_SURGE_INBOX}
       - --processingFeeMultiplier=${PROCESSING_FEE_MULTIPLIER}
       - --metrics.port=6066
     networks:
@@ -215,7 +216,7 @@ services:
       - relayer-api
 
   relayer-l2-processor:
-    image: nethermind/surge-relayer:v25.1.1
+    image: nethermind/surge-relayer:surge-shasta
     container_name: relayer-l2-processor
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]
@@ -239,11 +240,11 @@ services:
       - --processorPrivateKey=${PROCESSOR_PRIVATE_KEY}
       - --srcSignalServiceAddress=${L2_SIGNAL_SERVICE}
       - --srcRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
-      - --destBridgeAddress=${BRIDGE}
-      - --destERC20VaultAddress=${ERC20_VAULT}
-      - --destERC721Address=${ERC721_VAULT}
-      - --destERC1155Address=${ERC1155_VAULT}
-      - --destTaikoAddress=${TAIKO_INBOX}
+      - --destBridgeAddress=${SHASTA_BRIDGE}
+      - --destERC20VaultAddress=${SHASTA_ERC20_VAULT}
+      - --destERC721Address=${SHASTA_ERC721_VAULT}
+      - --destERC1155Address=${SHASTA_ERC1155_VAULT}
+      - --destTaikoAddress=${SHASTA_SURGE_INBOX}
       - --destRpcUrl=http://host.docker.internal:32003
       - --confirmations=${CONFIRMATIONS_BEFORE_PROCESSING:-0}
       - --headerSyncInterval=${HEADER_SYNC_INTERVAL_IN_SECONDS:-2}
@@ -261,7 +262,7 @@ services:
       - relayer-l2
 
   relayer-l2-indexer:
-    image: nethermind/surge-relayer:v25.1.1
+    image: nethermind/surge-relayer:surge-shasta
     container_name: relayer-l2-indexer
     restart: always
     entrypoint: ["/usr/local/bin/relayer"]
@@ -282,8 +283,9 @@ services:
       - --queue.username=${RABBITMQ_USER}
       - --srcBridgeAddress=${L2_BRIDGE}
       - --srcSignalServiceAddress=${L2_SIGNAL_SERVICE}
+      - --srcSignalServiceForkRouterAddress=${L2_SIGNAL_SERVICE}
       - --srcRpcUrl=http://nethermind_execution_client:${L2_HTTP_PORT}
-      - --destBridgeAddress=${BRIDGE}
+      - --destBridgeAddress=${SHASTA_BRIDGE}
       - --destRpcUrl=http://host.docker.internal:32003
       - --maxNumGoroutines=${NUM_GOROUTINES}
       - --blockBatchSize=${BLOCK_BATCH_SIZE}

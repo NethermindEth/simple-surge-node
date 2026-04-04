@@ -3,21 +3,29 @@
 set -eou pipefail
 
 if [ "$ENABLE_PROVER" = "true" ]; then
-    ARGS="--verbosity 4
+    ARGS="--verbosity 3
         --l1.ws ${L1_ENDPOINT_WS}
         --l2.ws ws://l2-nethermind-execution-client:${L2_WS_PORT}
         --l2.http http://l2-nethermind-execution-client:${L2_HTTP_PORT}
-        --taikoInbox ${TAIKO_INBOX}
+        --l2.auth http://l2-nethermind-execution-client:${L2_ENGINE_API_PORT}
+        --jwtSecret /tmp/jwt/jwtsecret
+        --shastaInbox ${SHASTA_SURGE_INBOX}
+        --pacayaInbox ${PACAYA_TAIKO}
         --taikoAnchor ${TAIKO_ANCHOR}
+        --taikoToken 0x0000000000000000000000000000000000000000
         --l1.proverPrivKey ${L1_PROVER_PRIVATE_KEY}
-        --raiko.host.sgx ${SGX_RAIKO_HOST}
+        --raiko.host.zkvm1 ${RAIKO_HOST_ZKVM}
+        --raiko.zkvm.proofType1 sp1
+        --raiko.host.zkvm2 ${RAIKO_HOST_ZKVM}
+        --raiko.zkvm.proofType2 risc0
+        --prover.localProposerAddresses ${OPERATOR_PUBLIC_KEY}
         --prover.sgx.batchSize ${SGX_BATCH_SIZE}
         --prover.zkvm.batchSize ${ZKVM_BATCH_SIZE}
         --metrics true
         --metrics.port 6062"
 
-    if [ -z "$SGX_RAIKO_HOST" ]; then
-        echo "Error: SGX_RAIKO_HOST must be non-empty"
+    if [ -z "$RAIKO_HOST_ZKVM" ]; then
+        echo "Error: RAIKO_HOST_ZKVM must be non-empty"
         exit 1
     fi
 
@@ -36,10 +44,6 @@ if [ "$ENABLE_PROVER" = "true" ]; then
         exit 1
     fi
     
-    if [ -n "$RAIKO_HOST_ZKVM" ]; then
-        ARGS="${ARGS} --raiko.host.zkvm ${RAIKO_HOST_ZKVM}"
-    fi
-
     if [ -n "$RAIKO_REQUEST_TIMEOUT" ]; then
         ARGS="${ARGS} --raiko.requestTimeout ${RAIKO_REQUEST_TIMEOUT}"
     fi
