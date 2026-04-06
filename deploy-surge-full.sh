@@ -234,7 +234,19 @@ validate_prerequisites() {
         log_error "Please install them first"
         return 1
     fi
-    
+
+    # Verify docker compose v2.1+ (required for --profile support)
+    local compose_version
+    compose_version=$(docker compose version --short 2>/dev/null || echo "0.0.0")
+    local compose_major compose_minor
+    compose_major=$(echo "$compose_version" | cut -d. -f1)
+    compose_minor=$(echo "$compose_version" | cut -d. -f2)
+    if [[ "$compose_major" -lt 2 ]] || [[ "$compose_major" -eq 2 && "$compose_minor" -lt 1 ]]; then
+        log_error "docker compose >= 2.1 required (found: $compose_version)"
+        return 1
+    fi
+    log_info "docker compose version: $compose_version"
+
     # Create required directories
     for dir in "$DEPLOYMENT_DIR" "$CONFIGS_DIR"; do
         if [[ ! -d "$dir" ]]; then
@@ -1751,8 +1763,18 @@ extract_l1_deployment_results() {
     echo " SURGE_INBOX: $SHASTA_SURGE_INBOX "
     echo " BRIDGE: $SHASTA_BRIDGE "
     echo " SIGNAL_SERVICE: $SHASTA_SIGNAL_SERVICE "
+    echo " RISC0_VERIFIER: $SHASTA_RISC0_VERIFIER "
+    echo " SP1_VERIFIER: $SHASTA_SP1_VERIFIER "
+    echo " PROOF_VERIFIER_DUMMY: $SHASTA_PROOF_VERIFIER_DUMMY "
+    echo " SURGE_VERIFIER: $SHASTA_SURGE_VERIFIER "
     echo ">>>>>>"
     echo
+    if [[ -f "$L1_DEPLOYMENT_FILE" ]]; then
+        echo "=== deploy_l1.json ==="
+        cat "$L1_DEPLOYMENT_FILE"
+        echo ""
+        echo "=== end deploy_l1.json ==="
+    fi
 
     log_info "Updating .env with extracted values..."
 
