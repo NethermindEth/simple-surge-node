@@ -2832,16 +2832,16 @@ main() {
     local deploy_devnet_choice=1
     local slow_mode
     if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
-        # # Devnet: prompt for deploy devnet or use existing
-        # if [[ -z "${deploy_devnet:-}" ]]; then
-        #     deploy_devnet_choice=$(prompt_l1_deployment_mode)
-        # else
-        #     case "$deploy_devnet" in
-        #         true|"true"|"0"|0) deploy_devnet_choice=0 ;;
-        #         false|"false"|"1"|1) deploy_devnet_choice=1 ;;
-        #         *) log_error "Invalid deploy-devnet: $deploy_devnet"; exit 1 ;;
-        #     esac
-        # fi
+        # Devnet: prompt for deploy devnet or use existing
+        if [[ -z "${deploy_devnet:-}" ]]; then
+            deploy_devnet_choice=$(prompt_l1_deployment_mode)
+        else
+            case "$deploy_devnet" in
+                true|"true"|"0"|0) deploy_devnet_choice=0 ;;
+                false|"false"|"1"|1) deploy_devnet_choice=1 ;;
+                *) log_error "Invalid deploy-devnet: $deploy_devnet"; exit 1 ;;
+            esac
+        fi
         
         if [[ "$deploy_devnet_choice" == "0" ]]; then
             # Option A: Deploy new L1 devnet
