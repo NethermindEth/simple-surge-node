@@ -854,8 +854,10 @@ configure_environment_urls() {
             if [[ -z "${L2_CATALYST:-}" ]]; then
                 if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
                     export L2_CATALYST="http://$machine_ip:4545"
+                    export L2_CATALYST_DOCKER="http://host.docker.internal:4545"
                 else
                     export L2_CATALYST="http://localhost:4545"
+                    export L2_CATALYST_DOCKER="http://host.docker.internal:4545"
                 fi
             fi
             if [[ -z "${L2_DEX_UI:-}" ]]; then
@@ -2622,7 +2624,8 @@ VITE_L1_RPC_URL=${l1_endpoint}
 VITE_L2_RPC_URL=${l2_endpoint}
 
 # Builder RPC URL (for sending UserOps)
-VITE_BUILDER_RPC_URL=${L2_CATALYST}
+VITE_BUILDER_RPC_URL=${L2_CATALYST_DOCKER}
+VITE_BUILDER_API_URL=${L2_CATALYST_DOCKER}
 
 # Chain ID for L1
 VITE_CHAIN_ID=${L1_CHAIN_ID}
