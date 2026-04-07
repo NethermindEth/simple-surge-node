@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # =============================================================================
 # Cross-Chain DEX Full Deployment Script
@@ -28,9 +28,9 @@ set -e
 # Configuration
 # ---------------------------------------------------------------
 
-DEPLOY_DIR="/deployment"
-L1_DEPLOY_JSON="$DEPLOY_DIR/cross-chain-dex-l1.json"
-L2_DEPLOY_JSON="$DEPLOY_DIR/cross-chain-dex-l2.json"
+DEPLOYMENT_DIR="/deployment"
+L1_DEPLOY_JSON="$DEPLOYMENT_DIR/cross-chain-dex-l1.json"
+L2_DEPLOY_JSON="$DEPLOYMENT_DIR/cross-chain-dex-l2.json"
 
 # ---------------------------------------------------------------
 # Derived values
@@ -74,26 +74,28 @@ echo ""
 # Step 1: Deploy L1 contracts
 # ---------------------------------------------------------------
 
-echo "============================================="
-echo " Step 1/4: Deploying L1 contracts"
-echo "============================================="
-echo ""
-
-export FOUNDRY_PROFILE="layer1"
-
-forge script ./script/layer1/surge/cross-chain-dex/DeployCrossChainDexL1.s.sol:DeployCrossChainDexL1 \
-    --fork-url "$L1_RPC" \
-    $BROADCAST_ARG \
-    $LOG_LEVEL \
-    --private-key "$PRIVATE_KEY"
-
-if [ "$DRY_RUN" = "true" ]; then
+if [[ ! -f "$L1_DEPLOY_JSON" ]]; then
+    echo "============================================="
+    echo " Step 1/4: Deploying L1 contracts"
+    echo "============================================="
     echo ""
-    echo "DRY RUN: Skipping remaining steps (L2 deploy, linking, verification)"
-    exit 0
-fi
 
-cp deployments/cross-chain-dex-l1.json "$L1_DEPLOY_JSON"
+    export FOUNDRY_PROFILE="layer1"
+
+    forge script ./script/layer1/surge/cross-chain-dex/DeployCrossChainDexL1.s.sol:DeployCrossChainDexL1 \
+        --fork-url "$L1_RPC" \
+        $BROADCAST_ARG \
+        $LOG_LEVEL \
+        --private-key "$PRIVATE_KEY"
+
+    if [ "$DRY_RUN" = "true" ]; then
+        echo ""
+        echo "DRY RUN: Skipping remaining steps (L2 deploy, linking, verification)"
+        exit 0
+    fi
+
+    cp deployments/cross-chain-dex-l1.json "$L1_DEPLOY_JSON"
+fi
 
 # Parse L1 deployment output
 L1_VAULT=$(jq -r '.CrossChainSwapVaultL1' "$L1_DEPLOY_JSON")
@@ -108,20 +110,23 @@ echo ""
 # Step 2: Deploy L2 contracts
 # ---------------------------------------------------------------
 
-echo "============================================="
-echo " Step 2/4: Deploying L2 contracts"
-echo "============================================="
-echo ""
+if [[ ! -f "$L2_DEPLOY_JSON" ]]; then
 
-export FOUNDRY_PROFILE="layer2"
+    echo "============================================="
+    echo " Step 2/4: Deploying L2 contracts"
+    echo "============================================="
+    echo ""
 
-forge script ./script/layer2/surge/cross-chain-dex/DeployCrossChainDexL2.s.sol:DeployCrossChainDexL2 \
-    --fork-url "$L2_RPC" \
-    $BROADCAST_ARG \
-    $LOG_LEVEL \
-    --private-key "$PRIVATE_KEY"
+    export FOUNDRY_PROFILE="layer2"
 
-cp deployments/cross-chain-dex-l2.json "$L2_DEPLOY_JSON"
+    forge script ./script/layer2/surge/cross-chain-dex/DeployCrossChainDexL2.s.sol:DeployCrossChainDexL2 \
+        --fork-url "$L2_RPC" \
+        $BROADCAST_ARG \
+        $LOG_LEVEL \
+        --private-key "$PRIVATE_KEY"
+
+    cp deployments/cross-chain-dex-l2.json "$L2_DEPLOY_JSON"
+fi
 
 # Parse L2 deployment output
 L2_VAULT=$(jq -r '.CrossChainSwapVaultL2' "$L2_DEPLOY_JSON")
@@ -143,18 +148,23 @@ echo " Step 3/4: Linking vaults"
 echo "============================================="
 echo ""
 
-echo "Setting L2 vault on L1 vault..."
-cast send "$L1_VAULT" "setL2Vault(address)" "$L2_VAULT" \
-    --private-key "$PRIVATE_KEY" \
-    --rpc-url "$L1_RPC" > /dev/null
+if [[ ! -f "$DEPLOYMENT_DIR/link_vaults_l1.lock" ]]; then
+    echo "Setting L2 vault on L1 vault..."
+    cast send "$L1_VAULT" "setL2Vault(address)" "$L2_VAULT" \
+        --private-key "$PRIVATE_KEY" \
+        --rpc-url "$L1_RPC" > /dev/null
 
-echo "Setting L1 vault on L2 vault..."
-cast send "$L2_VAULT" "setL1Vault(address)" "$L1_VAULT" \
-    --private-key "$PRIVATE_KEY" \
-    --rpc-url "$L2_RPC" > /dev/null
+    touch "$DEPLOYMENT_DIR/link_vaults_l1.lock"
+fi
 
-echo "  Done."
-echo ""
+if [[ ! -f "$DEPLOYMENT_DIR/link_vaults_l2.lock" ]]; then
+    echo "Setting L1 vault on L2 vault..."
+    cast send "$L2_VAULT" "setL1Vault(address)" "$L1_VAULT" \
+        --private-key "$PRIVATE_KEY" \
+        --rpc-url "$L2_RPC" > /dev/null
+
+    touch "$DEPLOYMENT_DIR/link_vaults_l2.lock"
+fi
 
 # ---------------------------------------------------------------
 # Step 4: Verify
@@ -212,6 +222,32 @@ if [ "$ERRORS" -gt 0 ]; then
 fi
 
 touch "$DEPLOYMENT_DIR/cross_chain_dex.lock"
+
+# ---------------------------------------------------------------
+# Step 5: Setup L2
+# ---------------------------------------------------------------
+
+if [[ ! -f "$DEPLOYMENT_DIR/setup_l2.lock" ]]; then
+    # Register L1 Bridge on L2 Shared Resolver
+    cast send $SHASTA_SHARED_RESOLVER \
+    "registerAddress(uint256,bytes32,address)" \
+    $L1_CHAIN_ID \
+    $(cast format-bytes32-string "bridge") \
+    $SHASTA_BRIDGE \
+    --private-key $PRIVATE_KEY \
+    --rpc-url $L2_RPC
+
+    # Register L1 Signal Service on L2 Shared Resolver
+    cast send $SHASTA_SHARED_RESOLVER \
+    "registerAddress(uint256,bytes32,address)" \
+    $L1_CHAIN_ID \
+    $(cast format-bytes32-string "signal_service") \
+    $SHASTA_SIGNAL_SERVICE \
+    --private-key $PRIVATE_KEY \
+    --rpc-url $L2_RPC
+
+    touch "$DEPLOYMENT_DIR/setup_l2.lock"
+fi
 
 # ---------------------------------------------------------------
 # Summary

@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# Load shared helper functions (logging, URL utils, config helpers, etc.)
+source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+
 # Directories
 readonly SCRIPT_NAME="$(basename "$0")"
 readonly DEPLOYMENT_DIR="deployment"
@@ -59,29 +62,6 @@ mode=""
 force=""
 # verify_key_only=""
 
-# Colors for output
-readonly RED='\033[0;31m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[1;33m'
-readonly BLUE='\033[0;34m'
-readonly NC='\033[0m' # No Color
-
-# Logging functions
-log_info() {
-    echo -e "\n${BLUE}[INFO]${NC} $1"
-}
-
-log_success() {
-    echo -e "\n${GREEN}[SUCCESS]${NC} $1"
-}
-
-log_warning() {
-    echo -e "\n${YELLOW}[WARNING]${NC} $1"
-}
-
-log_error() {
-    echo -e "\n${RED}[ERROR]${NC} $1" >&2
-}
 
 # Show usage help
 show_help() {
@@ -1035,46 +1015,6 @@ run_kurtosis() {
     fi
 }
 
-# Check L1 network health
-check_l1_health() {
-    local rpc_url="$1"
-    local beacon_url="${2:-}"
-    
-    log_info "Checking L1 network health..."
-    
-    local el_healthy=false
-    local cl_healthy=false
-    
-    # Check Execution Layer
-    if curl -s "$rpc_url" -X POST -H "Content-Type: application/json" \
-        --data '{"jsonrpc":"2.0","id":0,"method":"eth_syncing","params":[]}' \
-        | jq -r '.result == false' >/dev/null 2>&1; then
-        log_success "Execution Layer is synced"
-        el_healthy=true
-    else
-        log_warning "Execution Layer is not synced or unreachable"
-    fi
-    
-    # Check Consensus Layer (if beacon URL provided)
-    if [[ -n "$beacon_url" ]]; then
-        if curl -s "$beacon_url/lighthouse/syncing" \
-            | jq -r '.data == "Synced"' >/dev/null 2>&1; then
-            log_success "Beacon Node is synced"
-            cl_healthy=true
-        else
-            log_warning "Beacon Node is not synced or unreachable"
-        fi
-    fi
-    
-    if [[ "$el_healthy" == true ]]; then
-        log_success "L1 network is healthy and ready"
-        return 0
-    else
-        log_warning "L1 network may still be starting up. Check again in a few minutes."
-        return 1
-    fi
-}
-
 # Deploy L1 devnet (Option A)
 deploy_l1_devnet() {
     local deployment_choice="$1"
@@ -1157,199 +1097,6 @@ cleanup() {
 
 # Set trap for cleanup on exit
 trap cleanup EXIT
-
-# Generate prover chain spec list JSON
-generate_prover_chain_spec() {
-    log_info "Generating prover chain spec list json..."
-
-    local genesis_time
-    local beacon_endpoint="${L1_BEACON_HTTP_EXTERNAL:-${L1_BEACON_HTTP:-http://localhost:33001}}"
-    if ! genesis_time=$(curl -s "${beacon_endpoint}/eth/v1/beacon/genesis" | jq -r '.data.genesis_time' 2>/dev/null); then
-        log_warning "Failed to retrieve genesis time, using default value 0"
-        genesis_time=0
-    fi
-
-    # Use docker-internal endpoints for chain spec (used by containers)
-    local l1_rpc_docker="${L1_ENDPOINT_HTTP_DOCKER:-http://host.docker.internal:32003}"
-    local l1_beacon_docker="${L1_BEACON_HTTP_DOCKER:-http://host.docker.internal:33001}"
-    local l2_rpc_docker="${L2_ENDPOINT_HTTP_DOCKER:-http://host.docker.internal:8547}"
-
-    # Generate chain spec list
-    cat > "$CONFIGS_DIR/chain_spec_list_default.json" << EOF
-[
-  {
-    "name": "surge_dev_l1",
-    "chain_id": $L1_CHAIN_ID,
-    "max_spec_id": "CANCUN",
-    "hard_forks": {},
-    "eip_1559_constants": {
-      "base_fee_change_denominator": "0x8",
-      "base_fee_max_increase_denominator": "0x8",
-      "base_fee_max_decrease_denominator": "0x8",
-      "elasticity_multiplier": "0x2"
-    },
-    "l1_contract": {},
-    "l2_contract": null,
-    "rpc": "$l1_rpc_docker",
-    "beacon_rpc": "$l1_beacon_docker",
-    "verifier_address_forks": {},
-    "genesis_time": $genesis_time,
-    "seconds_per_slot": 12,
-    "is_taiko": false
-  },
-  {
-    "name": "surge_dev",
-    "chain_id": $L2_CHAIN_ID,
-    "max_spec_id": "PACAYA",
-    "hard_forks": {
-        "ONTAKE": {
-            "Block": 1
-        },
-        "PACAYA": {
-            "Block": 1
-        },
-        "REALTIME": {
-            "Block": 1
-        }
-    },
-    "eip_1559_constants": {
-      "base_fee_change_denominator": "0x8",
-      "base_fee_max_increase_denominator": "0x8",
-      "base_fee_max_decrease_denominator": "0x8",
-      "elasticity_multiplier": "0x2"
-    },
-    "l1_contract": {
-      "SHASTA": "$REALTIME_INBOX",
-      "PACAYA": "$PACAYA_TAIKO"
-    },
-    "l2_contract": "$TAIKO_ANCHOR",
-    "rpc": "$l2_rpc_docker",
-    "beacon_rpc": null,
-    "verifier_address_forks": {
-      "ONTAKE": {
-        "SP1": "$PACAYA_SP1_RETH_VERIFIER",
-        "RISC0": "$PACAYA_RISC0_RETH_VERIFIER"
-      },
-      "PACAYA": {
-        "SP1": "$PACAYA_SP1_RETH_VERIFIER",
-        "RISC0": "$PACAYA_RISC0_RETH_VERIFIER"
-      },
-      "SHASTA": {
-        "SP1": "$PACAYA_SP1_RETH_VERIFIER",
-        "RISC0": "$PACAYA_RISC0_RETH_VERIFIER",
-        "ZISK": "$ZISK_VERIFIER"
-      },
-      "REALTIME": {
-        "SP1": "$PACAYA_SP1_RETH_VERIFIER",
-        "RISC0": "$PACAYA_RISC0_RETH_VERIFIER",
-        "ZISK": "$ZISK_VERIFIER"
-      }
-    },
-    "genesis_time": 0,
-    "seconds_per_slot": 1,
-    "is_taiko": true
-  }
-]
-EOF
-
-        # Generate config.json for raiko
-    cat > "$CONFIGS_DIR/config.json" << EOF
-{
-	"address": "0.0.0.0:8080",
-	"network": "surge_dev",
-	"concurrency_limit": 1,
-	"l1_network": "surge_dev_l1",
-	"cache_path": "/tmp/raiko/",
-	"prover": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-	"graffiti": "8008500000000000000000000000000000000000000000000000000000000000",
-	"proof_type": "sp1",
-	"blob_proof_type": "proof_of_equivalence",
-	"redis_url": "redis://redis-zk:6379",
-	"redis_ttl": 3600,
-	"enable_redis_pool": false,
-	"sgx": {
-		"instance_ids": {
-			"ONTAKE": 0,
-			"PACAYA": 0
-		},
-		"setup": false,
-		"bootstrap": false,
-		"prove": true
-	},
-	"sgxgeth": {
-		"instance_ids": {
-			"PACAYA": 0
-		},
-		"setup": false,
-		"bootstrap": false,
-		"prove": true
-	},
-	"tdx": {
-		"instance_ids": {
-			"ONTAKE": 0,
-			"PACAYA": 0,
-			"SHASTA": 0
-		},
-		"bootstrap": false,
-		"prove": true
-	},
-	"zisk": {
-		"batch_snark": true
-	},
-	"risc0": {
-		"boundless": false,
-		"bonsai": false,
-		"snark": true,
-		"profile": false,
-		"execution_po2": 22
-	},
-	"sp1": {
-		"recursion": "core",
-		"prover": "local",
-		"verify": true
-	},
-	"native": {
-		"json_guest_input": null
-	},
-	"queue_limit": 1000,
-	"api_keys": "",
-	"ballot_zk": "{\"Sp1\":[1, 0]}",
-	"ballot_sgx": "{\"Sgx\":[1, 0]}"
-}
-EOF
-
-    log_success "Prover chain spec list json and config json generated successfully"
-    log_info "Saved to: $CONFIGS_DIR/chain_spec_list_default.json and $CONFIGS_DIR/config.json"
-    log_info "Please copy the json files above to set up the prover"
-}
-
-# Retrieve guest data from prover endpoints
-retrieve_guest_data() {
-    local prover_type="$1"
-    
-    case "$prover_type" in
-        zisk)
-            if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
-                log_info "Retrieving guest data for ZISK - $RAIKO_HOST_ZKVM"
-                export ZISK_BATCH_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.zisk.batch_vkey')
-            fi
-            ;;
-        sp1)
-            if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
-                log_info "Retrieving guest data for SP1 - $RAIKO_HOST_ZKVM"
-                export SP1_BLOCK_PROVING_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].sp1.block_program_hash')
-                export SP1_AGGREGATION_PROGRAM_VKEY=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].sp1.aggregation_program_hash')
-            fi
-            ;;
-        risc0)
-            if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
-                log_info "Retrieving guest data for RISC0 - $RAIKO_HOST_ZKVM"
-                export RISC0_AGGREGATION_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].risc0.aggregation_program_hash')
-                export RISC0_BLOCK_PROVING_IMAGE_ID=$(curl -s "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].risc0.block_program_hash')
-            fi
-            ;;
-    esac
-}
 
 # Deploy Pacaya smart contracts
 deploy_pacaya_contracts() {
@@ -1627,7 +1374,7 @@ deploy_relay_contract() {
 deploy_cross_chain_dex() {
     local mode="$1"
 
-    if [[ -f "$CROSS_CHAIN_DEX_L1_FILE" && -f "$CROSS_CHAIN_DEX_L2_FILE" && -f "$DEPLOYMENT_DIR/cross_chain_dex.lock" ]]; then
+    if [[ -f "$CROSS_CHAIN_DEX_L1_FILE" && -f "$CROSS_CHAIN_DEX_L2_FILE" && -f "$DEPLOYMENT_DIR/cross_chain_dex.lock" && -f "$DEPLOYMENT_DIR/link_vaults_l1.lock" && -f "$DEPLOYMENT_DIR/link_vaults_l2.lock" && -f "$DEPLOYMENT_DIR/setup_l2.lock" ]]; then
         log_info "CrossChainDex contracts already deployed..."
         return 0
     fi
@@ -1666,33 +1413,33 @@ deploy_cross_chain_dex() {
 # Extract L1 deployment results from JSON file
 extract_l1_deployment_results() {
     log_info "Extracting Surge L1 SCs deployment results..."
-    
+
     if [[ -f "$PACAYA_DEPLOYMENT_FILE" ]]; then
         # Extract L1 deployment results from deploy_l1_pacaya.json
-        export PACAYA_AUTOMATA_DCAP_ATTESTATION=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.automata_dcap_attestation')
-        export PACAYA_BRIDGE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.bridge')
-        export PACAYA_ERC1155_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc1155_vault')
-        export PACAYA_ERC20_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc20_vault')
-        export PACAYA_ERC721_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc721_vault')
-        export PACAYA_FORCED_INCLUSION_STORE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.forced_inclusion_store')
-        export PACAYA_MAINNET_TAIKO=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.mainnet_taiko')
-        export PACAYA_OP_GETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.op_geth_verifier')
-        export PACAYA_OP_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.op_verifier')
-        export PACAYA_PRECONF_ROUTER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.preconf_router')
-        export PACAYA_PRECONF_WHITELIST=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.preconf_whitelist')
-        export PACAYA_PROOF_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.proof_verifier')
-        export PACAYA_PROVER_SET=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.prover_set')
-        export PACAYA_RISC0_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.risc0_reth_verifier')
-        export PACAYA_ROLLUP_ADDRESS_RESOLVER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.rollup_address_resolver')
-        export PACAYA_SGX_GETH_AUTOMATA=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_geth_automata')
-        export PACAYA_SGX_GETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_geth_verifier')
-        export PACAYA_SGX_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_reth_verifier')
-        export PACAYA_SHARED_RESOLVER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.shared_resolver')
-        export PACAYA_SIGNAL_SERVICE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.signal_service')
-        export PACAYA_SP1_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sp1_reth_verifier')
-        export PACAYA_TAIKO=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko')
-        export PACAYA_TAIKO_TOKEN=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko_token')
-        export PACAYA_TAIKO_WRAPPER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko_wrapper')
+        export PACAYA_AUTOMATA_DCAP_ATTESTATION; PACAYA_AUTOMATA_DCAP_ATTESTATION=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.automata_dcap_attestation')
+        export PACAYA_BRIDGE; PACAYA_BRIDGE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.bridge')
+        export PACAYA_ERC1155_VAULT; PACAYA_ERC1155_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc1155_vault')
+        export PACAYA_ERC20_VAULT; PACAYA_ERC20_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc20_vault')
+        export PACAYA_ERC721_VAULT; PACAYA_ERC721_VAULT=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.erc721_vault')
+        export PACAYA_FORCED_INCLUSION_STORE; PACAYA_FORCED_INCLUSION_STORE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.forced_inclusion_store')
+        export PACAYA_MAINNET_TAIKO; PACAYA_MAINNET_TAIKO=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.mainnet_taiko')
+        export PACAYA_OP_GETH_VERIFIER; PACAYA_OP_GETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.op_geth_verifier')
+        export PACAYA_OP_VERIFIER; PACAYA_OP_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.op_verifier')
+        export PACAYA_PRECONF_ROUTER; PACAYA_PRECONF_ROUTER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.preconf_router')
+        export PACAYA_PRECONF_WHITELIST; PACAYA_PRECONF_WHITELIST=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.preconf_whitelist')
+        export PACAYA_PROOF_VERIFIER; PACAYA_PROOF_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.proof_verifier')
+        export PACAYA_PROVER_SET; PACAYA_PROVER_SET=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.prover_set')
+        export PACAYA_RISC0_RETH_VERIFIER; PACAYA_RISC0_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.risc0_reth_verifier')
+        export PACAYA_ROLLUP_ADDRESS_RESOLVER; PACAYA_ROLLUP_ADDRESS_RESOLVER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.rollup_address_resolver')
+        export PACAYA_SGX_GETH_AUTOMATA; PACAYA_SGX_GETH_AUTOMATA=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_geth_automata')
+        export PACAYA_SGX_GETH_VERIFIER; PACAYA_SGX_GETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_geth_verifier')
+        export PACAYA_SGX_RETH_VERIFIER; PACAYA_SGX_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sgx_reth_verifier')
+        export PACAYA_SHARED_RESOLVER; PACAYA_SHARED_RESOLVER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.shared_resolver')
+        export PACAYA_SIGNAL_SERVICE; PACAYA_SIGNAL_SERVICE=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.signal_service')
+        export PACAYA_SP1_RETH_VERIFIER; PACAYA_SP1_RETH_VERIFIER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.sp1_reth_verifier')
+        export PACAYA_TAIKO; PACAYA_TAIKO=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko')
+        export PACAYA_TAIKO_TOKEN; PACAYA_TAIKO_TOKEN=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko_token')
+        export PACAYA_TAIKO_WRAPPER; PACAYA_TAIKO_WRAPPER=$(cat "$PACAYA_DEPLOYMENT_FILE" | jq -r '.taiko_wrapper')
 
         update_env_var "$ENV_FILE" "PACAYA_AUTOMATA_DCAP_ATTESTATION" "$PACAYA_AUTOMATA_DCAP_ATTESTATION"
         update_env_var "$ENV_FILE" "PACAYA_BRIDGE" "$PACAYA_BRIDGE"
@@ -1720,33 +1467,31 @@ extract_l1_deployment_results() {
         update_env_var "$ENV_FILE" "PACAYA_TAIKO_WRAPPER" "$PACAYA_TAIKO_WRAPPER"
     fi
 
-    # if [[ ! -f "$L1_DEPLOYMENT_FILE" ]]; then
-    #     log_error "L1 deployment file not found: $L1_DEPLOYMENT_FILE"
-    #     return 1
-    # fi
+    if [[ ! -f "$L1_DEPLOYMENT_FILE" ]]; then
+        log_error "L1 deployment file not found: $L1_DEPLOYMENT_FILE"
+        return 1
+    fi
 
     # Extract L1 deployment results from deploy_l1.json
-    export SHASTA_BRIDGE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.bridge')
-    export SHASTA_BRIDGED_ERC1155=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.bridged_erc1155')
-    export SHASTA_BRIDGED_ERC20=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.bridged_erc20')
-    export SHASTA_BRIDGED_ERC721=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.bridged_erc721')
-    export SHASTA_EMPTY_IMPL=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.empty_impl')
-    export SHASTA_ERC1155_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc1155_vault')
-    export SHASTA_ERC20_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc20_vault')
-    export SHASTA_ERC721_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc721_vault')
-    export SHASTA_PRECONF_WHITELIST=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.preconf_whitelist')
-    export SHASTA_RISC0_GROTH16_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.risc0_groth16_verifier')
-    export SHASTA_RISC0_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.risc0_verifier')
-    export SHASTA_PROOF_VERIFIER_DUMMY=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.proof_verifier_dummy')
-    export SHASTA_SHARED_RESOLVER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.shared_resolver')
-    export SHASTA_SIGNAL_SERVICE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.signal_service')
-    export SHASTA_SP1_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.sp1_verifier')
-    export SHASTA_SUCCINCT_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.succinct_verifier')
-    # export SHASTA_SURGE_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox')
-    export SHASTA_SURGE_INBOX_IMPL=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox_impl')
-    export SHASTA_SURGE_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_verifier')
-
-    export SHASTA_SURGE_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.real_time_inbox')
+    export SHASTA_BRIDGE; SHASTA_BRIDGE=$(_jq_required "$L1_DEPLOYMENT_FILE" '.bridge' "SHASTA_BRIDGE") || return 1
+    # export SHASTA_BRIDGED_ERC1155; SHASTA_BRIDGED_ERC1155=$(_jq_required "$L1_DEPLOYMENT_FILE" '.bridged_erc1155' "SHASTA_BRIDGED_ERC1155") || return 1
+    # export SHASTA_BRIDGED_ERC20; SHASTA_BRIDGED_ERC20=$(_jq_required "$L1_DEPLOYMENT_FILE" '.bridged_erc20' "SHASTA_BRIDGED_ERC20") || return 1
+    # export SHASTA_BRIDGED_ERC721; SHASTA_BRIDGED_ERC721=$(_jq_required "$L1_DEPLOYMENT_FILE" '.bridged_erc721' "SHASTA_BRIDGED_ERC721") || return 1
+    export SHASTA_EMPTY_IMPL; SHASTA_EMPTY_IMPL=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.empty_impl')
+    export SHASTA_ERC1155_VAULT; SHASTA_ERC1155_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc1155_vault')
+    export SHASTA_ERC20_VAULT; SHASTA_ERC20_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc20_vault')
+    export SHASTA_ERC721_VAULT; SHASTA_ERC721_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc721_vault')
+    export SHASTA_PRECONF_WHITELIST; SHASTA_PRECONF_WHITELIST=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.preconf_whitelist')
+    export SHASTA_RISC0_GROTH16_VERIFIER; SHASTA_RISC0_GROTH16_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.risc0_groth16_verifier')
+    export SHASTA_RISC0_VERIFIER; SHASTA_RISC0_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.risc0_verifier')
+    # export SHASTA_PROOF_VERIFIER_DUMMY; SHASTA_PROOF_VERIFIER_DUMMY=$(_jq_required "$L1_DEPLOYMENT_FILE" '.proof_verifier_dummy' "SHASTA_PROOF_VERIFIER_DUMMY") || return 1
+    export SHASTA_SHARED_RESOLVER; SHASTA_SHARED_RESOLVER=$(_jq_required "$L1_DEPLOYMENT_FILE" '.shared_resolver' "SHASTA_SHARED_RESOLVER") || return 1
+    export SHASTA_SIGNAL_SERVICE; SHASTA_SIGNAL_SERVICE=$(_jq_required "$L1_DEPLOYMENT_FILE" '.signal_service' "SHASTA_SIGNAL_SERVICE") || return 1
+    export SHASTA_SP1_VERIFIER; SHASTA_SP1_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.sp1_verifier')
+    export SHASTA_SUCCINCT_VERIFIER; SHASTA_SUCCINCT_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.succinct_verifier')
+    export SHASTA_SURGE_INBOX_IMPL; SHASTA_SURGE_INBOX_IMPL=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_inbox_impl')
+    export SHASTA_SURGE_VERIFIER; SHASTA_SURGE_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_verifier')
+    export SHASTA_SURGE_INBOX; SHASTA_SURGE_INBOX=$(_jq_required "$L1_DEPLOYMENT_FILE" '.real_time_inbox' "SHASTA_SURGE_INBOX") || return 1
 
     echo
     echo ">>>>>>"
@@ -1781,38 +1526,38 @@ extract_l1_deployment_results() {
 
     # POC
     if [[ -f "$COMPOSABILITY_MULTICALL_FILE" ]]; then
-        export MULTICALL_ADDRESS=$(cat "$COMPOSABILITY_MULTICALL_FILE" | jq -r '.multicall')
+        export MULTICALL_ADDRESS; MULTICALL_ADDRESS=$(cat "$COMPOSABILITY_MULTICALL_FILE" | jq -r '.multicall')
         update_env_var "$ENV_FILE" "MULTICALL_ADDRESS" "$MULTICALL_ADDRESS"
     fi
     if [[ -f "$COMPOSABILITY_USEROPS_SUBMITTER_FILE" ]]; then
-        export USEROPS_SUBMITTER_FACTORY_ADDRESS=$(cat "$COMPOSABILITY_USEROPS_SUBMITTER_FILE" | jq -r '.userops_submitter_factory')
+        export USEROPS_SUBMITTER_FACTORY_ADDRESS; USEROPS_SUBMITTER_FACTORY_ADDRESS=$(cat "$COMPOSABILITY_USEROPS_SUBMITTER_FILE" | jq -r '.userops_submitter_factory')
         update_env_var "$ENV_FILE" "USEROPS_SUBMITTER_FACTORY_ADDRESS" "$USEROPS_SUBMITTER_FACTORY_ADDRESS"
     fi
     
     # Real time
-    export REALTIME_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.real_time_inbox')
+    export REALTIME_INBOX; REALTIME_INBOX=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.real_time_inbox')
     update_env_var "$ENV_FILE" "REALTIME_INBOX" "$REALTIME_INBOX"
-    export ZISK_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.zisk_verifier')
+    export ZISK_VERIFIER; ZISK_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.zisk_verifier')
     update_env_var "$ENV_FILE" "ZISK_VERIFIER" "$ZISK_VERIFIER"
 
     if [[ -f "$DEPLOYMENT_DIR/deployment_relay.lock" ]]; then
-        export CROSS_CHAIN_RELAY=$(cat "$DEPLOYMENT_DIR/deployment_relay.json" | jq -r '.cross_chain_relay')
+        export CROSS_CHAIN_RELAY; CROSS_CHAIN_RELAY=$(cat "$DEPLOYMENT_DIR/deployment_relay.json" | jq -r '.cross_chain_relay')
         update_env_var "$ENV_FILE" "CROSS_CHAIN_RELAY" "$CROSS_CHAIN_RELAY"
     fi
 
     if [[ -f "$CROSS_CHAIN_DEX_L1_FILE" ]]; then
-        export L1_VAULT=$(jq -r '.CrossChainSwapVaultL1' "$CROSS_CHAIN_DEX_L1_FILE")
+        export L1_VAULT; L1_VAULT=$(jq -r '.CrossChainSwapVaultL1' "$CROSS_CHAIN_DEX_L1_FILE")
         update_env_var "$ENV_FILE" "L1_VAULT" "$L1_VAULT"
-        export L1_TOKEN=$(jq -r '.SwapToken' "$CROSS_CHAIN_DEX_L1_FILE")
+        export L1_TOKEN; L1_TOKEN=$(jq -r '.SwapToken' "$CROSS_CHAIN_DEX_L1_FILE")
         update_env_var "$ENV_FILE" "L1_TOKEN" "$L1_TOKEN"
     fi
 
     if [[ -f "$CROSS_CHAIN_DEX_L2_FILE" ]]; then
-        export L2_TOKEN=$(jq -r '.SwapTokenL2' "$CROSS_CHAIN_DEX_L2_FILE")
+        export L2_TOKEN; L2_TOKEN=$(jq -r '.SwapTokenL2' "$CROSS_CHAIN_DEX_L2_FILE")
         update_env_var "$ENV_FILE" "L2_TOKEN" "$L2_TOKEN"
-        export L2_DEX=$(jq -r '.SimpleDEX' "$CROSS_CHAIN_DEX_L2_FILE")
+        export L2_DEX; L2_DEX=$(jq -r '.SimpleDEX' "$CROSS_CHAIN_DEX_L2_FILE")
         update_env_var "$ENV_FILE" "L2_DEX" "$L2_DEX"
-        export L2_VAULT=$(jq -r '.CrossChainSwapVaultL2' "$CROSS_CHAIN_DEX_L2_FILE")
+        export L2_VAULT; L2_VAULT=$(jq -r '.CrossChainSwapVaultL2' "$CROSS_CHAIN_DEX_L2_FILE")
         update_env_var "$ENV_FILE" "L2_VAULT" "$L2_VAULT"
     fi
 
@@ -1832,7 +1577,7 @@ generate_l2_genesis() {
     log_info "Generating Surge genesis..."
 
     # Extract signal service from L1 deployment results needed for genesis generation
-    export SHASTA_SIGNAL_SERVICE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.signal_service')
+    export SHASTA_SIGNAL_SERVICE; SHASTA_SIGNAL_SERVICE=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.signal_service')
     update_env_var "$ENV_FILE" "SHASTA_SIGNAL_SERVICE" "$SHASTA_SIGNAL_SERVICE"
     
     local exit_status=0
@@ -1862,7 +1607,32 @@ generate_l2_genesis() {
 
     update_env_var "$ENV_FILE" "SHASTA_TIMESTAMP" "$HEX_TIMESTAMP"
 
-    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/surge-poc/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' > "$DEPLOYMENT_DIR/surge_chainspec.json"
+    local gen2spec_url="${SURGE_GEN2SPEC_URL:-https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/surge-poc/gen2spec/gen2spec.jq}"
+    local gen2spec_file
+    gen2spec_file=$(mktemp /tmp/gen2spec.XXXXXX.jq)
+
+    log_info "Fetching gen2spec.jq from: $gen2spec_url"
+    if ! curl -sf --max-time 30 "$gen2spec_url" -o "$gen2spec_file" 2>/dev/null; then
+        log_error "Failed to fetch gen2spec.jq from: $gen2spec_url"
+        log_error "Set SURGE_GEN2SPEC_URL to override the URL, or check network connectivity"
+        rm -f "$gen2spec_file"
+        return 1
+    fi
+
+    if [[ ! -s "$gen2spec_file" ]]; then
+        log_error "gen2spec.jq downloaded but is empty — check the URL or network connectivity"
+        rm -f "$gen2spec_file"
+        return 1
+    fi
+
+    cat "$SURGE_GENESIS_FILE" \
+        | jq --arg hex_timestamp "$HEX_TIMESTAMP" \
+            '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' \
+        | jq --from-file "$gen2spec_file" \
+        | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' \
+        > "$DEPLOYMENT_DIR/surge_chainspec.json"
+
+    rm -f "$gen2spec_file"
     
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
@@ -1871,19 +1641,48 @@ generate_l2_genesis() {
     echo
 
     log_info "Fetching genesis hash..."
+    # Clean up any leftover container from a previous run
+    docker rm -f nethermind-genesis-hash 2>/dev/null || true
     # Get genesis hash first by running Nethermind with the chainspec
     docker run -d --name nethermind-genesis-hash -v ./deployment/surge_chainspec.json:/chainspec.json nethermindeth/nethermind:taiko-shasta-changes --config=none --Init.ChainSpecPath=/chainspec.json
     
-    sleep 30
+    log_info "Waiting for Nethermind to output genesis hash (up to 60s)..."
+    local waited=0
+    while ! docker logs nethermind-genesis-hash 2>/dev/null | grep -q "Genesis hash"; do
+        if (( waited >= 60 )); then
+            log_error "Timed out waiting for genesis hash after ${waited}s"
+            docker logs nethermind-genesis-hash 2>&1 | tail -20
+            docker stop nethermind-genesis-hash 2>/dev/null || true
+            docker rm nethermind-genesis-hash 2>/dev/null || true
+            return 1
+        fi
+        sleep 2
+        (( waited += 2 ))
+    done
+    log_info "Genesis hash found after ${waited}s"
 
-    local genesis_hash=$(docker logs nethermind-genesis-hash 2>/dev/null | grep "Genesis hash" | head -n 1 | sed 's/\x1b\[[0-9;]*m//g' | sed 's/.*Genesis hash : *\(0x[0-9a-fA-F]*\).*/\1/' | tr -d '\r\n' | xargs)
-    
+    local genesis_hash
+    genesis_hash=$(docker logs nethermind-genesis-hash 2>/dev/null \
+        | grep "Genesis hash" \
+        | head -n 1 \
+        | sed 's/\x1b\[[0-9;]*m//g' \
+        | sed 's/.*Genesis hash : *\(0x[0-9a-fA-F]*\).*/\1/' \
+        | tr -d '\r\n ')
+
+    if [[ -z "$genesis_hash" ]]; then
+        log_error "Failed to extract genesis hash from Nethermind logs"
+        docker logs nethermind-genesis-hash 2>&1 | tail -20
+        docker stop nethermind-genesis-hash 2>/dev/null || true
+        docker rm nethermind-genesis-hash 2>/dev/null || true
+        return 1
+    fi
+
     update_env_var "$ENV_FILE" "L2_GENESIS_HASH" "$genesis_hash"
 
     log_info "Genesis hash: $genesis_hash"
 
-    docker stop nethermind-genesis-hash
-    docker rm nethermind-genesis-hash
+    docker stop nethermind-genesis-hash 2>/dev/null || true
+    docker rm nethermind-genesis-hash 2>/dev/null || true
 
     if [[ $exit_status -eq 0 ]]; then
         log_success "Surge genesis generated successfully"
@@ -1964,12 +1763,10 @@ switch_fork() {
     else
         docker compose -f docker-compose-protocol.yml --profile switch-fork up >"$temp_output" 2>&1 &
         local switch_fork_pid=$!
-        
-        show_progress $switch_fork_pid "Switching fork..."
+        show_progress "$switch_fork_pid" "Switching fork..."
+        wait "$switch_fork_pid"
+        exit_status=$?
     fi
-
-    wait $switch_fork_pid
-    exit_status=$?
 
     if [[ $exit_status -eq 0 ]]; then
         log_success "Fork switched successfully"
@@ -2040,123 +1837,10 @@ deploy_provers() {
 
                     BROADCAST=true docker compose -f docker-compose-protocol.yml --profile zisk-setup up
                     touch "$DEPLOYMENT_DIR/zisk_setup.lock"
+                    log_success "Zisk VKEY trusted successfully"
                 fi
             fi
-
-            # if [[ ! -f "$DEPLOYMENT_DIR/sp1_verifier_setup.lock" ]]; then
-            #     echo
-            #     echo "╔══════════════════════════════════════════════════════════════╗"
-            #     echo "  ⚠️ Running SP1?                                               "
-            #     echo "║══════════════════════════════════════════════════════════════║"
-            #     echo "║  0 for Deploy SP1                                            ║"
-            #     echo "║  1 for Skip SP1                                              ║"
-            #     echo "║ [default: 0]                                                 ║"
-            #     echo "╚══════════════════════════════════════════════════════════════╝"
-            #     echo
-            #     read -p "Enter choice [0]: " running_sp1
-            #     running_sp1=${running_sp1:-0}
-
-            #     if [[ "$running_sp1" == "0" ]]; then
-            #         retrieve_guest_data sp1
-                    
-            #         if [[ -z "${SP1_BLOCK_PROVING_PROGRAM_VKEY:-}" ]] || [[ -z "${SP1_AGGREGATION_PROGRAM_VKEY:-}" ]]; then
-            #             log_error "SP1 guest data is missing"
-            #             return 1
-            #         fi
-
-            #         BROADCAST=true docker compose -f docker-compose-protocol.yml --profile sp1-verifier-setup up
-            #         touch "$DEPLOYMENT_DIR/sp1_verifier_setup.lock"
-            #     fi
-            # fi
-
-            # if [[ ! -f "$DEPLOYMENT_DIR/risc0_verifier_setup.lock" ]]; then
-            #     echo
-            #     echo "╔══════════════════════════════════════════════════════════════╗"
-            #     echo "  ⚠️ Running RISC0?                                             "
-            #     echo "║══════════════════════════════════════════════════════════════║"
-            #     echo "║  0 for Deploy RISC0                                          ║"
-            #     echo "║  1 for Skip RISC0                                            ║"
-            #     echo "║ [default: 0]                                                 ║"
-            #     echo "╚══════════════════════════════════════════════════════════════╝"
-            #     echo
-            #     read -p "Enter choice [0]: " running_risc0
-            #     running_risc0=${running_risc0:-0}
-
-            #     if [[ "$running_risc0" == "0" ]]; then
-            #         retrieve_guest_data risc0
-                    
-            #         if [[ -z "${RISC0_BLOCK_PROVING_IMAGE_ID:-}" ]] || [[ -z "${RISC0_AGGREGATION_IMAGE_ID:-}" ]]; then
-            #             log_error "RISC0 guest data is missing"
-            #             return 1
-            #         fi
-
-            #         BROADCAST=true docker compose -f docker-compose-protocol.yml --profile risc0-verifier-setup up
-            #         touch "$DEPLOYMENT_DIR/risc0_verifier_setup.lock"
-            #     fi
-            # fi
-
-            # log_info "Generating prover env vars..."
-            # echo
-            # echo ">>>>>>"
-            # echo "export GROTH16_VERIFIER_ADDRESS=$SHASTA_RISC0_GROTH16_VERIFIER"
-            # echo "export SP1_VERIFIER_ADDRESS=$SHASTA_SUCCINCT_VERIFIER"
-            # echo ">>>>>>"
-            # echo
-            # log_success "Prover env vars generated successfully"
-            # log_info "Please copy and paste them when you start the provers"
         fi
-    fi
-}
-
-# Setup SP1 verifier
-setup_sp1_verifier() {
-    echo
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "  ⚠️ Running SP1?                                               "
-    echo "║══════════════════════════════════════════════════════════════║"
-    echo "║  0 for Deploy SP1                                            ║"
-    echo "║  1 for Skip SP1                                              ║"
-    echo "║ [default: 0]                                                 ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo
-    read -p "Enter choice [0]: " running_sp1
-    running_sp1=${running_sp1:-0}
-
-    if [[ "$running_sp1" == "0" ]]; then
-        retrieve_guest_data sp1
-        
-        if [[ -z "${SP1_BLOCK_PROVING_PROGRAM_VKEY:-}" ]] || [[ -z "${SP1_AGGREGATION_PROGRAM_VKEY:-}" ]]; then
-            log_error "SP1 guest data is missing"
-            return 1
-        fi
-
-        BROADCAST=true docker compose -f docker-compose-protocol.yml --profile sp1-verifier-setup up
-    fi
-}
-
-# Setup RISC0 verifier
-setup_risc0_verifier() {
-    echo
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "  ⚠️ Running RISC0?                                             "
-    echo "║══════════════════════════════════════════════════════════════║"
-    echo "║  0 for Deploy RISC0                                          ║"
-    echo "║  1 for Skip RISC0                                            ║"
-    echo "║ [default: 0]                                                 ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
-    echo
-    read -p "Enter choice [0]: " running_risc0
-    running_risc0=${running_risc0:-0}
-
-    if [[ "$running_risc0" == "0" ]]; then
-        retrieve_guest_data risc0
-        
-        if [[ -z "${RISC0_BLOCK_PROVING_IMAGE_ID:-}" ]] || [[ -z "${RISC0_AGGREGATION_IMAGE_ID:-}" ]]; then
-            log_error "RISC0 guest data is missing"
-            return 1
-        fi
-
-        BROADCAST=true docker compose -f docker-compose-protocol.yml --profile risc0-verifier-setup up
     fi
 }
 
@@ -2270,52 +1954,6 @@ deploy_l2() {
     fi
 }
 
-# Prompt for stack option selection
-prompt_stack_option_selection() {
-    echo >&2
-    echo "╔══════════════════════════════════════════════════════════════╗" >&2
-    echo "║ Enter L2 stack option:                                       ║" >&2
-    echo "║ 1 for driver only                                            ║" >&2
-    echo "║ 2 for driver + catalyst                                      ║" >&2
-    echo "║ [default: 2]                                                 ║" >&2
-    echo "╚══════════════════════════════════════════════════════════════╝" >&2
-    echo >&2
-    read -p "Enter choice [2]: " choice
-    choice=${choice:-2}
-    echo $choice
-}
-
-# Prompt for relayers selection
-prompt_relayers_selection() {
-    echo >&2
-    echo "╔══════════════════════════════════════════════════════════════╗" >&2
-    echo "  ⚠️ Start relayers?                                            " >&2
-    echo "║══════════════════════════════════════════════════════════════║" >&2
-    echo "║  0 for Deploy relayers                                       ║" >&2
-    echo "║  1 for Skip relayers                                         ║" >&2
-    echo "║ [default: 0]                                                 ║" >&2
-    echo "╚══════════════════════════════════════════════════════════════╝" >&2
-    echo >&2
-    read -p "Enter choice [0]: " choice
-    choice=${choice:-0}
-    echo $choice
-}
-
-# Prompt for execution mode selection
-prompt_mode_selection() {
-    echo >&2
-    echo "╔══════════════════════════════════════════════════════════════╗" >&2
-    echo "  ⚠️  Select execution mode:                                     " >&2
-    echo "║══════════════════════════════════════════════════════════════║" >&2
-    echo "║  0 for silence (default)                                     ║" >&2
-    echo "║  1 for debug                                                 ║" >&2
-    echo "╚══════════════════════════════════════════════════════════════╝" >&2
-    echo >&2
-    read -p "Enter choice [0]: " choice
-    choice=${choice:-0}
-    echo $choice
-}
-
 # Start L2 stack with specified configuration
 start_l2_stack() {
     local stack_option="$1"
@@ -2338,6 +1976,10 @@ start_l2_stack() {
             log_info "Starting driver + catalyst"
             $compose_cmd --profile catalyst --profile blockscout up -d  >"$temp_output" 2>&1 &
             ;;
+        3)
+            log_info "Starting driver + catalyst + spammer"
+            $compose_cmd --profile catalyst --profile spammer --profile blockscout up -d  >"$temp_output" 2>&1 &
+            ;;
     esac
     
     local docker_pid=$!
@@ -2348,6 +1990,11 @@ start_l2_stack() {
     
     if [[ $exit_status -eq 0 ]]; then
         log_success "L2 stack started successfully"
+        if [[ "$stack_option" == "3" ]]; then
+            log_info "Waiting for L2 to produce blocks..."
+            sleep 60
+            log_info "L2 at block $(cast block-number --rpc-url "${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-http://localhost:8547}}")"
+        fi
         return 0
     else
         log_error "Failed to start L2 stack (exit code: $exit_status)"
@@ -2363,7 +2010,7 @@ start_relayers() {
     local should_start_relayers="$1"
     local environment="$2"
     
-    if [[ "$should_start_relayers" != "0" || "$should_start_relayers" == "true" ]]; then
+    if [[ "$should_start_relayers" == "0" ]]; then
         log_info "Skipping relayers as requested"
         return 0
     fi
@@ -2741,16 +2388,6 @@ main() {
 
     # Initialize submodules
     initialize_submodules
-
-    # If verify-key-only is set, just verify the key and exit (WIP due to using existing chain)
-    # if [[ "$verify_key_only" == "true" ]]; then
-    #     if [[ -z "$deployment_key" ]] || [[ -z "$l1_rpc_url" ]]; then
-    #         log_error "Both --deployment-key and --l1-rpc-url are required for --verify-key-only"
-    #         exit 1
-    #     fi
-    #     verify_private_key_on_chain "$deployment_key" "$l1_rpc_url" "provided chain"
-    #     exit $?
-    # fi
     
     # Step 1: Environment Selection
     local env_choice="devnet"
@@ -2864,7 +2501,7 @@ main() {
                 esac
             fi
 
-            slow_mode=true
+            slow_mode=false
 
             # Verify L1 RPC endpoints (use external endpoint for health check from host)
             if [[ -n "${L1_ENDPOINT_HTTP:-}" ]]; then
@@ -2995,11 +2632,31 @@ main() {
         exit 1
     fi
 
-    # Deploy CrossChainRelay on L2
-    if ! deploy_relay_contract "$mode_choice" $slow_mode; then
-        log_error "Failed to deploy CrossChainRelay"
-        exit 1
+    # Prompt to continue DEX deployments TODO: Remove this after testing
+    local dex_choice
+    if [[ -z "${dex_option:-}" ]]; then
+        echo "╔══════════════════════════════════════════════════════════════╗" >&2
+        echo "║ Do you want to continue with DEX deployments?                ║" >&2
+        echo "║ 0 for Yes                                                    ║" >&2
+        echo "║ 1 for No                                                     ║" >&2
+        echo "╚══════════════════════════════════════════════════════════════╝" >&2
+        echo >&2
+        read -p "Enter choice [0]: " dex_choice
+        dex_choice=${dex_choice:-0}
+    else
+        dex_choice=$dex_option
     fi
+
+    if [[ "$dex_choice" == "1" ]]; then
+        log_info "Skipping DEX deployments"
+        return 0
+    fi
+
+    # # Deploy CrossChainRelay on L2
+    # if ! deploy_relay_contract "$mode_choice" $slow_mode; then
+    #     log_error "Failed to deploy CrossChainRelay"
+    #     exit 1
+    # fi
 
     # Deploy Cross Chain Dex Contracts on L1 and L2
     if ! deploy_cross_chain_dex "$mode_choice"; then

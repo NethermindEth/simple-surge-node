@@ -284,15 +284,15 @@ remove_l2_stack() {
     if [[ "$mode_choice" == "debug" ]]; then
         # Debug mode: run in foreground with full output
         {
-            docker compose --profile driver --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>&1
-            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile proposer-wrapper-deployer --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
+            docker compose --profile driver --profile proposer --profile spammer --profile prover --profile blockscout --profile dex down --remove-orphans 2>&1
+            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile proposer-wrapper-deployer --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer --profile cross-chain-dex-deployer down --remove-orphans 2>&1
         } | tee "$temp_output"
         exit_status=${PIPESTATUS[0]}
     else
         # Silent mode: run in background with progress indicator
         {
-            docker compose --profile driver --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>&1
-            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile proposer-wrapper-deployer --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
+            docker compose --profile driver --profile proposer --profile spammer --profile prover --profile blockscout --profile dex down --remove-orphans 2>&1
+            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile proposer-wrapper-deployer --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer --profile cross-chain-dex-deployer down --remove-orphans 2>&1
         } >"$temp_output" 2>&1 &
         local remove_pid=$!
         
