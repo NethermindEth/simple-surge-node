@@ -173,6 +173,751 @@ parse_arguments() {
     done
 }
 
+# Simple progress indicator
+show_progress() {
+    local pid=$1
+    local message="$2"
+    local spinner='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local i=0
+    
+    printf "%s " "$message"
+    while kill -0 $pid 2>/dev/null; do
+        printf "\b%s" "${spinner:i++%${#spinner}:1}"
+        sleep 0.1
+    done
+    printf "\b\n"
+}
+
+# Validate prerequisites
+validate_prerequisites() {
+    log_info "Validating prerequisites..."
+    
+    # Check Docker is running
+    if ! docker info >/dev/null 2>&1; then
+        log_error "Docker is not running or not accessible"
+        log_error "Please start Docker and ensure your user has docker permissions"
+        return 1
+    fi
+    
+    # Check required commands
+    local required_cmds=("docker" "git" "jq" "curl" "bc" "cast")
+    local missing_cmds=()
+    
+    for cmd in "${required_cmds[@]}"; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            missing_cmds+=("$cmd")
+        fi
+    done
+    
+    if [[ ${#missing_cmds[@]} -gt 0 ]]; then
+        log_error "Missing required commands: ${missing_cmds[*]}"
+        log_error "Please install them first"
+        return 1
+    fi
+    
+    # Create required directories
+    for dir in "$DEPLOYMENT_DIR" "$CONFIGS_DIR"; do
+        if [[ ! -d "$dir" ]]; then
+            log_info "Creating $dir directory..."
+            mkdir -p "$dir"
+        fi
+    done
+    
+    log_success "Prerequisites validation passed"
+    return 0
+}
+
+# Initialize git submodules
+initialize_submodules() {
+    log_info "Initializing git submodules..."
+    
+    # First, sync submodule URLs from .gitmodules
+    if git submodule sync >/dev/null 2>&1; then
+        log_info "Synced submodule URLs"
+    fi
+    
+    # Initialize and update submodules recursively
+    if git submodule update --init --recursive >/dev/null 2>&1; then
+        log_success "Git submodules initialized"
+    else
+        log_warning "Failed to initialize git submodules with --recursive, trying without..."
+        # Try without recursive flag in case some submodules have issues
+        if git submodule update --init >/dev/null 2>&1; then
+            log_success "Git submodules initialized (non-recursive)"
+        else
+            log_warning "Failed to initialize git submodules, but continuing..."
+        fi
+    fi
+}
+
+# Ensure ethereum-package submodule exists or use current directory
+ensure_ethereum_package() {
+    log_info "Checking ethereum-package submodule..."
+    
+    if [[ ! -f "$ETHEREUM_PACKAGE_DIR/main.star" ]] && [[ "$ETHEREUM_PACKAGE_DIR" != "." ]]; then
+        log_error "Invalid ethereum-package directory"
+        log_error "Expected Kurtosis main.star file not found"
+        return 1
+    fi
+    
+    log_success "ethereum-package verified"
+    return 0
+}
+
+# Validate private key format
+validate_private_key_format() {
+    local private_key="$1"
+    
+    # Must start with 0x
+    if [[ ! "$private_key" =~ ^0x ]]; then
+        log_error "Private key must start with 0x"
+        return 1
+    fi
+    
+    # Must be 66 characters (0x + 64 hex chars)
+    if [[ ${#private_key} -ne 66 ]]; then
+        log_error "Private key must be 66 characters (0x + 64 hex digits)"
+        log_error "Got ${#private_key} characters"
+        return 1
+    fi
+    
+    # Must be valid hexadecimal
+    if [[ ! "$private_key" =~ ^0x[0-9a-fA-F]{64}$ ]]; then
+        log_error "Private key must be valid hexadecimal"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Derive address from private key using cast
+derive_address_from_key_cast() {
+    local private_key="$1"
+    
+    if ! command -v cast >/dev/null 2>&1; then
+        return 1
+    fi
+    
+    local address
+    if address=$(cast wallet address "$private_key" 2>/dev/null); then
+        echo "$address"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Derive address from private key (try multiple methods)
+derive_address_from_key() {
+    local private_key="$1"
+    local address=""
+    
+    # Try cast first (fastest)
+    if address=$(derive_address_from_key_cast "$private_key"); then
+        echo "$address"
+        return 0
+    fi
+    
+    # Last resort: use docker with foundry
+   if address=$(docker run --rm $SURGE_PROTOCOL_IMAGE cast wallet address "$private_key" 2>/dev/null | head -n1); then
+        if [ -n "$address" ]; then
+            echo "$address"
+            return 0
+        fi
+    fi
+    
+    log_error "Unable to derive address from private key"
+    log_error "Please install Foundry (cast) and ensure it is in your PATH"
+    return 1
+}
+
+# Test RPC connection
+test_rpc_connection() {
+    local rpc_url="$1"
+    
+    local response
+    if ! response=$(curl -s -X POST -H "Content-Type: application/json" \
+        --data '{"jsonrpc":"2.0","id":0,"method":"eth_blockNumber","params":[]}' \
+        "$rpc_url" 2>/dev/null); then
+        return 1
+    fi
+    
+    if echo "$response" | jq -e '.result' >/dev/null 2>&1; then
+        return 0
+    fi
+    
+    return 1
+}
+
+# Get chain ID
+get_chain_id() {
+    local rpc_url="$1"
+    
+    local response
+    response=$(curl -s -X POST -H "Content-Type: application/json" \
+        --data '{"jsonrpc":"2.0","id":0,"method":"eth_chainId","params":[]}' \
+        "$rpc_url" 2>/dev/null)
+    
+    if echo "$response" | jq -e '.result' >/dev/null 2>&1; then
+        local chain_id_hex
+        chain_id_hex=$(echo "$response" | jq -r '.result')
+        # Convert hex to decimal
+        printf "%d" "$chain_id_hex"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Verify private key on chain
+verify_private_key_on_chain() {
+    local private_key="$1"
+    local rpc_url="$2"
+    local chain_name="$3"
+    
+    log_info "Verifying private key on $chain_name..."
+    
+    # 1. Validate format
+    log_info "Validating private key format..."
+    if ! validate_private_key_format "$private_key"; then
+        log_error "Invalid private key format"
+        return 1
+    fi
+    log_success "Private key format validated"
+    
+    # 2. Derive address from private key
+    log_info "Deriving address from private key..."
+    local address
+    if ! address=$(derive_address_from_key "$private_key"); then
+        log_error "Failed to derive address from private key"
+        return 1
+    fi
+    log_info "Address used for deployment: $address"
+    
+    # 3. Test RPC connection
+    log_info "Testing RPC connection..."
+    if ! test_rpc_connection "$rpc_url"; then
+        log_error "Cannot connect to RPC endpoint: $rpc_url"
+        log_error "Please verify the URL is correct and the RPC server is running"
+        return 1
+    fi
+    log_success "RPC connection successful"
+    
+    # 4. Get account balance
+    log_info "Querying account balance..."
+    local balance
+    if ! balance=$(cast balance -e "$address" --rpc-url "$rpc_url" 2>/dev/null); then
+        log_error "Failed to query account balance"
+        return 1
+    fi
+    # Validate balance is not empty
+    if [ -z "$balance" ]; then
+        log_error "Received empty balance response"
+        return 1
+    fi
+    log_info "Account balance: $balance ETH"
+    
+    # 5. Verify chain ID
+    log_info "Verifying chain ID..."
+    local chain_id
+    if ! chain_id=$(cast chain-id --rpc-url "$rpc_url" 2>/dev/null); then
+        log_error "Failed to get chain ID"
+        return 1
+    fi
+    log_info "Chain ID: $chain_id"
+    
+    # 6. Check sufficient balance
+
+    local min_balance="0.01"  # 0.01 ETH
+    if (( $(echo "$balance < $min_balance" | bc -l) )); then
+        log_warning "Account balance is low. Deployment may fail."
+        log_warning "Current balance: $balance ETH"
+        log_warning "Recommended: >= 0.01 ETH"
+        
+        if [[ "$force" != "true" ]]; then
+            echo
+            read -p "Continue anyway? (yes/no) [no]: " continue_choice
+            continue_choice=${continue_choice:-no}
+            if [[ "$continue_choice" != "yes" && "$continue_choice" != "y" ]]; then
+                log_error "Aborted by user"
+                return 1
+            fi
+        fi
+    fi
+    
+    # 7. Display verification summary
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║  Private Key Verification Summary                            ║"
+    echo "║══════════════════════════════════════════════════════════════║"
+    printf "   Address:      %-42s  \n" "$address"
+    printf "   Balance:      %-20s ETH                         \n" "$balance"
+    printf "   Chain ID:     %-42s  \n" "$chain_id"
+    echo "║  RPC Status:   ✓ Connected                                   ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
+    
+    log_success "Private key verified successfully"
+    
+    # Export address for later use
+    export DEPLOYMENT_ADDRESS="$address"
+    export DEPLOYMENT_BALANCE="$balance"
+    
+    return 0
+}
+
+# Prompt for environment selection
+prompt_environment_selection() {
+    echo >&2
+    echo "╔══════════════════════════════════════════════════════════════╗" >&2
+    echo "  ⚠️  Select which Surge environment to use:                    " >&2
+    echo "║══════════════════════════════════════════════════════════════║" >&2
+    echo "║  1 for Devnet                                                ║" >&2
+    echo "║  2 for Staging                                               ║" >&2
+    echo "║  3 for Testnet                                               ║" >&2
+    echo "║ [default: Devnet]                                            ║" >&2
+    echo "╚══════════════════════════════════════════════════════════════╝" >&2
+    echo >&2
+    read -p "Enter choice [1]: " choice
+    choice=${choice:-1}
+    echo $choice
+}
+
+# Prompt for deployment type selection
+prompt_deployment_selection() {
+    echo >&2
+    echo "╔══════════════════════════════════════════════════════════════╗" >&2
+    echo "  ⚠️  Select deployment type:                                   " >&2
+    echo "║══════════════════════════════════════════════════════════════║" >&2
+    echo "║  0 for local                                                 ║" >&2
+    echo "║  1 for remote                                                ║" >&2
+    echo "║ [default: local]                                             ║" >&2
+    echo "╚══════════════════════════════════════════════════════════════╝" >&2
+    echo >&2
+    read -p "Enter choice [0]: " choice
+    choice=${choice:-0}
+    echo $choice
+}
+
+# Prompt for L1 deployment mode (devnet only)
+prompt_l1_deployment_mode() {
+    echo >&2
+    echo "╔══════════════════════════════════════════════════════════════╗" >&2
+    echo "  ⚠️  Deploy new devnet or use existing L1?                     " >&2
+    echo "║══════════════════════════════════════════════════════════════║" >&2
+    echo "║  0 for Deploy new devnet                                     ║" >&2
+    echo "║  1 for Use existing chain (WIP)                              ║" >&2
+    echo "║ [default: Deploy new devnet]                                 ║" >&2
+    echo "╚══════════════════════════════════════════════════════════════╝" >&2
+    echo >&2
+    read -p "Enter choice [0]: " choice
+    choice=${choice:-0}
+    echo $choice
+}
+
+# Check and load environment file
+check_env_file() {
+    local env_name="$1"
+    
+    if [[ -f "$ENV_FILE" ]]; then
+        log_info "Loading environment variables from $ENV_FILE..."
+        set -a  # automatically export all variables
+        source "$ENV_FILE"
+        set +a  # disable automatic export
+        log_success "Environment variables loaded successfully"
+    else
+        local env_file_name=".env.$env_name"
+        log_info ".env file not found, loading from $env_file_name..."
+        
+        if [[ -f "$env_file_name" ]]; then
+            cp "$env_file_name" "$ENV_FILE"
+            set -a  # automatically export all variables
+            source "$ENV_FILE"
+            set +a  # disable automatic export
+            log_success "Successfully loaded $env_name environment variables"
+        else
+            log_error "Neither .env nor $env_file_name file found"
+            log_error "Please create a .env file with required configuration"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+# Get machine IP address
+get_machine_ip() {
+    local ip=""
+    
+    # Try multiple methods to get IP
+    if command -v ip >/dev/null 2>&1; then
+        ip=$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' | head -n1)
+    fi
+    
+    if [[ -z "$ip" ]] && command -v hostname >/dev/null 2>&1; then
+        ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    fi
+    
+    if [[ -z "$ip" ]] && command -v ip >/dev/null 2>&1; then
+        ip=$(ip addr show 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | head -n1 | awk '{print $2}' | cut -d'/' -f1)
+    fi
+    
+    echo "$ip"
+}
+
+# Check if an endpoint URL points to a local/private host that needs rewriting.
+# Returns 0 (true) if the hostname is external/public (should NOT be rewritten).
+# Returns 1 (false) if the hostname is local/private (safe to rewrite).
+is_external_endpoint() {
+    local endpoint="$1"
+    local host
+    host=$(echo "$endpoint" | sed -E 's#https?://([^:/]+).*#\1#')
+    
+    # Local/private patterns that ARE safe to rewrite
+    case "$host" in
+        localhost|127.0.0.1|host.docker.internal|0.0.0.0)
+            return 1 ;;  # local — safe to rewrite
+        10.*)
+            return 1 ;;  # private RFC1918
+        172.1[6-9].*|172.2[0-9].*|172.3[0-1].*)
+            return 1 ;;  # private RFC1918
+        192.168.*)
+            return 1 ;;  # private RFC1918
+    esac
+    
+    # If the hostname contains a dot, it's likely a real domain (e.g. quiknode.pro)
+    if echo "$host" | grep -q '\.'; then
+        return 0  # external — do NOT rewrite
+    fi
+    
+    # No dot means it's likely a container/service name (e.g. "el-1-nethermind")
+    return 1  # local — safe to rewrite
+}
+
+# Convert endpoint to docker-internal format (for use inside containers)
+to_docker_internal() {
+    local endpoint="$1"
+    # If the endpoint is already an external URL, containers can reach it directly
+    if is_external_endpoint "$endpoint"; then
+        echo "$endpoint"
+        return
+    fi
+    # Replace hostname with host.docker.internal, preserving protocol and port
+    echo "$endpoint" | sed -E 's#(https?://)([^:/]+)(.*)#\1host.docker.internal\3#'
+}
+
+# Convert docker-internal endpoint to localhost (for use from host machine)
+to_localhost() {
+    local endpoint="$1"
+    # Replace host.docker.internal with localhost
+    echo "$endpoint" | sed -E 's#(https?://)host\.docker\.internal(.*)#\1localhost\2#'
+}
+
+# Format endpoint based on deployment context
+format_endpoint_for_context() {
+    local endpoint="$1"
+    local deployment_type="$2"  # local or remote
+    local machine_ip="$3"
+    
+    # If the endpoint is already an external/public URL, return as-is
+    if is_external_endpoint "$endpoint"; then
+        echo "$endpoint"
+        return
+    fi
+    
+    if [[ "$deployment_type" == "remote" || "$deployment_type" == "1" ]] && [[ -n "$machine_ip" ]]; then
+        # Replace hostname with machine IP for remote access
+        echo "$endpoint" | sed -E "s#(https?://)([^:/]+)(.*)#\1$machine_ip\3#"
+    elif [[ "$deployment_type" == "local" || "$deployment_type" == "0" ]]; then
+        # Replace hostname with host.docker.internal for local docker access
+        echo "$endpoint" | sed -E 's#(https?://)([^:/]+)(.*)#\1host.docker.internal\3#'
+    else
+        # Return as-is if no transformation needed
+        echo "$endpoint"
+    fi
+}
+
+# Extract port from endpoint URL
+extract_port() {
+    local endpoint="$1"
+    echo "$endpoint" | grep -oP ':\K[0-9]+$' || echo ""
+}
+
+# Build endpoint URL from host and port
+build_endpoint() {
+    local protocol="${1:-http}"
+    local host="$2"
+    local port="$3"
+    
+    if [[ -n "$port" ]]; then
+        echo "${protocol}://${host}:${port}"
+    else
+        echo "${protocol}://${host}"
+    fi
+}
+
+# Configure blockscout for remote access
+configure_remote_blockscout() {
+    local machine_ip="$1"
+    
+    if [[ ! -f "$BLOCKSCOUT_CONFIG_FILE" ]]; then
+        log_warning "Blockscout configuration file not found: $BLOCKSCOUT_CONFIG_FILE"
+        return 0
+    fi
+    
+    if [[ ! -d "$(dirname "$BLOCKSCOUT_FILE")" ]]; then
+        log_warning "Blockscout target directory not found: $(dirname "$BLOCKSCOUT_FILE")"
+        return 0
+    fi
+    
+    log_info "Copy blockscout configuration..."
+    cp "$BLOCKSCOUT_CONFIG_FILE" "$BLOCKSCOUT_FILE"
+    
+    log_info "Configuring blockscout for remote access (IP: $machine_ip)..."
+    if [[ -f "$BLOCKSCOUT_FILE" ]]; then
+        sed -i.tmp "s/else \"localhost:{0}\"/else \"$machine_ip:{0}\"/g" "$BLOCKSCOUT_FILE"
+        rm -f "${BLOCKSCOUT_FILE}.tmp"
+    fi
+
+    update_env_var "$ENV_FILE" "BLOCKSCOUT_API_HOST" "$machine_ip"
+    
+    log_success "Blockscout configured for remote access"
+}
+
+# Configure shared_utils for more ports
+configure_shared_utils() {
+    if [[ ! -f "$SHARED_UTILS_CONFIG_FILE" ]]; then
+        log_warning "Shared utils configuration file not found: $SHARED_UTILS_CONFIG_FILE"
+        return 0
+    fi
+    
+    if [[ ! -d "$(dirname "$SHARED_UTILS_FILE")" ]]; then
+        log_warning "Shared utils target directory not found: $(dirname "$SHARED_UTILS_FILE")"
+        return 0
+    fi
+    
+    log_info "Copy shared_utils configuration..."
+    cp "$SHARED_UTILS_CONFIG_FILE" "$SHARED_UTILS_FILE"
+    
+    log_success "Configured shared_utils for more ports..."
+}
+
+# Configure input_parser for blockscout image
+configure_input_parser() {
+    if [[ ! -f "$INPUT_PARSER_CONFIG_FILE" ]]; then
+        log_warning "Input parser configuration file not found: $INPUT_PARSER_CONFIG_FILE"
+        return 0
+    fi
+    
+    if [[ ! -d "$(dirname "$INPUT_PARSER_FILE")" ]]; then
+        log_warning "Input parser target directory not found: $(dirname "$INPUT_PARSER_FILE")"
+        return 0
+    fi
+    
+    log_info "Copy input_parser configuration..."
+    cp "$INPUT_PARSER_CONFIG_FILE" "$INPUT_PARSER_FILE"
+    
+    log_success "Configured input_parser for blockscout image..."
+}
+
+# Configure spamoor for fixed port
+configure_spamoor() {
+    if [[ ! -f "$SPAMOOR_CONFIG_FILE" ]] || [[ ! -f "$MAIN_CONFIG_FILE" ]]; then
+        log_warning "Spamoor or main configuration file not found"
+        return 0
+    fi
+    
+    if [[ ! -d "$(dirname "$SPAMOOR_FILE")" ]]; then
+        log_warning "Spamoor target directory not found: $(dirname "$SPAMOOR_FILE")"
+        return 0
+    fi
+    
+    log_info "Copy spamoor configuration..."
+    cp "$SPAMOOR_CONFIG_FILE" "$SPAMOOR_FILE"
+    cp "$MAIN_CONFIG_FILE" "$MAIN_FILE"
+    
+    log_success "Configured spamoor for fixed port..."
+}
+
+# Configure nethermind launcher for enabling proofs translation
+configure_nethermind_launcher() {
+    if [[ ! -f "$NETHERMIND_LAUNCHER_CONFIG_FILE" ]]; then
+        log_warning "Nethermind launcher configuration file not found: $NETHERMIND_LAUNCHER_CONFIG_FILE"
+        return 0
+    fi
+    
+    if [[ ! -d "$(dirname "$NETHERMIND_LAUNCHER_FILE")" ]]; then
+        log_warning "Nethermind launcher target directory not found: $(dirname "$NETHERMIND_LAUNCHER_FILE")"
+        return 0
+    fi
+    
+    log_info "Copy nethermind launcher configuration..."
+    cp "$NETHERMIND_LAUNCHER_CONFIG_FILE" "$NETHERMIND_LAUNCHER_FILE"
+    
+    log_success "Configured nethermind launcher for enabling proofs translation..."
+}
+
+# Configure environment URLs
+configure_environment_urls() {
+    local env_choice="$1"
+    local deployment_choice="$2"
+    local machine_ip="$3"
+    
+    case "$env_choice" in
+        1|"devnet")
+            log_info "Using Devnet Environment"
+            # Create docker network if it doesn't exist
+            if ! docker network ls | grep -q "surge-network"; then
+                docker network create surge-network
+            fi
+
+            # Set default endpoints for devnet if not already defined in .env
+            # These can be overridden by pre-existing .env values
+            if [[ -z "${L1_ENDPOINT_HTTP:-}" ]]; then
+                export L1_ENDPOINT_HTTP="http://localhost:32003"
+            fi
+            if [[ -z "${L1_BEACON_HTTP:-}" ]]; then
+                export L1_BEACON_HTTP="http://localhost:33001"
+            fi
+            if [[ -z "${L2_ENDPOINT_HTTP:-}" ]]; then
+                export L2_ENDPOINT_HTTP="http://localhost:${L2_HTTP_PORT:-8547}"
+            fi
+            
+            # Create context-specific endpoint versions
+            # DOCKER versions: for containers to access host services (always use host.docker.internal)
+            export L1_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L1_ENDPOINT_HTTP")
+            export L1_BEACON_HTTP_DOCKER=$(to_docker_internal "$L1_BEACON_HTTP")
+            export L2_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L2_ENDPOINT_HTTP")
+            
+            # EXTERNAL versions: for host/browser access (use actual IP for remote, localhost for local)
+            if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                # Remote: replace hostname with machine IP for external access
+                export L1_ENDPOINT_HTTP_EXTERNAL=$(format_endpoint_for_context "$L1_ENDPOINT_HTTP" "remote" "$machine_ip")
+                export L1_BEACON_HTTP_EXTERNAL=$(format_endpoint_for_context "$L1_BEACON_HTTP" "remote" "$machine_ip")
+                export L2_ENDPOINT_HTTP_EXTERNAL=$(format_endpoint_for_context "$L2_ENDPOINT_HTTP" "remote" "$machine_ip")
+            else
+                # Local: convert to localhost for host access (handles both localhost and host.docker.internal in .env)
+                export L1_ENDPOINT_HTTP_EXTERNAL=$(to_localhost "$L1_ENDPOINT_HTTP")
+                export L1_BEACON_HTTP_EXTERNAL=$(to_localhost "$L1_BEACON_HTTP")
+                export L2_ENDPOINT_HTTP_EXTERNAL=$(to_localhost "$L2_ENDPOINT_HTTP")
+            fi
+            
+            # Set explorer and relayer endpoints (for external/browser access)
+            if [[ -z "${L1_EXPLORER:-}" ]]; then
+                if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                    export L1_EXPLORER="http://$machine_ip:36005"
+                else
+                    export L1_EXPLORER="http://localhost:36005"
+                fi
+            fi
+            if [[ -z "${L2_EXPLORER:-}" ]]; then
+                if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                    export L2_EXPLORER="http://$machine_ip:${BLOCKSCOUT_FRONTEND_PORT:-3001}"
+                else
+                    export L2_EXPLORER="http://localhost:${BLOCKSCOUT_FRONTEND_PORT:-3001}"
+                fi
+            fi
+            if [[ -z "${L1_RELAYER:-}" ]]; then
+                if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                    export L1_RELAYER="http://$machine_ip:4102"
+                else
+                    export L1_RELAYER="http://localhost:4102"
+                fi
+            fi
+            if [[ -z "${L2_RELAYER:-}" ]]; then
+                if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                    export L2_RELAYER="http://$machine_ip:4103"
+                else
+                    export L2_RELAYER="http://localhost:4103"
+                fi
+            fi
+            if [[ -z "${L2_CATALYST:-}" ]]; then
+                if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                    export L2_CATALYST="http://$machine_ip:4545"
+                    export L2_CATALYST_DOCKER="http://host.docker.internal:4545"
+                else
+                    export L2_CATALYST="http://localhost:4545"
+                    export L2_CATALYST_DOCKER="http://host.docker.internal:4545"
+                fi
+            fi
+            if [[ -z "${L2_DEX_UI:-}" ]]; then
+                if [[ "$deployment_choice" == "1" || "$deployment_choice" == "remote" ]]; then
+                    export L2_DEX_UI="http://$machine_ip:8080"
+                else
+                    export L2_DEX_UI="http://localhost:8080"
+                fi
+            fi
+            ;;
+        2|"staging")
+            log_info "Using Staging Environment"
+            # Create docker network if it doesn't exist
+            if ! docker network ls | grep -q "surge-network"; then
+                docker network create surge-network
+            fi
+            
+            # For staging/testnet, respect .env values
+            # DOCKER versions: convert to host.docker.internal for container access
+            # EXTERNAL versions: keep original for host/browser access
+            if [[ -n "${L1_ENDPOINT_HTTP:-}" ]]; then
+                export L1_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L1_ENDPOINT_HTTP")
+                export L1_ENDPOINT_HTTP_EXTERNAL="$L1_ENDPOINT_HTTP"
+            fi
+            if [[ -n "${L1_BEACON_HTTP:-}" ]]; then
+                export L1_BEACON_HTTP_DOCKER=$(to_docker_internal "$L1_BEACON_HTTP")
+                export L1_BEACON_HTTP_EXTERNAL="$L1_BEACON_HTTP"
+            fi
+            if [[ -n "${L2_ENDPOINT_HTTP:-}" ]]; then
+                export L2_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L2_ENDPOINT_HTTP")
+                export L2_ENDPOINT_HTTP_EXTERNAL="$L2_ENDPOINT_HTTP"
+            fi
+            ;;
+        3|"testnet")
+            log_info "Using Testnet Environment"
+            # Create docker network if it doesn't exist
+            if ! docker network ls | grep -q "surge-network"; then
+                docker network create surge-network
+            fi
+            
+            # For staging/testnet, respect .env values
+            # DOCKER versions: convert to host.docker.internal for container access
+            # EXTERNAL versions: keep original for host/browser access
+            if [[ -n "${L1_ENDPOINT_HTTP:-}" ]]; then
+                export L1_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L1_ENDPOINT_HTTP")
+                export L1_ENDPOINT_HTTP_EXTERNAL="$L1_ENDPOINT_HTTP"
+            fi
+            if [[ -n "${L1_BEACON_HTTP:-}" ]]; then
+                export L1_BEACON_HTTP_DOCKER=$(to_docker_internal "$L1_BEACON_HTTP")
+                export L1_BEACON_HTTP_EXTERNAL="$L1_BEACON_HTTP"
+            fi
+            if [[ -n "${L2_ENDPOINT_HTTP:-}" ]]; then
+                export L2_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L2_ENDPOINT_HTTP")
+                export L2_ENDPOINT_HTTP_EXTERNAL="$L2_ENDPOINT_HTTP"
+            fi
+            ;;
+        *)
+            log_error "Invalid environment choice: $env_choice"
+            return 1
+            ;;
+    esac
+    
+    return 0
+}
+
+# Helper function to update environment variables in .env file
+update_env_var() {
+    local env_file="$1"
+    local var_name="$2"
+    local var_value="$3"
+
+    # Check if the variable exists in the file
+    if grep -q "^${var_name}=" "$env_file"; then
+        # Update existing variable (handle special characters)
+        sed -i.bak "s|^${var_name}=.*|${var_name}=${var_value}|" "$env_file" && rm -f "$env_file.bak"
+    else
+        # Add new variable if it doesn't exist
+        echo "${var_name}=${var_value}" >> "$env_file"
+    fi
+}
 
 # Validate environment for devnet deployment
 validate_environment_for_devnet() {
@@ -1321,6 +2066,307 @@ start_relayers() {
     fi
     
     return 0
+}
+
+# Prepare Bridge UI configuration files
+prepare_bridge_ui_configs() {
+    log_info "Preparing Bridge UI configs..."
+    
+    # Ensure configs directory exists
+    if [[ ! -d "$CONFIGS_DIR" ]]; then
+        mkdir -p "$CONFIGS_DIR"
+    fi
+    
+    # Use external endpoints for UI (accessible from browser)
+    local l1_rpc_ui="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-http://localhost:32003}}"
+    local l2_rpc_ui="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-http://localhost:8547}}"
+    local l1_explorer_ui="${L1_EXPLORER:-http://localhost:36005}"
+    local l2_explorer_ui="${L2_EXPLORER:-http://localhost:3001}"
+    
+    # Generate configuredBridges.json
+    cat > "$CONFIGS_DIR/configuredBridges.json" << EOF
+{
+  "configuredBridges": [
+    {
+      "source": "$L1_CHAIN_ID",
+      "destination": "$L2_CHAIN_ID",
+      "addresses": {
+        "bridgeAddress": "$SHASTA_BRIDGE",
+        "erc20VaultAddress": "$SHASTA_ERC20_VAULT",
+        "erc721VaultAddress": "$SHASTA_ERC721_VAULT",
+        "erc1155VaultAddress": "$SHASTA_ERC1155_VAULT",
+        "crossChainSyncAddress": "",
+        "signalServiceAddress": "$SHASTA_SIGNAL_SERVICE",
+        "quotaManagerAddress": ""
+      }
+    },
+    {
+      "source": "$L2_CHAIN_ID",
+      "destination": "$L1_CHAIN_ID",
+      "addresses": {
+        "bridgeAddress": "$L2_BRIDGE",
+        "erc20VaultAddress": "$L2_ERC20_VAULT",
+        "erc721VaultAddress": "$L2_ERC721_VAULT",
+        "erc1155VaultAddress": "$L2_ERC1155_VAULT",
+        "crossChainSyncAddress": "",
+        "signalServiceAddress": "$L2_SIGNAL_SERVICE",
+        "quotaManagerAddress": ""
+      }
+    }
+  ]
+}
+EOF
+
+    # Generate configuredChains.json
+    cat > "$CONFIGS_DIR/configuredChains.json" << EOF
+{
+  "configuredChains": [
+    {
+      "$L1_CHAIN_ID": {
+        "name": "L1",
+        "type": "L1",
+        "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
+        "rpcUrls": {
+          "default": {
+            "http": ["$l1_rpc_ui"]
+          }
+        },
+        "nativeCurrency": {
+          "name": "ETH",
+          "symbol": "ETH",
+          "decimals": 18
+        },
+        "blockExplorers": {
+          "default": {
+            "name": "L1 Explorer",
+            "url": "$l1_explorer_ui"
+          }
+        }
+      }
+    },
+    {
+      "$L2_CHAIN_ID": {
+        "name": "Surge",
+        "type": "L2",
+        "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
+        "rpcUrls": {
+          "default": {
+            "http": ["$l2_rpc_ui"]
+          }
+        },
+        "nativeCurrency": {
+          "name": "ETH",
+          "symbol": "ETH",
+          "decimals": 18
+        },
+        "blockExplorers": {
+          "default": {
+            "name": "Surge Explorer",
+            "url": "$l2_explorer_ui"
+          }
+        }
+      }
+    }
+  ]
+}
+EOF
+
+    # Generate configuredRelayer.json
+    cat > "$CONFIGS_DIR/configuredRelayer.json" << EOF
+{
+  "configuredRelayer": [
+    {
+      "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID],
+      "url": "$L1_RELAYER"
+    },
+    {
+      "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID],
+      "url": "$L2_RELAYER"
+    }
+  ]
+}
+EOF
+
+    # Generate configuredEventIndexer.json
+    cat > "$CONFIGS_DIR/configuredEventIndexer.json" << EOF
+{
+  "configuredEventIndexer": [
+    {
+      "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID],
+      "url": "$L1_RELAYER"
+    },
+    {
+      "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID],
+      "url": "$L2_RELAYER"
+    }
+  ]
+}
+EOF
+
+    # Generate configuredCustomTokens.json (empty array for now)
+    cat > "$CONFIGS_DIR/configuredCustomTokens.json" << EOF
+[]
+EOF
+
+    log_success "Bridge UI configs generated successfully"
+}
+
+# Prepare DEX UI configs
+prepare_dex_ui_configs() {
+    local l1_endpoint="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-}}"
+    local l2_endpoint="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-}}"
+
+    log_info "Preparing DEX UI configs..."
+
+    cp "Dockerfile.dex" "$DEX_DOCKERFILE"
+
+    cat > "$DEX_NGINX_CONF" << 'EOF'
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Prevent nginx from issuing absolute http:// redirects (e.g. trailing-slash 301s)
+    # when TLS is terminated upstream (the pod only speaks HTTP internally).
+    absolute_redirect off;
+
+    # Proxy /api/builder to the builder service.
+    # BUILDER_URL is injected at container start via envsubst (set it as a
+    # runtime env var, e.g. BUILDER_URL=https://catalyst.realtime.surge.wtf).
+    # Using a variable for proxy_pass forces per-request DNS resolution so the
+    # container starts cleanly even if the upstream is temporarily unreachable.
+    location /api/builder/ {
+        resolver          1.1.1.1 8.8.8.8 valid=30s ipv6=off;
+        set $builder_upstream ${BUILDER_URL};
+        proxy_pass              $builder_upstream/;
+        proxy_ssl_server_name   on;
+        proxy_redirect          off;
+        proxy_set_header        Host              catalyst.realtime.surge.wtf;
+        proxy_set_header        X-Real-IP         $remote_addr;
+        proxy_set_header        X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+    }
+
+    # Serve static assets with long-lived caching (Vite content-hashes filenames)
+    location ~* \.(js|css|png|svg|ico|woff2?)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # SPA fallback — all other routes serve index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+EOF
+
+    cat > "$DEX_ENV" << EOF
+# L1 RPC URL (for reading balances, creating smart wallet)
+VITE_L1_RPC_URL=${l1_endpoint}
+
+# L2 RPC URL (for reading DEX reserves)
+VITE_L2_RPC_URL=${l2_endpoint}
+
+# Builder RPC URL (for sending UserOps)
+VITE_BUILDER_RPC_URL=${L2_CATALYST_DOCKER}
+VITE_BUILDER_API_URL=${L2_CATALYST_DOCKER}
+
+# Chain ID for L1
+VITE_CHAIN_ID=${L1_CHAIN_ID}
+
+# L1 chain display config (defaults: Gnosis / xDAI if not set)
+VITE_L1_CHAIN_NAME=Surge Devnet
+VITE_L1_NATIVE_SYMBOL=ETH
+VITE_L1_NATIVE_NAME=Ether
+VITE_L1_NATIVE_LOGO=/eth-logo.svg
+
+# Safe contract addresses (same on both chains)
+VITE_SAFE_PROXY_FACTORY=${SAFE_PROXY_FACTORY}
+VITE_SAFE_SINGLETON=${SAFE_SINGLETON}
+VITE_SAFE_MULTISEND=${SAFE_MULTISEND}
+VITE_SAFE_FALLBACK_HANDLER=${SAFE_FALLBACK_HANDLER}
+
+# Contract addresses (update after deployment)
+VITE_USER_OPS_FACTORY=${USEROPS_SUBMITTER_FACTORY_ADDRESS}
+VITE_L1_VAULT=${L1_VAULT}
+VITE_USDC_TOKEN=${SWAP_TOKEN}
+VITE_USDC_DECIMALS=${TOKEN_DECIMALS}
+VITE_SIMPLE_DEX=${L2_DEX}
+VITE_L1_BRIDGE=${SHASTA_BRIDGE}
+VITE_L2_CHAIN_ID=${L2_CHAIN_ID}
+VITE_L2_RELAY=${CROSS_CHAIN_RELAY}
+
+# WalletConnect Project ID (get from https://cloud.walletconnect.com)
+VITE_WALLETCONNECT_PROJECT_ID=${WALLETCONNECT_PROJECT_ID}
+EOF
+    
+    # Generate configuredCustomTokens.json (empty array for now)
+}
+
+# Verify RPC endpoints
+verify_rpc_endpoints() {
+    log_info "Verifying RPC endpoints..."
+    
+    local all_healthy=true
+    
+    # Verify L1 RPC (use external endpoint for host-based verification)
+    local l1_endpoint="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-}}"
+    if [[ -n "$l1_endpoint" ]]; then
+        if test_rpc_connection "$l1_endpoint"; then
+            log_success "L1 RPC endpoint is accessible: $l1_endpoint"
+        else
+            log_error "L1 RPC endpoint is not accessible: $l1_endpoint"
+            all_healthy=false
+        fi
+    fi
+    
+    # Verify L2 RPC (use external endpoint for host-based verification)
+    local l2_endpoint="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-}}"
+    if [[ -n "$l2_endpoint" ]]; then
+        if test_rpc_connection "$l2_endpoint"; then
+            log_success "L2 RPC endpoint is accessible: $l2_endpoint"
+        else
+            log_error "L2 RPC endpoint is not accessible: $l2_endpoint"
+            all_healthy=false
+        fi
+    fi
+    
+    if [[ "$all_healthy" == true ]]; then
+        log_success "All RPC endpoints verified successfully"
+        return 0
+    else
+        log_warning "Some RPC endpoints are not accessible"
+        return 1
+    fi
+}
+
+# Display deployment summary
+display_deployment_summary() {
+    echo
+    log_info "Deployment Summary:"
+    echo
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║  Surge Full Stack deployment completed successfully!         ║"
+    echo "║                                                              ║"
+    echo "║  Key Service Endpoints:                                      ║"
+    echo "   • L1 RPC:        ${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-N/A}}                              "
+    echo "   • L2 RPC:        ${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-N/A}}                             "
+    echo "   • L2 Catalyst:   ${L2_CATALYST:-N/A}                        "
+    echo "   • L2 Explorer:   ${L2_EXPLORER:-N/A}                        "
+    echo "   • L2 Dex UI:     ${L2_DEX_UI:-N/A}                        "
+    
+    if [[ -n "${DEPLOYMENT_ADDRESS:-}" ]]; then
+        echo "║                                                              ║"
+        echo "║  Deployment Account:                                         ║"
+        printf "   • Address:      %-42s \n" "$DEPLOYMENT_ADDRESS"
+        printf "   • Balance:       %-20s ETH                         \n" "${DEPLOYMENT_BALANCE:-0}"
+    fi
+    
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo
 }
 
 main() {
