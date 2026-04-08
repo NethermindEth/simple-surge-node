@@ -214,7 +214,19 @@ validate_prerequisites() {
         log_error "Please install them first"
         return 1
     fi
-    
+
+    # Verify docker compose v2.1+ (required for --profile support)
+    local compose_version
+    compose_version=$(docker compose version --short 2>/dev/null || echo "0.0.0")
+    local compose_major compose_minor
+    compose_major=$(echo "$compose_version" | cut -d. -f1)
+    compose_minor=$(echo "$compose_version" | cut -d. -f2)
+    if [[ "$compose_major" -lt 2 ]] || [[ "$compose_major" -eq 2 && "$compose_minor" -lt 1 ]]; then
+        log_error "docker compose >= 2.1 required (found: $compose_version)"
+        return 1
+    fi
+    log_info "docker compose version: $compose_version"
+
     # Create required directories
     for dir in "$DEPLOYMENT_DIR" "$CONFIGS_DIR"; do
         if [[ ! -d "$dir" ]]; then
@@ -1498,8 +1510,18 @@ extract_l1_deployment_results() {
     echo " SURGE_INBOX: $SHASTA_SURGE_INBOX "
     echo " BRIDGE: $SHASTA_BRIDGE "
     echo " SIGNAL_SERVICE: $SHASTA_SIGNAL_SERVICE "
+    echo " RISC0_VERIFIER: $SHASTA_RISC0_VERIFIER "
+    echo " SP1_VERIFIER: $SHASTA_SP1_VERIFIER "
+    echo " PROOF_VERIFIER_DUMMY: $SHASTA_PROOF_VERIFIER_DUMMY "
+    echo " SURGE_VERIFIER: $SHASTA_SURGE_VERIFIER "
     echo ">>>>>>"
     echo
+    if [[ -f "$L1_DEPLOYMENT_FILE" ]]; then
+        echo "=== deploy_l1.json ==="
+        cat "$L1_DEPLOYMENT_FILE"
+        echo ""
+        echo "=== end deploy_l1.json ==="
+    fi
 
     log_info "Updating .env with extracted values..."
 
@@ -1539,6 +1561,28 @@ extract_l1_deployment_results() {
     update_env_var "$ENV_FILE" "REALTIME_INBOX" "$REALTIME_INBOX"
     export ZISK_VERIFIER; ZISK_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.zisk_verifier')
     update_env_var "$ENV_FILE" "ZISK_VERIFIER" "$ZISK_VERIFIER"
+
+    # Extract genesis L1 height from the Activated event on RealTimeInbox.
+    # taiko-client driver requires --genesis.l1Height for the realtime fork;
+    # it cannot auto-detect this value from on-chain state.
+    local l1_rpc="${L1_ENDPOINT_HTTP:-http://localhost:32003}"
+    local activation_hex
+    activation_hex=$(cast logs \
+        --from-block 0 \
+        --to-block latest \
+        --address "$REALTIME_INBOX" \
+        "Activated(bytes32)" \
+        --rpc-url "$l1_rpc" \
+        --json 2>/dev/null | jq -r '.[0].blockNumber // empty')
+    if [[ -n "$activation_hex" ]]; then
+        export GENESIS_L1_HEIGHT
+        GENESIS_L1_HEIGHT=$(printf "%d" "$activation_hex")
+        log_info "RealTimeInbox activated at L1 block: $GENESIS_L1_HEIGHT"
+    else
+        log_warning "Could not find Activated event on RealTimeInbox; GENESIS_L1_HEIGHT=0"
+        export GENESIS_L1_HEIGHT=0
+    fi
+    update_env_var "$ENV_FILE" "GENESIS_L1_HEIGHT" "$GENESIS_L1_HEIGHT"
 
     if [[ -f "$DEPLOYMENT_DIR/deployment_relay.lock" ]]; then
         export CROSS_CHAIN_RELAY; CROSS_CHAIN_RELAY=$(cat "$DEPLOYMENT_DIR/deployment_relay.json" | jq -r '.cross_chain_relay')
@@ -2450,16 +2494,16 @@ main() {
     local deploy_devnet_choice=1
     local slow_mode
     if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
-        # # Devnet: prompt for deploy devnet or use existing
-        # if [[ -z "${deploy_devnet:-}" ]]; then
-        #     deploy_devnet_choice=$(prompt_l1_deployment_mode)
-        # else
-        #     case "$deploy_devnet" in
-        #         true|"true"|"0"|0) deploy_devnet_choice=0 ;;
-        #         false|"false"|"1"|1) deploy_devnet_choice=1 ;;
-        #         *) log_error "Invalid deploy-devnet: $deploy_devnet"; exit 1 ;;
-        #     esac
-        # fi
+        # Devnet: prompt for deploy devnet or use existing
+        if [[ -z "${deploy_devnet:-}" ]]; then
+            deploy_devnet_choice=$(prompt_l1_deployment_mode)
+        else
+            case "$deploy_devnet" in
+                true|"true"|"0"|0) deploy_devnet_choice=0 ;;
+                false|"false"|"1"|1) deploy_devnet_choice=1 ;;
+                *) log_error "Invalid deploy-devnet: $deploy_devnet"; exit 1 ;;
+            esac
+        fi
         
         if [[ "$deploy_devnet_choice" == "0" ]]; then
             # Option A: Deploy new L1 devnet

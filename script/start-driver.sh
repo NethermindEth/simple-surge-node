@@ -17,6 +17,7 @@ ARGS="${ARGS} \
     --fork realtime \
     --genesis.l1Height ${GENESIS_L1_HEIGHT} \
     --realtimeInbox ${REALTIME_INBOX} \
+    --genesis.l1Height ${GENESIS_L1_HEIGHT} \
     --taikoAnchor ${TAIKO_ANCHOR} \
     --preconfirmation.whitelist ${SHASTA_PRECONF_WHITELIST} \
     --preconfirmation.serverPort ${PRECONF_SERVER_PORT} \
