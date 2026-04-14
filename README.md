@@ -37,9 +37,23 @@ brew install kurtosis-tech/tap/kurtosis-cli   # macOS
 
 `.env.devnet` ships with pre-funded keys — no wallet setup needed for local devnet.
 
-### Prover (optional)
+### Prover
 
-Real-time proving requires a separate machine with a CUDA-capable GPU running Raiko. Set `RAIKO_HOST_ZKVM=http://<prover-ip>:8080` in `.env` before deploying. Without a prover, deploy with mock proofs (option 0 at the prover prompt) for testing.
+There are two proving modes:
+
+**Mock prover** (default for local testing)
+- No GPU or external prover required
+- Deploys a `ProofVerifierDummy` contract that accepts any signed proof
+- Select `0` at the prover prompt, or set `MOCK_PROOF_MODE=true` in `.env`
+- The L2 stack includes an embedded Raiko instance (`l2-raiko-zk-client`) when mock mode is active
+
+**Real prover (ZisK)**
+- Requires a separate machine with an NVIDIA GPU (RTX 5090 or L40 class, 32 GB+ VRAM)
+- Set `RAIKO_HOST_ZKVM=http://<prover-ip>:8082` in `.env` before deploying
+- Select `1` at the prover prompt
+- After L1 deployment the script registers the ZisK program vkey on-chain via `setup-zisk.sh` and verifies it with `isProgramTrusted` before locking
+
+See [Prover Setup](https://docs.surge.wtf/guides/running-surge/provers) for full GPU requirements and Raiko configuration.
 
 ## Setup
 
@@ -64,11 +78,15 @@ cp .env.devnet .env
 The script runs interactively. You can also pass flags to skip prompts:
 
 ```bash
-# All defaults, no prompts
-./deploy-surge-full.sh --environment devnet --deploy-devnet true --force
+# Mock prover — no GPU required (fastest for local testing)
+MOCK_PROOF_MODE=true ./deploy-surge-full.sh \
+  --environment devnet --deploy-devnet true \
+  --deployment local --stack-option 2 --force
 
-# Driver + catalyst only
-./deploy-surge-full.sh --environment devnet --deploy-devnet true --stack-option 2
+# Real prover — point at a running Raiko instance
+RAIKO_HOST_ZKVM=http://<prover-ip>:8082 ./deploy-surge-full.sh \
+  --environment devnet --deploy-devnet true \
+  --deployment local --stack-option 2 --force
 ```
 
 ### Interactive prompts (in order)
@@ -101,8 +119,7 @@ The script runs interactively. You can also pass flags to skip prompts:
 | `--deployment` | `local` \| `remote` | interactive |
 | `--stack-option` | `1`–`3` | interactive |
 | `--mode` | `silence` \| `debug` | interactive |
-| `--deposit-bond` | `true` \| `false` | interactive |
-| `--bond-amount` | number (ETH) | `1000` |
+| `--running-provers` | `true` \| `false` | interactive |
 | `-f`, `--force` | — | skip all confirmations |
 | `-h`, `--help` | — | show help |
 
@@ -176,6 +193,12 @@ The `.env` uses `host.docker.internal` for container-to-host routing. From your 
 
 **Containers still running after `--force` remove**
 The script falls back to `docker kill + docker rm -f` by name. If a container is unkillable (kernel D-state), restart Docker Desktop.
+
+**Mock prover: blocks propose but never finalize**
+`ProofVerifierDummy` requires the proof to be signed by `MOCK_PROOF_SIGNER` (defaults to `PUBLIC_KEY`). Confirm that `MOCK_PROOF_MODE=true` was set during L1 deployment and that `MOCK_PROOF_SIGNER` matches the key the Raiko mock instance is signing with.
+
+**Real prover: `ZISK guest data is missing`**
+Raiko must be running and reachable at `RAIKO_HOST_ZKVM` before deployment. Check: `curl $RAIKO_HOST_ZKVM/guest_data`.
 
 **`cast` not found**
 Install Foundry: `curl -L https://foundry.paradigm.xyz | bash && foundryup`
