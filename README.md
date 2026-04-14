@@ -245,8 +245,34 @@ simple-surge-node/
 ├── helpers.sh                   # Shared functions (URL utils, prompts, config helpers)
 ├── docker-compose.yml           # L2 stack (driver, catalyst, web3signer, blockscout, dex)
 ├── docker-compose-protocol.yml  # L1 deployer containers
+├── .env.devnet                  # Environment template for local devnet
+│
+├── deployer/                    # Shell scripts run inside protocol containers
+│   ├── deploy-surge-l1.sh       # Deploys core L1 protocol contracts
+│   ├── deploy-multicall.sh      # Deploys Multicall contract
+│   ├── deploy-userops-submitter.sh
+│   ├── generate-genesis.sh      # Generates L2 genesis from L1 state
+│   ├── setup-zisk.sh            # Registers ZisK program vkey on ZiskVerifier
+│   ├── setup-cross-chain-dex.sh
+│   ├── deploy-test-token.sh
+│   └── deploy-cross-chain-relay.sh
+│
+├── script/                      # Container entrypoint scripts
+│   ├── start-nethermind.sh      # Launches L2 execution client
+│   └── start-driver.sh          # Launches taiko-client driver
+│
+├── static/                      # Static config files mounted into containers
+│   ├── jwtsecret                # Shared JWT secret for Engine API auth
+│   └── spamoor/                 # Spamoor scenario configs
+│
 ├── ethereum-package/            # Kurtosis ethereum-package submodule (L1 devnet)
-├── configs/                     # Generated configs (network_params.yaml, chainspec, etc.)
-├── deployment/                  # Generated deployment artifacts (contract addresses, genesis)
-└── .env.devnet                  # Environment template for local devnet
+│
+├── surge-taiko-mono/            # Protocol monorepo submodule
+│   └── packages/
+│       ├── protocol/            # Solidity contracts (RealTimeInbox, verifiers, bridge)
+│       ├── taiko-client/        # Driver / proposer / prover Go client
+│       └── cross-chain-dex-ui/  # DEX front-end (Vite/React)
+│
+├── configs/                     # Generated at deploy time (chainspec, web3signer keys, etc.)
+└── deployment/                  # Generated deployment artifacts (JSON address files, lock files)
 ```
