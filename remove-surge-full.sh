@@ -321,35 +321,51 @@ remove_l2_stack() {
 }
 
 # Remove persistent data directories
+# Docker containers write files as root (or other UIDs), so plain rm -rf can fail
+# with EPERM on macOS. Fall back to a one-shot Alpine container that deletes the
+# contents from inside Docker (where it has the correct permissions), then remove
+# the now-empty directory from the host.
 remove_data() {
     log_info "Removing persistent data directories..."
-    
+
     local removed_dirs=()
     local failed_dirs=()
-    
+
     for dir in "${DATA_DIRS[@]}"; do
         if [[ -d "$dir" ]]; then
             if rm -rf "$dir" 2>/dev/null; then
                 removed_dirs+=("$dir")
             else
-                failed_dirs+=("$dir")
+                log_warning "rm -rf failed for '$dir' (likely owned by Docker root) — using container fallback..."
+                local abs_dir
+                abs_dir="$(cd "$(dirname "$dir")" && pwd)/$(basename "$dir")"
+                if docker run --rm \
+                        -v "${abs_dir}:/data" \
+                        --entrypoint sh alpine \
+                        -c "rm -rf /data/* /data/.[!.]* 2>/dev/null; true" 2>/dev/null \
+                   && rm -rf "$dir" 2>/dev/null; then
+                    removed_dirs+=("$dir")
+                else
+                    failed_dirs+=("$dir")
+                fi
             fi
         fi
     done
-    
+
     if [[ ${#removed_dirs[@]} -gt 0 ]]; then
         log_success "Removed data directories: ${removed_dirs[*]}"
     fi
-    
+
     if [[ ${#failed_dirs[@]} -gt 0 ]]; then
         log_error "Failed to remove data directories: ${failed_dirs[*]}"
+        log_error "Try: sudo rm -rf ${failed_dirs[*]}"
         return 1
     fi
-    
+
     if [[ ${#removed_dirs[@]} -eq 0 ]]; then
         log_info "No data directories found to remove"
     fi
-    
+
     return 0
 }
 

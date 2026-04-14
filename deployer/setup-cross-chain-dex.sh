@@ -229,22 +229,22 @@ touch "$DEPLOYMENT_DIR/cross_chain_dex.lock"
 
 if [[ ! -f "$DEPLOYMENT_DIR/setup_l2.lock" ]]; then
     # Register L1 Bridge on L2 Shared Resolver
-    cast send $SHASTA_SHARED_RESOLVER \
-    "registerAddress(uint256,bytes32,address)" \
-    $L1_CHAIN_ID \
-    $(cast format-bytes32-string "bridge") \
-    $SHASTA_BRIDGE \
-    --private-key $PRIVATE_KEY \
-    --rpc-url $L2_RPC
+    cast send "$REALTIME_SHARED_RESOLVER" \
+        "registerAddress(uint256,bytes32,address)" \
+        "$L1_CHAIN_ID" \
+        "$(cast format-bytes32-string "bridge")" \
+        "$REALTIME_BRIDGE" \
+        --private-key "$PRIVATE_KEY" \
+        --rpc-url "$L2_RPC"
 
     # Register L1 Signal Service on L2 Shared Resolver
-    cast send $SHASTA_SHARED_RESOLVER \
-    "registerAddress(uint256,bytes32,address)" \
-    $L1_CHAIN_ID \
-    $(cast format-bytes32-string "signal_service") \
-    $SHASTA_SIGNAL_SERVICE \
-    --private-key $PRIVATE_KEY \
-    --rpc-url $L2_RPC
+    cast send "$REALTIME_SHARED_RESOLVER" \
+        "registerAddress(uint256,bytes32,address)" \
+        "$L1_CHAIN_ID" \
+        "$(cast format-bytes32-string "signal_service")" \
+        "$REALTIME_SIGNAL_SERVICE" \
+        --private-key "$PRIVATE_KEY" \
+        --rpc-url "$L2_RPC"
 
     touch "$DEPLOYMENT_DIR/setup_l2.lock"
 fi

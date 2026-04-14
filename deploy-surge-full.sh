@@ -747,6 +747,11 @@ extract_l1_deployment_results() {
         update_env_var "$ENV_FILE" "L1_TOKEN" "$L1_TOKEN"
     fi
 
+    if [[ -f "$DEPLOYMENT_DIR/test-token-l1.json" ]]; then
+        export L1_TEST_TOKEN; L1_TEST_TOKEN=$(jq -r '.test_token // empty' "$DEPLOYMENT_DIR/test-token-l1.json")
+        update_env_var "$ENV_FILE" "L1_TEST_TOKEN" "$L1_TEST_TOKEN"
+    fi
+
     if [[ -f "$CROSS_CHAIN_DEX_L2_FILE" ]]; then
         export L2_TOKEN; L2_TOKEN=$(jq -r '.SwapTokenL2' "$CROSS_CHAIN_DEX_L2_FILE")
         update_env_var "$ENV_FILE" "L2_TOKEN" "$L2_TOKEN"
@@ -989,7 +994,7 @@ start_l2_stack() {
     fi
 
     mkdir -p ./driver-data
-    chmod -R 777 ./driver-data
+    chmod -R 777 ./driver-data 2>/dev/null || true
 
     case "$stack_option" in
         1)

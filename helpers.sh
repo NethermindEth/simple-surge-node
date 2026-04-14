@@ -1062,7 +1062,8 @@ VITE_L1_RPC_URL=${l1_endpoint}
 VITE_L2_RPC_URL=${l2_endpoint}
 
 # Builder RPC URL — proxied at /api/builder via nginx (runtime BUILDER_URL env var)
-VITE_BUILDER_RPC_URL=${L2_CATALYST}
+VITE_BUILDER_RPC_URL=http://l2-catalyst-node:4545
+VITE_BUILDER_API_URL=http://l2-catalyst-node:4545
 
 # Chain IDs
 VITE_CHAIN_ID=${L1_CHAIN_ID}
@@ -1083,7 +1084,7 @@ VITE_SAFE_FALLBACK_HANDLER=0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99
 # Deployed contract addresses
 VITE_USER_OPS_FACTORY=${USEROPS_SUBMITTER_FACTORY_ADDRESS}
 VITE_L1_VAULT=${L1_VAULT}
-VITE_USDC_TOKEN=${SWAP_TOKEN}
+VITE_USDC_TOKEN=${L1_TEST_TOKEN:-${L1_TOKEN}}
 VITE_USDC_DECIMALS=${TOKEN_DECIMALS}
 VITE_SIMPLE_DEX=${L2_DEX}
 VITE_L1_BRIDGE=${REALTIME_BRIDGE}
@@ -1096,7 +1097,6 @@ EOF
 
 # ─── Deployment summary ──────────────────────────────────────────────────────
 display_deployment_summary() {
-    echo
     log_info "Deployment Summary:"
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
@@ -1117,5 +1117,4 @@ display_deployment_summary() {
     fi
 
     echo "╚══════════════════════════════════════════════════════════════╝"
-    echo
 }

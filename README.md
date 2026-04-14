@@ -183,6 +183,90 @@ After deployment, the summary table prints all endpoints. Defaults for a local d
 
 `--force` removes: L1 devnet, L2 stack, data directories, and config files — no prompts.
 
+## Restart L2 stack
+
+Restart Nethermind, the Taiko driver, Catalyst, and any other L2 containers **without redeploying anything** — L1 devnet, L1 contracts, and chain data are all preserved.
+
+```bash
+# 1. Stop L2 containers only
+./remove-surge-full.sh \
+  --remove-l1-devnet false \
+  --remove-l2-stack true \
+  --remove-data false \
+  --remove-configs false \
+  --force
+
+# 2. Start L2 stack against the existing deployment
+./deploy-surge-full.sh \
+  --environment devnet \
+  --deploy-devnet false \
+  --deployment local \
+  --stack-option 2 \
+  --force
+```
+
+## Redeploy L2 stack
+
+Keep the L1 Kurtosis enclave running but wipe and redeploy everything else — L1 contracts, L2 genesis, and the full L2 stack — from scratch.
+
+```bash
+# 1. Stop L2 containers, wipe data and all deployment artifacts (keep L1 enclave)
+./remove-surge-full.sh \
+  --remove-l1-devnet false \
+  --remove-l2-stack true \
+  --remove-data true \
+  --remove-configs true \
+  --force
+
+# 2. Redeploy against the existing L1 enclave (skip Kurtosis spin-up)
+./deploy-surge-full.sh \
+  --environment devnet \
+  --deploy-devnet false \
+  --deployment local \
+  --stack-option 2 \
+  --force
+```
+
+Replace `--stack-option 2` with `1` (driver only) or `3` (driver + catalyst + spammer) to match your desired setup.
+
+## Collect logs
+
+`collect-devnet-logs.sh` takes a diagnostic snapshot of all running devnet containers — useful for sharing bug reports or investigating failures.
+
+```bash
+# Full snapshot (L1 enclave dump + all L2 container logs)
+./collect-devnet-logs.sh
+
+# Last 30 minutes of L2 logs only
+./collect-devnet-logs.sh --since 30m
+
+# L1 enclave dump only
+./collect-devnet-logs.sh --l1-only
+
+# L2 docker logs only
+./collect-devnet-logs.sh --l2-only
+
+# Custom output directory
+./collect-devnet-logs.sh -o /tmp/surge-diag
+```
+
+Output is saved to `./logs/snapshot-YYYYMMDD-HHMMSS/` by default:
+
+```
+snapshot-20260414-120000/
+├── system-info.txt          # docker/kurtosis versions, running containers
+├── l1/                      # kurtosis enclave dump (L1 service logs + artifacts)
+└── l2/
+    ├── _docker-compose-ps.txt
+    ├── l2-nethermind-execution-client.log
+    ├── l2-taiko-consensus-client.log
+    ├── l2-catalyst-node.log
+    └── ...
+```
+
+**L1** uses `kurtosis enclave dump surge-devnet` — captures logs and artifacts for all L1 services.  
+**L2** runs `docker logs --timestamps` per container from `docker-compose.yml`.
+
 ## Troubleshooting
 
 **L1 health check fails after devnet start**
