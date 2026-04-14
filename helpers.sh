@@ -377,6 +377,56 @@ _jq_required() {
     echo "$val"
 }
 
+# ─── Contract verification ───────────────────────────────────────────────────
+# is_contract_deployed <address> <rpc_url> [label]
+# Returns 0 (true) if the address has deployed bytecode, 1 otherwise.
+# Uses: cast codesize — returns 0 for EOA/empty, >0 for deployed contract.
+is_contract_deployed() {
+    local address="$1"
+    local rpc_url="$2"
+    local label="${3:-$address}"
+
+    if [[ -z "$address" || "$address" == "0x0000000000000000000000000000000000000000" ]]; then
+        log_error "is_contract_deployed: zero/empty address for '$label'"
+        return 1
+    fi
+
+    local size
+    size=$(cast codesize "$address" --rpc-url "$rpc_url" 2>/dev/null)
+
+    if [[ -z "$size" ]]; then
+        log_error "is_contract_deployed: RPC call failed for '$label' ($address) at $rpc_url"
+        return 1
+    fi
+
+    if [[ "$size" -gt 0 ]]; then
+        log_success "Contract verified: $label ($address) — codesize $size"
+        return 0
+    else
+        log_error "Contract NOT deployed: $label ($address) — codesize 0"
+        return 1
+    fi
+}
+
+# verify_contracts <rpc_url> <label:address>...
+# Verifies multiple contracts in one call. Returns 1 if any fail.
+# Usage: verify_contracts "$L1_RPC" "SurgeInbox:$REALTIME_INBOX" "Bridge:$REALTIME_BRIDGE"
+verify_contracts() {
+    local rpc_url="$1"
+    shift
+    local all_ok=true
+
+    for entry in "$@"; do
+        local label="${entry%%:*}"
+        local address="${entry##*:}"
+        if ! is_contract_deployed "$address" "$rpc_url" "$label"; then
+            all_ok=false
+        fi
+    done
+
+    [[ "$all_ok" == true ]]
+}
+
 # ─── Network / IP helpers ────────────────────────────────────────────────────
 # get_machine_ip — returns the primary non-loopback IPv4 of this host
 get_machine_ip() {
@@ -615,7 +665,7 @@ configure_environment_urls() {
             log_info "Using Devnet Environment"
 
             if ! docker network ls | grep -q "surge-network"; then
-                docker network create surge-network
+                log_info "Create surge-network: $(docker network create surge-network)"
             fi
 
             # ── Base endpoints (respect existing .env values) ──────────────
@@ -689,32 +739,6 @@ configure_environment_urls() {
             fi
             ;;
 
-        2|"staging"|3|"testnet")
-            log_info "Using $([ "$env_choice" = "2" ] || [ "$env_choice" = "staging" ] && echo Staging || echo Testnet) Environment"
-
-            if ! docker network ls | grep -q "surge-network"; then
-                docker network create surge-network
-            fi
-
-            # For staging/testnet, endpoints come from .env and are assumed reachable.
-            # DOCKER variants use host.docker.internal; EXTERNAL variants keep original.
-            if [[ -n "${L1_ENDPOINT_HTTP:-}" ]]; then
-                export L1_ENDPOINT_HTTP_DOCKER
-                L1_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L1_ENDPOINT_HTTP")
-                export L1_ENDPOINT_HTTP_EXTERNAL="$L1_ENDPOINT_HTTP"
-            fi
-            if [[ -n "${L1_BEACON_HTTP:-}" ]]; then
-                export L1_BEACON_HTTP_DOCKER
-                L1_BEACON_HTTP_DOCKER=$(to_docker_internal "$L1_BEACON_HTTP")
-                export L1_BEACON_HTTP_EXTERNAL="$L1_BEACON_HTTP"
-            fi
-            if [[ -n "${L2_ENDPOINT_HTTP:-}" ]]; then
-                export L2_ENDPOINT_HTTP_DOCKER
-                L2_ENDPOINT_HTTP_DOCKER=$(to_docker_internal "$L2_ENDPOINT_HTTP")
-                export L2_ENDPOINT_HTTP_EXTERNAL="$L2_ENDPOINT_HTTP"
-            fi
-            ;;
-
         *)
             log_error "Invalid environment choice: $env_choice"
             return 1
@@ -768,8 +792,7 @@ prompt_environment_selection() {
     echo "  ⚠️  Select which Surge environment to use:                    " >&2
     echo "║══════════════════════════════════════════════════════════════║" >&2
     echo "║  1 for Devnet                                                ║" >&2
-    echo "║  2 for Staging                                               ║" >&2
-    echo "║  3 for Testnet                                               ║" >&2
+    echo "║  2 for Alphanet (WIP)                                        ║" >&2
     echo "║ [default: Devnet]                                            ║" >&2
     echo "╚══════════════════════════════════════════════════════════════╝" >&2
     echo >&2
@@ -799,7 +822,7 @@ prompt_l1_deployment_mode() {
     echo "  ⚠️  Deploy new devnet or use existing L1?                     " >&2
     echo "║══════════════════════════════════════════════════════════════║" >&2
     echo "║  0 for Deploy new devnet                                     ║" >&2
-    echo "║  1 for Use existing chain (WIP)                              ║" >&2
+    echo "║  1 for Use existing chain.                                   ║" >&2
     echo "║ [default: Deploy new devnet]                                 ║" >&2
     echo "╚══════════════════════════════════════════════════════════════╝" >&2
     echo >&2
@@ -823,21 +846,6 @@ prompt_stack_option_selection() {
     echo "$choice"
 }
 
-prompt_relayers_selection() {
-    echo >&2
-    echo "╔══════════════════════════════════════════════════════════════╗" >&2
-    echo "  ⚠️ Start relayers?                                            " >&2
-    echo "║══════════════════════════════════════════════════════════════║" >&2
-    echo "║  0 for Deploy relayers                                       ║" >&2
-    echo "║  1 for Skip relayers                                         ║" >&2
-    echo "║ [default: 0]                                                 ║" >&2
-    echo "╚══════════════════════════════════════════════════════════════╝" >&2
-    echo >&2
-    read -p "Enter choice [0]: " choice
-    choice=${choice:-0}
-    echo "$choice"
-}
-
 prompt_mode_selection() {
     echo >&2
     echo "╔══════════════════════════════════════════════════════════════╗" >&2
@@ -853,11 +861,11 @@ prompt_mode_selection() {
 }
 
 # ─── Prover helpers ──────────────────────────────────────────────────────────
-# generate_prover_chain_spec — writes chain_spec_list_default.json + config.json
+# generate_prover_chain_spec — writes chain_spec_list.json + config.json
 # Uses: L1_CHAIN_ID, L2_CHAIN_ID, L1_BEACON_HTTP_EXTERNAL,
 #       L1_ENDPOINT_HTTP_DOCKER, L1_BEACON_HTTP_DOCKER, L2_ENDPOINT_HTTP_DOCKER,
-#       REALTIME_INBOX, PACAYA_TAIKO, TAIKO_ANCHOR, PACAYA_SP1_RETH_VERIFIER,
-#       PACAYA_RISC0_RETH_VERIFIER, ZISK_VERIFIER
+#       REALTIME_INBOX, TAIKO_ANCHOR, REALTIME_SURGE_VERIFIER,
+#       REALTIME_ZISK_VERIFIER, REALTIME_BRIDGE
 generate_prover_chain_spec() {
     log_info "Generating prover chain spec list json..."
 
@@ -874,18 +882,17 @@ generate_prover_chain_spec() {
     local l1_beacon_docker="${L1_BEACON_HTTP_DOCKER:-http://host.docker.internal:33001}"
     local l2_rpc_docker="${L2_ENDPOINT_HTTP_DOCKER:-http://host.docker.internal:8547}"
 
-    cat > "$CONFIGS_DIR/chain_spec_list_default.json" << EOF
+    cat > "$CONFIGS_DIR/chain_spec_list.json" << EOF
 [
   {
     "name": "surge_dev_l1",
     "chain_id": $L1_CHAIN_ID,
-    "max_spec_id": "CANCUN",
     "hard_forks": {},
     "eip_1559_constants": {
-      "base_fee_change_denominator": "0x8",
-      "base_fee_max_increase_denominator": "0x8",
-      "base_fee_max_decrease_denominator": "0x8",
-      "elasticity_multiplier": "0x2"
+        "base_fee_change_denominator": "0x8",
+        "base_fee_max_increase_denominator": "0x8",
+        "base_fee_max_decrease_denominator": "0x8",
+        "elasticity_multiplier": "0x2"
     },
     "l1_contract": {},
     "l2_contract": null,
@@ -899,30 +906,25 @@ generate_prover_chain_spec() {
   {
     "name": "surge_dev",
     "chain_id": $L2_CHAIN_ID,
-    "max_spec_id": "PACAYA",
     "hard_forks": {
         "ONTAKE": { "Block": 1 },
         "PACAYA": { "Block": 1 },
         "REALTIME": { "Block": 1 }
     },
     "eip_1559_constants": {
-      "base_fee_change_denominator": "0x8",
-      "base_fee_max_increase_denominator": "0x8",
-      "base_fee_max_decrease_denominator": "0x8",
-      "elasticity_multiplier": "0x2"
+        "base_fee_change_denominator": "0x8",
+        "base_fee_max_increase_denominator": "0x8",
+        "base_fee_max_decrease_denominator": "0x8",
+        "elasticity_multiplier": "0x2"
     },
     "l1_contract": {
-      "SHASTA": "$REALTIME_INBOX",
-      "PACAYA": "$PACAYA_TAIKO"
+        "REALTIME": "$REALTIME_INBOX"
     },
     "l2_contract": "$TAIKO_ANCHOR",
     "rpc": "$l2_rpc_docker",
     "beacon_rpc": null,
     "verifier_address_forks": {
-      "ONTAKE":   { "SP1": "$PACAYA_SP1_RETH_VERIFIER", "RISC0": "$PACAYA_RISC0_RETH_VERIFIER" },
-      "PACAYA":   { "SP1": "$PACAYA_SP1_RETH_VERIFIER", "RISC0": "$PACAYA_RISC0_RETH_VERIFIER" },
-      "SHASTA":   { "SP1": "$PACAYA_SP1_RETH_VERIFIER", "RISC0": "$PACAYA_RISC0_RETH_VERIFIER", "ZISK": "$ZISK_VERIFIER" },
-      "REALTIME": { "SP1": "$PACAYA_SP1_RETH_VERIFIER", "RISC0": "$PACAYA_RISC0_RETH_VERIFIER", "ZISK": "$ZISK_VERIFIER" }
+        "REALTIME": { "ZISK": "$REALTIME_ZISK_VERIFIER" }
     },
     "genesis_time": 0,
     "seconds_per_slot": 1,
@@ -940,72 +942,34 @@ EOF
 	"cache_path": "/tmp/raiko/",
 	"prover": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
 	"graffiti": "8008500000000000000000000000000000000000000000000000000000000000",
-	"proof_type": "sp1",
+	"proof_type": "zisk",
 	"blob_proof_type": "proof_of_equivalence",
+	"use_cache": true,
 	"redis_url": "redis://redis-zk:6379",
 	"redis_ttl": 3600,
 	"enable_redis_pool": false,
-	"sgx": {
-		"instance_ids": { "ONTAKE": 0, "PACAYA": 0 },
-		"setup": false, "bootstrap": false, "prove": true
+	"zisk": {
+		"batch_snark": true
 	},
-	"sgxgeth": {
-		"instance_ids": { "PACAYA": 0 },
-		"setup": false, "bootstrap": false, "prove": true
-	},
-	"tdx": {
-		"instance_ids": { "ONTAKE": 0, "PACAYA": 0, "SHASTA": 0 },
-		"bootstrap": false, "prove": true
-	},
-	"zisk":  { "batch_snark": true },
-	"risc0": { "boundless": false, "bonsai": false, "snark": true, "profile": false, "execution_po2": 22 },
-	"sp1":   { "recursion": "core", "prover": "local", "verify": true },
-	"native": { "json_guest_input": null },
 	"queue_limit": 1000,
 	"api_keys": "",
-	"ballot_zk":  "{\"Sp1\":[1, 0]}",
-	"ballot_sgx": "{\"Sgx\":[1, 0]}"
+	"ballot_zk": "{}"
 }
 EOF
 
     log_success "Prover chain spec list json and config json generated successfully"
-    log_info "Saved to: $CONFIGS_DIR/chain_spec_list_default.json and $CONFIGS_DIR/config.json"
+    log_info "Saved to: $CONFIGS_DIR/chain_spec_list.json and $CONFIGS_DIR/config.json"
     log_info "Please copy the json files above to set up the prover"
 }
 
-# retrieve_guest_data <prover_type>
-# Populates prover vkey/image-ID env vars from RAIKO_HOST_ZKVM.
-# Exports: ZISK_BATCH_VKEY | SP1_* | RISC0_*
+# retrieve_guest_data
+# Populates ZISK_BATCH_VKEY from RAIKO_HOST_ZKVM.
 retrieve_guest_data() {
-    local prover_type="$1"
-
-    case "$prover_type" in
-        zisk)
-            if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
-                log_info "Retrieving guest data for ZISK - $RAIKO_HOST_ZKVM"
-                export ZISK_BATCH_VKEY
-                ZISK_BATCH_VKEY=$(curl -s --max-time 10 "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.zisk.batch_vkey')
-            fi
-            ;;
-        sp1)
-            if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
-                log_info "Retrieving guest data for SP1 - $RAIKO_HOST_ZKVM"
-                export SP1_BLOCK_PROVING_PROGRAM_VKEY
-                SP1_BLOCK_PROVING_PROGRAM_VKEY=$(curl -s --max-time 10 "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].sp1.block_program_hash')
-                export SP1_AGGREGATION_PROGRAM_VKEY
-                SP1_AGGREGATION_PROGRAM_VKEY=$(curl -s --max-time 10 "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].sp1.aggregation_program_hash')
-            fi
-            ;;
-        risc0)
-            if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
-                log_info "Retrieving guest data for RISC0 - $RAIKO_HOST_ZKVM"
-                export RISC0_AGGREGATION_IMAGE_ID
-                RISC0_AGGREGATION_IMAGE_ID=$(curl -s --max-time 10 "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].risc0.aggregation_program_hash')
-                export RISC0_BLOCK_PROVING_IMAGE_ID
-                RISC0_BLOCK_PROVING_IMAGE_ID=$(curl -s --max-time 10 "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.[0].risc0.block_program_hash')
-            fi
-            ;;
-    esac
+    if [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
+        log_info "Retrieving guest data for ZISK - $RAIKO_HOST_ZKVM"
+        export ZISK_BATCH_VKEY
+        ZISK_BATCH_VKEY=$(curl -s --max-time 10 "$RAIKO_HOST_ZKVM/guest_data" | jq -r '.zisk.batch_vkey')
+    fi
 }
 
 # ─── RPC endpoint verification ───────────────────────────────────────────────
@@ -1042,115 +1006,6 @@ verify_rpc_endpoints() {
         log_warning "Some RPC endpoints are not accessible"
         return 1
     fi
-}
-
-# ─── UI config generators ────────────────────────────────────────────────────
-# prepare_bridge_ui_configs — writes JSON config files for the bridge UI.
-# Uses _EXTERNAL URL variants so configs are browser-accessible.
-prepare_bridge_ui_configs() {
-    log_info "Preparing Bridge UI configs..."
-
-    if [[ ! -d "$CONFIGS_DIR" ]]; then
-        mkdir -p "$CONFIGS_DIR"
-    fi
-
-    # Use external (browser-reachable) endpoints
-    local l1_rpc_ui="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-http://localhost:32003}}"
-    local l2_rpc_ui="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-http://localhost:8547}}"
-    local l1_explorer_ui="${L1_EXPLORER:-http://localhost:36005}"
-    local l2_explorer_ui="${L2_EXPLORER:-http://localhost:3001}"
-
-    cat > "$CONFIGS_DIR/configuredBridges.json" << EOF
-{
-  "configuredBridges": [
-    {
-      "source": "$L1_CHAIN_ID",
-      "destination": "$L2_CHAIN_ID",
-      "addresses": {
-        "bridgeAddress": "$SHASTA_BRIDGE",
-        "erc20VaultAddress": "$SHASTA_ERC20_VAULT",
-        "erc721VaultAddress": "$SHASTA_ERC721_VAULT",
-        "erc1155VaultAddress": "$SHASTA_ERC1155_VAULT",
-        "crossChainSyncAddress": "",
-        "signalServiceAddress": "$SHASTA_SIGNAL_SERVICE",
-        "quotaManagerAddress": ""
-      }
-    },
-    {
-      "source": "$L2_CHAIN_ID",
-      "destination": "$L1_CHAIN_ID",
-      "addresses": {
-        "bridgeAddress": "$L2_BRIDGE",
-        "erc20VaultAddress": "$L2_ERC20_VAULT",
-        "erc721VaultAddress": "$L2_ERC721_VAULT",
-        "erc1155VaultAddress": "$L2_ERC1155_VAULT",
-        "crossChainSyncAddress": "",
-        "signalServiceAddress": "$L2_SIGNAL_SERVICE",
-        "quotaManagerAddress": ""
-      }
-    }
-  ]
-}
-EOF
-
-    cat > "$CONFIGS_DIR/configuredChains.json" << EOF
-{
-  "configuredChains": [
-    {
-      "$L1_CHAIN_ID": {
-        "name": "L1",
-        "type": "L1",
-        "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
-        "rpcUrls": {
-          "default": { "http": ["$l1_rpc_ui"] }
-        },
-        "nativeCurrency": { "name": "ETH", "symbol": "ETH", "decimals": 18 },
-        "blockExplorers": {
-          "default": { "name": "L1 Explorer", "url": "$l1_explorer_ui" }
-        }
-      }
-    },
-    {
-      "$L2_CHAIN_ID": {
-        "name": "Surge",
-        "type": "L2",
-        "icon": "https://cdn.worldvectorlogo.com/logos/ethereum-eth.svg",
-        "rpcUrls": {
-          "default": { "http": ["$l2_rpc_ui"] }
-        },
-        "nativeCurrency": { "name": "ETH", "symbol": "ETH", "decimals": 18 },
-        "blockExplorers": {
-          "default": { "name": "Surge Explorer", "url": "$l2_explorer_ui" }
-        }
-      }
-    }
-  ]
-}
-EOF
-
-    cat > "$CONFIGS_DIR/configuredRelayer.json" << EOF
-{
-  "configuredRelayer": [
-    { "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID], "url": "$L1_RELAYER" },
-    { "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID], "url": "$L2_RELAYER" }
-  ]
-}
-EOF
-
-    cat > "$CONFIGS_DIR/configuredEventIndexer.json" << EOF
-{
-  "configuredEventIndexer": [
-    { "chainIds": [$L1_CHAIN_ID, $L2_CHAIN_ID], "url": "$L1_RELAYER" },
-    { "chainIds": [$L2_CHAIN_ID, $L1_CHAIN_ID], "url": "$L2_RELAYER" }
-  ]
-}
-EOF
-
-    cat > "$CONFIGS_DIR/configuredCustomTokens.json" << EOF
-[]
-EOF
-
-    log_success "Bridge UI configs generated successfully"
 }
 
 # prepare_dex_ui_configs — writes nginx.conf and .env for the DEX front-end.
@@ -1220,10 +1075,10 @@ VITE_L1_NATIVE_NAME=Ether
 VITE_L1_NATIVE_LOGO=/eth-logo.svg
 
 # Safe contract addresses
-VITE_SAFE_PROXY_FACTORY=${SAFE_PROXY_FACTORY}
-VITE_SAFE_SINGLETON=${SAFE_SINGLETON}
-VITE_SAFE_MULTISEND=${SAFE_MULTISEND}
-VITE_SAFE_FALLBACK_HANDLER=${SAFE_FALLBACK_HANDLER}
+VITE_SAFE_PROXY_FACTORY=0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67
+VITE_SAFE_SINGLETON=0x29fcB43b46531BcA003ddC8FCB67FFE91900C762
+VITE_SAFE_MULTISEND=0x38869bf66a61cF6bDB996A6aE40D5853Fd43B526
+VITE_SAFE_FALLBACK_HANDLER=0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99
 
 # Deployed contract addresses
 VITE_USER_OPS_FACTORY=${USEROPS_SUBMITTER_FACTORY_ADDRESS}
@@ -1231,7 +1086,7 @@ VITE_L1_VAULT=${L1_VAULT}
 VITE_USDC_TOKEN=${SWAP_TOKEN}
 VITE_USDC_DECIMALS=${TOKEN_DECIMALS}
 VITE_SIMPLE_DEX=${L2_DEX}
-VITE_L1_BRIDGE=${SHASTA_BRIDGE}
+VITE_L1_BRIDGE=${REALTIME_BRIDGE}
 VITE_L2_RELAY=${CROSS_CHAIN_RELAY}
 
 # WalletConnect Project ID

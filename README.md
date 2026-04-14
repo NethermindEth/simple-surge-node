@@ -1,45 +1,229 @@
 # simple-surge-node
 
-`simple-surge-node` is a lightweight tool for setting up and managing a node on the Surge network. **This repository is intended for development purposes only and is not recommended for production use.**
+Tools for deploying and managing a full Surge stack: L1 devnet, L1 protocol contracts, L2 execution client, and optional DEX.
 
-This repository is ideal for easy set up operating Layer 2 (L2) solutions, simplifying the process of running Surge node.
+> **Dev/testing only.** Not intended for production use.
 
-## Quick Start
+## Prerequisites
 
-### Deploy Complete Devnet
+### System requirements
+
+- Docker Desktop (or Docker Engine + Compose plugin) — running with sufficient resources
+  - Recommended: 16 GB RAM, 4 CPU cores, 50 GB free disk
+- Git
+- [Kurtosis CLI](https://docs.kurtosis.com/install) — for the L1 devnet
+- `jq`, `curl`, `bc` — standard Unix tools
+- `cast` — part of [Foundry](https://book.getfoundry.sh/getting-started/installation)
+
+Install Foundry:
+```bash
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
+```
+
+Install Kurtosis:
+```bash
+brew install kurtosis-tech/tap/kurtosis-cli   # macOS
+# or follow https://docs.kurtosis.com/install for Linux
+```
+
+### Accounts
+
+| Key | Used for | Devnet default |
+|-----|----------|----------------|
+| `PRIVATE_KEY` | Deploying L1 contracts | Pre-funded in devnet |
+| `OPERATOR_PRIVATE_KEY` | L2 Driver/Catalyst operator | Pre-funded in devnet |
+| `SUBMITTER_PRIVATE_KEY` | Transaction submitter | Pre-funded in devnet |
+
+`.env.devnet` ships with pre-funded keys — no wallet setup needed for local devnet.
+
+### Prover (optional)
+
+Real-time proving requires a separate machine with a CUDA-capable GPU running Raiko. Set `RAIKO_HOST_ZKVM=http://<prover-ip>:8080` in `.env` before deploying. Without a prover, deploy with mock proofs (option 0 at the prover prompt) for testing.
+
+## Setup
 
 ```bash
-# Deploy everything with defaults
+git clone https://github.com/NethermindEth/simple-surge-node.git
+cd simple-surge-node
+git submodule update --init --recursive
+```
+
+Copy the environment template:
+
+```bash
+cp .env.devnet .env
+```
+
+## Deploy
+
+```bash
+./deploy-surge-full.sh
+```
+
+The script runs interactively. You can also pass flags to skip prompts:
+
+```bash
+# All defaults, no prompts
 ./deploy-surge-full.sh --environment devnet --deploy-devnet true --force
+
+# Driver + catalyst only
+./deploy-surge-full.sh --environment devnet --deploy-devnet true --stack-option 2
 ```
 
-### Remove Everything
+### Interactive prompts (in order)
+
+| Step | Prompt | Options |
+|------|--------|---------|
+| 1 | Environment | `devnet` |
+| 2 | Deployment type | `local` (same machine) / `remote` (VM) |
+| 3 | L1 devnet | Deploy new / Use existing (devnet only) |
+| 4 | Execution mode | `silence` (progress bar) / `debug` (full output) |
+| 5 | Mock or real prover | `0` mock / `1` real (devnet only) |
+| 6 | L2 stack option | See table below |
+| 7 | Deploy test token on L1 | Yes / No |
+| 8 | Deploy test token on L2 | Yes / No |
+
+### L2 stack options
+
+| Option | Components |
+|--------|------------|
+| 1 | Driver only |
+| 2 | Driver + Catalyst (default) |
+| 3 | Driver + Catalyst + Spammer |
+
+### CLI flags
+
+| Flag | Values | Default |
+|------|--------|---------|
+| `--environment` | `devnet` | interactive |
+| `--deploy-devnet` | `true` \| `false` | interactive |
+| `--deployment` | `local` \| `remote` | interactive |
+| `--stack-option` | `1`–`3` | interactive |
+| `--mode` | `silence` \| `debug` | interactive |
+| `--deposit-bond` | `true` \| `false` | interactive |
+| `--bond-amount` | number (ETH) | `1000` |
+| `-f`, `--force` | — | skip all confirmations |
+| `-h`, `--help` | — | show help |
+
+### What gets deployed
+
+```
+L1 devnet (Kurtosis / ethereum-package)
+  └── Execution client + beacon chain
+
+L1 protocol contracts
+  ├── RealTimeInbox (SurgeInbox)
+  ├── SurgeVerifier
+  ├── Bridge + SignalService
+  ├── ERC20/721/1155 vaults
+  ├── Multicall
+  └── UserOpsSubmitter
+
+L2 genesis + chainspec
+
+L2 stack (Docker Compose)
+  ├── l2-nethermind-execution-client
+  ├── l2-taiko-consensus-client (Driver)
+  ├── web3signer-l1, web3signer-l2
+  └── l2-catalyst-node (Catalyst, option 2+)
+
+Cross-chain DEX (optional)
+  ├── L1_VAULT + L2_VAULT
+  ├── L2_DEX + L2_TOKEN
+  └── DEX UI (Nginx container)
+```
+
+## Service endpoints
+
+After deployment, the summary table prints all endpoints. Defaults for a local devnet:
+
+| Service | URL |
+|---------|-----|
+| L1 RPC | `http://localhost:32003` |
+| L1 WebSocket | `ws://localhost:32004` |
+| L1 Beacon | `http://localhost:33001` |
+| L1 Blockscout | `http://localhost:36005` |
+| L2 RPC | `http://localhost:8547` |
+| L2 WebSocket | `ws://localhost:8548` |
+| L2 Blockscout | `http://localhost:3001` |
+| DEX UI | `http://localhost:3002` |
+
+> On a remote VM, replace `localhost` with the machine's public IP. The script detects this automatically when you choose `remote` at the deployment type prompt.
+
+## Remove
 
 ```bash
-# Remove all components
+# Interactive — choose what to remove
+./remove-surge-full.sh
+
+# Remove everything except .env
 ./remove-surge-full.sh --force
+
+# Remove everything including .env
+./remove-surge-full.sh --force --remove-env true
 ```
 
-For detailed deployment and removal instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+`--force` removes: L1 devnet, L2 stack, data directories, and config files — no prompts.
 
-## Documentation
+## Troubleshooting
 
-- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Complete guide for deploying and removing the Surge stack
-- [Guides](https://docs.surge.wtf/docs/guides) - Official Surge documentation
+**L1 health check fails after devnet start**
+Kurtosis may still be assigning ports. Wait 15–30 seconds and rerun.
 
-## Scripts Overview
+**`docker compose` can't reach L1 RPC (`host.docker.internal`)**
+The `.env` uses `host.docker.internal` for container-to-host routing. From your shell, use `localhost` (or the machine IP for remote). The script handles the translation automatically.
 
-### Unified Scripts (Recommended)
+**Containers still running after `--force` remove**
+The script falls back to `docker kill + docker rm -f` by name. If a container is unkillable (kernel D-state), restart Docker Desktop.
 
-- **`deploy-surge-full.sh`** - Unified deployment script for L1 devnet, L1 contracts, L2 stack, and relayers
-- **`remove-surge-full.sh`** - Unified removal script for all Surge stack components
+**`cast` not found**
+Install Foundry: `curl -L https://foundry.paradigm.xyz | bash && foundryup`
 
-### Legacy Scripts
+**Kurtosis enclave already exists**
+The script prompts to remove it. With `--force` it removes automatically. Manual: `kurtosis enclave rm surge-devnet --force`
 
-The following scripts are still available but superseded by the unified scripts:
+## Contract error codes
 
-- `deploy-surge-devnet-l1.sh` - L1 devnet deployment
-- `deploy-surge-protocol.sh` - Protocol contract deployment
-- `start-surge-stack.sh` - L2 stack startup
-- `remove-surge-devnet-l1.sh` - L1 devnet removal
-- `remove-surge-stack.sh` - L2 stack removal
+Custom error selectors for the Surge devnet contracts — useful when decoding raw revert data from `cast run` or transaction receipts.
+
+| Selector | Error | Contract |
+|---|---|---|
+| `0x8baa579f` | `InvalidSignature()` | ProofVerifierDummy |
+| `0x815e1d64` | `InvalidSigner()` | ProofVerifierDummy |
+| `0xef65161f` | `AlreadyActivated()` | RealTimeInbox |
+| `0x5f22a971` | `MaxAnchorBlockTooOld()` | RealTimeInbox |
+| `0xcd21cd43` | `InvalidGenesisBlockHash()` | RealTimeInbox |
+| `0x037c597f` | `NotActivated()` | RealTimeInbox |
+| `0x5353f567` | `SignalSlotNotSent(bytes32)` | RealTimeInbox |
+| `0x1e1dc123` | `Surge_AlreadyMarkedForProposalId()` | SurgeVerifier |
+| `0xcb47cd7d` | `Surge_CallerIsNotInbox()` | SurgeVerifier |
+| `0x92570ec6` | `Surge_InstantUpgradeNotAllowed()` | SurgeVerifier |
+| `0x50b89aa1` | `Surge_InvalidProofBitFlag()` | SurgeVerifier |
+| `0x38f40518` | `Surge_NumProofsThresholdNotMet()` | SurgeVerifier |
+| `0x7f1ebce8` | `ZISK_INVALID_PROGRAM_VKEY()` | ZiskVerifier |
+| `0x3e68f163` | `ZISK_INVALID_CHAIN_ID()` | ZiskVerifier |
+| `0x9a3c15ed` | `ZISK_INVALID_REMOTE_VERIFIER()` | ZiskVerifier |
+| `0xf35598da` | `ZISK_INVALID_PARAMS()` | ZiskVerifier |
+| `0x5f6b000c` | `ZISK_INVALID_PROOF()` | ZiskVerifier |
+| `0x6bd71942` | `ZISK_INVALID_ROOT_CV()` | ZiskVerifier |
+
+To decode a revert on-chain:
+```bash
+cast run <tx-hash> --rpc-url http://localhost:32003
+```
+
+## Directory layout
+
+```
+simple-surge-node/
+├── deploy-surge-full.sh         # Main deploy script
+├── remove-surge-full.sh         # Teardown script
+├── helpers.sh                   # Shared functions (URL utils, prompts, config helpers)
+├── docker-compose.yml           # L2 stack (driver, catalyst, web3signer, blockscout, dex)
+├── docker-compose-protocol.yml  # L1 deployer containers
+├── ethereum-package/            # Kurtosis ethereum-package submodule (L1 devnet)
+├── configs/                     # Generated configs (network_params.yaml, chainspec, etc.)
+├── deployment/                  # Generated deployment artifacts (contract addresses, genesis)
+└── .env.devnet                  # Environment template for local devnet
+```

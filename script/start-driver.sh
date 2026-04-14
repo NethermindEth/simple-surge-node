@@ -18,7 +18,6 @@ ARGS="${ARGS} \
     --genesis.l1Height ${GENESIS_L1_HEIGHT} \
     --realtimeInbox ${REALTIME_INBOX} \
     --taikoAnchor ${TAIKO_ANCHOR} \
-    --preconfirmation.whitelist ${SHASTA_PRECONF_WHITELIST} \
     --preconfirmation.serverPort ${PRECONF_SERVER_PORT} \
     --jwtSecret /tmp/jwt/jwtsecret \
     --p2p.sequencer.key=${OPERATOR_PRIVATE_KEY} \

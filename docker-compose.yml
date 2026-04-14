@@ -47,10 +47,6 @@ services:
       - prover
       - spammer
       - blockscout
-      - l2-deployer
-      - relayer-l1
-      - relayer-l2
-      - relayer-api
 
   taiko_client_driver:
     image: ${TAIKO_CLIENT_IMAGE}
@@ -92,10 +88,6 @@ services:
       - prover
       - spammer
       - blockscout
-      - l2-deployer
-      - relayer-l1
-      - relayer-l2
-      - relayer-api
 
   web3signer-l1:
     container_name: web3signer-l1
@@ -163,34 +155,41 @@ services:
     env_file:
       - .env
     environment:
-      TAIKO_GETH_RPC_URL: ${L2_ENDPOINT_WS}
-      TAIKO_GETH_AUTH_RPC_URL: ${L2_AUTH_HTTP}
+      # Fork selection (Realtime only activates via FORK=realtime)
+      FORK: realtime
+      # Signer
+      CATALYST_NODE_ECDSA_PRIVATE_KEY: ${OPERATOR_PRIVATE_KEY}
+      # L1
       L1_RPC_URLS: ${L1_ENDPOINT_WS}
       L1_BEACON_URL: ${L1_BEACON_HTTP}
-      TAIKO_INBOX_ADDRESS: ${SHASTA_SURGE_INBOX}
+      # L2
+      TAIKO_GETH_RPC_URL: ${L2_ENDPOINT_WS}
+      TAIKO_GETH_AUTH_RPC_URL: ${L2_AUTH_HTTP}
+      TAIKO_DRIVER_URL: ${TAIKO_DRIVER_URL}
       TAIKO_ANCHOR_ADDRESS: ${TAIKO_ANCHOR}
-      SHASTA_INBOX_ADDRESS: ${SHASTA_SURGE_INBOX}
-      ANCHOR_ADDRESS: ${TAIKO_ANCHOR}
-      PRECONF_WHITELIST_ADDRESS: ${SHASTA_PRECONF_WHITELIST}
-      PRECONF_ROUTER_ADDRESS: ${PACAYA_PRECONF_ROUTER}
-      TAIKO_WRAPPER_ADDRESS: ${PACAYA_TAIKO_WRAPPER}
-      FORCED_INCLUSION_STORE_ADDRESS: ${PACAYA_FORCED_INCLUSION_STORE}
-      TAIKO_BRIDGE_L2_ADDRESS: ${SHASTA_BRIDGE}
+      # Batch builder
       MAX_BLOCKS_PER_BATCH: 1
-      PRECONF_HEARTBEAT_MS: 12000
-      CATALYST_NODE_ECDSA_PRIVATE_KEY: ${OPERATOR_PRIVATE_KEY}
-      PROPOSER_MULTICALL_ADDRESS: ${MULTICALL_ADDRESS}
-      L1_BRIDGE_ADDRESS: ${SHASTA_BRIDGE}
+      THRESHOLD_TAIKO: 0
+      # Realtime inbox + multicall
       REALTIME_INBOX_ADDRESS: ${REALTIME_INBOX}
+      PROPOSER_MULTICALL_ADDRESS: ${MULTICALL_ADDRESS}
+      # Bridge + SignalService addresses (all from env, no auto-derivation)
+      L1_BRIDGE_ADDRESS: ${REALTIME_BRIDGE}
+      L1_SIGNAL_SERVICE_ADDRESS: ${REALTIME_SIGNAL_SERVICE}
+      L2_BRIDGE_ADDRESS: ${L2_BRIDGE}
+      L2_SIGNAL_SERVICE_ADDRESS: ${L2_SIGNAL_SERVICE}
+      # Realtime flags
       PRECONF_ONLY: false
       PROOF_REQUEST_BYPASS: false
+      # Raiko
+      MOCK_MODE: ${MOCK_MODE}
       PROOF_TYPE: zisk
-      RAIKO_POLL_INTERVAL_MS: 500
-      RAIKO_MAX_RETRIES: 100
       RAIKO_URL: ${RAIKO_HOST_ZKVM}
+      RAIKO_API_KEY: ''
       RAIKO_L2_NETWORK: surge_dev
       RAIKO_L1_NETWORK: surge_dev_l1
-      FORK: realtime
+      RAIKO_POLL_INTERVAL_MS: 500
+      RAIKO_MAX_RETRIES: 100
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -205,43 +204,6 @@ services:
       - spammer
       - l2-deployer
 
-  taiko_client_prover_relayer:
-    image: ${TAIKO_CLIENT_IMAGE}
-    container_name: l2-taiko-prover-relayer-client
-    restart: unless-stopped
-    pull_policy: always
-    depends_on:
-      nethermind_execution_client:
-        condition: service_healthy
-        restart: true
-      taiko_client_driver:
-        condition: service_started
-    volumes:
-      - ./static/jwtsecret:/tmp/jwt/jwtsecret
-      - ./script:/script
-    ports:
-      - 6062:6062
-    env_file:
-      - .env
-    environment:
-      TAIKO_INBOX: ${TAIKO_INBOX}
-      SURGE_PROPOSER_WRAPPER: ${SURGE_PROPOSER_WRAPPER}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    entrypoint:
-      - /bin/sh
-      - -c
-      - "/script/start-prover-relayer.sh"
-    networks:
-      - surge
-    labels:
-      com.kurtosistech.custom.metrics_enabled: "true"
-      com.kurtosistech.custom.metrics_port: "6062"
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - prover
-  
   raiko:
     image: ${RAIKO_IMAGE}
     container_name: l2-raiko-zk-client
@@ -256,34 +218,17 @@ services:
     environment:
       RAIKO_CONF_DIR: "/raiko/config"
       BASE_CONFIG_FILE: "config.json"
-      BASE_CHAINSPEC_FILE: "chain_spec_list_default.json"
-      REDIS_URL: "redis://redis-zk:6379"
+      BASE_CHAINSPEC_FILE: "chain_spec_list.json"
       RUST_LOG: "info"
       MOCK_KEY: ${PRIVATE_KEY}
-      ZK: "true"
     entrypoint:
       - /opt/raiko/bin/raiko-host
       - --config-path=/raiko/config/config.json
-      - --chain-spec-path=/raiko/config/chain_spec_list_default.json
+      - --chain-spec-path=/raiko/config/chain_spec_list.json
     networks:
       - surge
     profiles:
       - prover
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-  
-  redis-zk:
-    image: redis
-    container_name: redis-zk
-    ports:
-      - "6379:6379"
-    profiles:
-      - prover
-    networks:
-      - surge
     labels:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
