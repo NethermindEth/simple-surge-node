@@ -279,14 +279,14 @@ remove_l2_stack() {
         # Debug mode: run in foreground with full output
         {
             docker compose --profile driver --profile catalyst --profile prover --profile spammer --profile blockscout --profile dex --profile web3signer down --remove-orphans 2>&1
-            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile multicall-deployer --profile userops-submitter-deployer --profile genesis-generator --profile zisk-setup --profile cross-chain-dex-deployer --profile test-token-l1-deployer --profile test-token-l2-deployer down --remove-orphans 2>&1
+            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile multicall-deployer --profile userops-submitter-deployer --profile genesis-generator --profile zisk-setup --profile dex-l1-deployer --profile dex-l2-deployer --profile test-token-l1-deployer --profile test-token-l2-deployer down --remove-orphans 2>&1
         } | tee "$temp_output"
         exit_status=${PIPESTATUS[0]}
     else
         # Silent mode: run in background with progress indicator
         {
             docker compose --profile driver --profile catalyst --profile prover --profile spammer --profile blockscout --profile dex --profile web3signer down --remove-orphans 2>&1
-            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile multicall-deployer --profile userops-submitter-deployer --profile genesis-generator --profile zisk-setup --profile cross-chain-dex-deployer --profile test-token-l1-deployer --profile test-token-l2-deployer down --remove-orphans 2>&1
+            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile multicall-deployer --profile userops-submitter-deployer --profile genesis-generator --profile zisk-setup --profile dex-l1-deployer --profile dex-l2-deployer --profile test-token-l1-deployer --profile test-token-l2-deployer down --remove-orphans 2>&1
         } >"$temp_output" 2>&1 &
         local remove_pid=$!
         
@@ -310,7 +310,7 @@ remove_l2_stack() {
         redis-zk l2-tx-spammer l2-blockscout-postgres l2-blockscout-verif 
         l2-blockscout l2-blockscout-frontend dex
         surge-l1-deployer surge-multicall-deployer surge-userops-submitter-deployer
-        surge-genesis-generator surge-zisk-setup surge-cross-chain-dex-deployer
+        surge-genesis-generator surge-zisk-setup surge-dex-l1-deployer surge-dex-l2-deployer
         surge-test-token-l1-deployer surge-test-token-l2-deployer
     )
     docker kill --signal=SIGKILL "${known_containers[@]}" 2>/dev/null || true

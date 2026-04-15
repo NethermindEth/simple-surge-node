@@ -190,6 +190,8 @@ services:
       RAIKO_L1_NETWORK: surge_dev_l1
       RAIKO_POLL_INTERVAL_MS: 500
       RAIKO_MAX_RETRIES: 100
+      # Extra gas headroom for multicalls with processMessage (merkle proof verification)
+      EXTRA_GAS_PERCENTAGE: 200
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

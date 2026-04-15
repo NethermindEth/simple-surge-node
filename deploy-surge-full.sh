@@ -51,6 +51,7 @@ l1_explorer_url=""
 deployment_key=""
 stack_option=""
 running_provers=""
+mock_prover=""
 mode=""
 force=""
 # verify_key_only=""
@@ -71,8 +72,8 @@ show_help() {
     echo "  --deployment-key KEY     Private key for contract deployment (will be verified)"
     echo "  --stack-option NUM       L2 stack option (1-6, see details below)"
     echo "  --running-provers BOOL   Setup provers (devnet only, true|false)"
+    echo "  --mock-prover            Use mock prover (no GPU required)"
     echo "  --mode MODE              Execution mode (silence|debug)"
-    # echo "  --verify-key-only        Only verify private key, don't deploy"
     echo "  -f, --force              Skip confirmation prompts"
     echo "  -h, --help               Show this help message"
     echo
@@ -86,8 +87,14 @@ show_help() {
     echo "  debug   - Debug mode with full output"
     echo
     echo "Examples:"
-    echo "  $0 --environment devnet --deploy-devnet true --mode debug"
-    echo "  $0 --environment devnet --deploy-devnet true --stack-option 2"
+    echo "  # Mock prover — no GPU required"
+    echo "  $0 --environment devnet --deploy-devnet true --mock-prover --mode silence --stack-option 2 --force"
+    echo ""
+    echo "  # Real prover — point at a running Raiko instance"
+    echo "  RAIKO_HOST_ZKVM=http://<prover-ip>:8082 $0 --environment devnet --deploy-devnet true --mode silence --stack-option 2 --force"
+    echo ""
+    echo "  # Interactive (prompts for each step)"
+    echo "  $0 --environment devnet --deploy-devnet true"
     exit 0
 }
 
@@ -119,6 +126,10 @@ parse_arguments() {
                 running_provers="$2"
                 shift 2
                 ;;
+            --mock-prover)
+                mock_prover="true"
+                shift
+                ;;
             --mode)
                 mode="$2"
                 shift 2
@@ -144,37 +155,6 @@ parse_arguments() {
 }
 
 
-# Validate environment for devnet deployment
-validate_environment_for_devnet() {
-    log_info "Validating environment for devnet deployment..."
-    
-    # Check if enclave already exists
-    if kurtosis enclave ls 2>/dev/null | grep -q "$ENCLAVE_NAME"; then
-        log_warning "Enclave '$ENCLAVE_NAME' already exists"
-        
-        if [[ "$force" != "true" ]]; then
-            read -p "Remove existing enclave? (yes/no) [yes]: " remove_choice
-            remove_choice=${remove_choice:-no}
-            if [[ "$remove_choice" == "yes" || "$remove_choice" == "y" ]]; then
-                log_info "Removing existing enclave..."
-                kurtosis enclave rm "$ENCLAVE_NAME" --force >/dev/null 2>&1 || true
-            fi
-        else
-            log_info "Removing existing enclave..."
-            kurtosis enclave rm "$ENCLAVE_NAME" --force >/dev/null 2>&1 || true
-        fi
-    fi
-    
-    # Check for Kurtosis
-    if ! command -v kurtosis >/dev/null 2>&1; then
-        log_error "Kurtosis is not installed or not in PATH"
-        log_error "Please install Kurtosis: https://docs.kurtosis.com/install"
-        return 1
-    fi
-    
-    log_success "Environment validation passed"
-    return 0
-}
 
 # Run kurtosis with different settings
 run_kurtosis() {
@@ -251,9 +231,10 @@ deploy_l1_devnet() {
         return 1
     fi
     
-    # Validate environment
-    if ! validate_environment_for_devnet; then
-        log_error "Environment validation failed"
+    # Check for Kurtosis
+    if ! command -v kurtosis >/dev/null 2>&1; then
+        log_error "Kurtosis is not installed or not in PATH"
+        log_error "Please install Kurtosis: https://docs.kurtosis.com/install"
         return 1
     fi
     
@@ -592,6 +573,11 @@ deploy_test_token() {
             log_error "TestToken verification failed on $chain"
             return 1
         fi
+        # Export so downstream steps (DEX deploy) can use the address immediately
+        if [[ "$chain" == "l1" ]]; then
+            export L1_TEST_TOKEN="$_token_address"
+            update_env_var "$ENV_FILE" "L1_TEST_TOKEN" "$L1_TEST_TOKEN"
+        fi
         return 0
     else
         log_error "Failed to deploy TestToken on $chain (exit code: $exit_status)"
@@ -605,58 +591,237 @@ deploy_test_token() {
     fi
 }
 
-# Deploy Cross-Chain DEX contracts on L1 and L2
-deploy_cross_chain_dex() {
+# Deploy DEX L1 contracts (SwapToken + CrossChainSwapVaultL1)
+deploy_dex_l1() {
     local mode="$1"
 
-    if [[ -f "$CROSS_CHAIN_DEX_L1_FILE" && -f "$CROSS_CHAIN_DEX_L2_FILE" && -f "$DEPLOYMENT_DIR/cross_chain_dex.lock" && -f "$DEPLOYMENT_DIR/link_vaults_l1.lock" && -f "$DEPLOYMENT_DIR/link_vaults_l2.lock" && -f "$DEPLOYMENT_DIR/setup_l2.lock" ]]; then
-        log_info "CrossChainDex contracts already deployed..."
+    if [[ -f "$CROSS_CHAIN_DEX_L1_FILE" ]]; then
+        log_info "DEX L1 contracts already deployed, skipping..."
         return 0
     fi
 
-    log_info "Deploying CrossChainDex contracts..."
+    log_info "Deploying DEX L1 contracts..."
 
     local exit_status=0
-    local temp_output="/tmp/cross_chain_dex_deploy_output_$$"
+    local temp_output="/tmp/dex_l1_deploy_output_$$"
 
     if [[ "$mode" == "debug" ]]; then
-        docker compose -f docker-compose-protocol.yml --profile cross-chain-dex-deployer up 2>&1 | tee "$temp_output"
+        docker compose -f docker-compose-protocol.yml --profile dex-l1-deployer up 2>&1 | tee "$temp_output"
         exit_status=${PIPESTATUS[0]}
     else
-        docker compose -f docker-compose-protocol.yml --profile cross-chain-dex-deployer up >"$temp_output" 2>&1 &
+        docker compose -f docker-compose-protocol.yml --profile dex-l1-deployer up >"$temp_output" 2>&1 &
         local deploy_pid=$!
-        show_progress $deploy_pid "Deploying CrossChainDex contracts..."
+        show_progress $deploy_pid "Deploying DEX L1 contracts..."
         wait $deploy_pid
         exit_status=$?
     fi
 
-    if [[ $exit_status -eq 0 ]]; then
-        log_success "CrossChainDex contracts deployed successfully"
+    if [[ $exit_status -eq 0 && -f "$CROSS_CHAIN_DEX_L1_FILE" ]]; then
         local _l1_rpc="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-http://localhost:32003}}"
-        local _l2_rpc="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-http://localhost:8547}}"
-        local _l1_vault _l2_vault _l2_dex
-        _l1_vault=$(jq -r '.CrossChainSwapVaultL1 // empty' "$CROSS_CHAIN_DEX_L1_FILE" 2>/dev/null)
-        _l2_vault=$(jq -r '.CrossChainSwapVaultL2 // empty' "$CROSS_CHAIN_DEX_L2_FILE" 2>/dev/null)
-        _l2_dex=$(jq -r '.SimpleDEX // empty' "$CROSS_CHAIN_DEX_L2_FILE" 2>/dev/null)
-        local _dex_ok=true
-        [[ -n "$_l1_vault" ]] && ! is_contract_deployed "$_l1_vault" "$_l1_rpc" "L1Vault" && _dex_ok=false
-        [[ -n "$_l2_vault" ]] && ! is_contract_deployed "$_l2_vault" "$_l2_rpc" "L2Vault" && _dex_ok=false
-        [[ -n "$_l2_dex"   ]] && ! is_contract_deployed "$_l2_dex"   "$_l2_rpc" "SimpleDEX" && _dex_ok=false
-        if [[ "$_dex_ok" == false ]]; then
-            log_error "DEX contract verification failed"
+        local _l1_vault _l1_token
+        _l1_vault=$(jq -r '.CrossChainSwapVaultL1 // empty' "$CROSS_CHAIN_DEX_L1_FILE")
+        _l1_token=$(jq -r '.SwapToken // empty' "$CROSS_CHAIN_DEX_L1_FILE")
+        if ! verify_contracts "$_l1_rpc" \
+                "CrossChainSwapVaultL1:$_l1_vault" \
+                "SwapToken:$_l1_token"; then
+            log_error "DEX L1 contract verification failed"
             return 1
         fi
+        log_success "DEX L1 contracts deployed"
         return 0
     else
-        log_error "Failed to deploy CrossChainDex contracts (exit code: $exit_status)"
-        if [[ "$mode" == "silence" ]]; then
-            log_error "Run with debug mode for more details: --mode debug"
-        fi
-        if [[ -f "$temp_output" ]]; then
-            log_error "Deployment output saved in: $temp_output"
-        fi
+        log_error "Failed to deploy DEX L1 contracts (exit code: $exit_status)"
+        [[ "$mode" == "silence" ]] && log_error "Run with debug mode for more details: --mode debug"
         return 1
     fi
+}
+
+# Deploy DEX L2 contracts (SwapTokenL2, SimpleDEX, CrossChainSwapVaultL2)
+deploy_dex_l2() {
+    local mode="$1"
+
+    if [[ -f "$CROSS_CHAIN_DEX_L2_FILE" ]]; then
+        log_info "DEX L2 contracts already deployed, skipping..."
+        return 0
+    fi
+
+    log_info "Deploying DEX L2 contracts..."
+
+    local exit_status=0
+    local temp_output="/tmp/dex_l2_deploy_output_$$"
+
+    if [[ "$mode" == "debug" ]]; then
+        docker compose -f docker-compose-protocol.yml --profile dex-l2-deployer up 2>&1 | tee "$temp_output"
+        exit_status=${PIPESTATUS[0]}
+    else
+        docker compose -f docker-compose-protocol.yml --profile dex-l2-deployer up >"$temp_output" 2>&1 &
+        local deploy_pid=$!
+        show_progress $deploy_pid "Deploying DEX L2 contracts..."
+        wait $deploy_pid
+        exit_status=$?
+    fi
+
+    if [[ $exit_status -eq 0 && -f "$CROSS_CHAIN_DEX_L2_FILE" ]]; then
+        local _l2_rpc="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-http://localhost:8547}}"
+        local _l2_vault _l2_dex _l2_token
+        _l2_vault=$(jq -r '.CrossChainSwapVaultL2 // empty' "$CROSS_CHAIN_DEX_L2_FILE")
+        _l2_dex=$(jq -r '.SimpleDEX // empty' "$CROSS_CHAIN_DEX_L2_FILE")
+        _l2_token=$(jq -r '.SwapTokenL2 // empty' "$CROSS_CHAIN_DEX_L2_FILE")
+        if ! verify_contracts "$_l2_rpc" \
+                "CrossChainSwapVaultL2:$_l2_vault" \
+                "SimpleDEX:$_l2_dex" \
+                "SwapTokenL2:$_l2_token"; then
+            log_error "DEX L2 contract verification failed"
+            return 1
+        fi
+        log_success "DEX L2 contracts deployed"
+        return 0
+    else
+        log_error "Failed to deploy DEX L2 contracts (exit code: $exit_status)"
+        [[ "$mode" == "silence" ]] && log_error "Run with debug mode for more details: --mode debug"
+        return 1
+    fi
+}
+
+# Link DEX vaults (L1 ↔ L2) and verify the linkage
+link_dex_vaults() {
+    if [[ -f "$DEPLOYMENT_DIR/link_vaults_l1.lock" && -f "$DEPLOYMENT_DIR/link_vaults_l2.lock" && -f "$DEPLOYMENT_DIR/cross_chain_dex.lock" ]]; then
+        log_info "DEX vaults already linked, skipping..."
+        return 0
+    fi
+
+    local _l1_rpc="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-http://localhost:32003}}"
+    local _l2_rpc="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-http://localhost:8547}}"
+    local _l1_vault _l2_vault _l2_dex _l2_token
+    _l1_vault=$(jq -r '.CrossChainSwapVaultL1' "$CROSS_CHAIN_DEX_L1_FILE")
+    _l2_vault=$(jq -r '.CrossChainSwapVaultL2' "$CROSS_CHAIN_DEX_L2_FILE")
+    _l2_dex=$(jq -r '.SimpleDEX' "$CROSS_CHAIN_DEX_L2_FILE")
+    _l2_token=$(jq -r '.SwapTokenL2' "$CROSS_CHAIN_DEX_L2_FILE")
+
+    # Link L1 → L2
+    if [[ ! -f "$DEPLOYMENT_DIR/link_vaults_l1.lock" ]]; then
+        log_info "Setting L2 vault on L1 vault..."
+        cast send "$_l1_vault" "setL2Vault(address)" "$_l2_vault" \
+            --private-key "$PRIVATE_KEY" \
+            --rpc-url "$_l1_rpc" > /dev/null
+        touch "$DEPLOYMENT_DIR/link_vaults_l1.lock"
+    fi
+
+    # Link L2 → L1
+    if [[ ! -f "$DEPLOYMENT_DIR/link_vaults_l2.lock" ]]; then
+        log_info "Setting L1 vault on L2 vault..."
+        cast send "$_l2_vault" "setL1Vault(address)" "$_l1_vault" \
+            --private-key "$PRIVATE_KEY" \
+            --rpc-url "$_l2_rpc" > /dev/null
+        touch "$DEPLOYMENT_DIR/link_vaults_l2.lock"
+    fi
+
+    # Verify linkage
+    log_info "Verifying DEX vault linkage..."
+    local _errors=0
+
+    local _actual
+    _actual=$(cast call "$_l1_vault" "l2Vault()(address)" --rpc-url "$_l1_rpc" 2>/dev/null)
+    if [[ "$_actual" != "$_l2_vault" ]]; then
+        log_error "L1Vault.l2Vault() = $_actual, expected $_l2_vault"
+        _errors=$((_errors + 1))
+    fi
+
+    _actual=$(cast call "$_l2_vault" "l1Vault()(address)" --rpc-url "$_l2_rpc" 2>/dev/null)
+    if [[ "$_actual" != "$_l1_vault" ]]; then
+        log_error "L2Vault.l1Vault() = $_actual, expected $_l1_vault"
+        _errors=$((_errors + 1))
+    fi
+
+    _actual=$(cast call "$_l2_token" "minter()(address)" --rpc-url "$_l2_rpc" 2>/dev/null)
+    if [[ "$_actual" != "$_l2_vault" ]]; then
+        log_error "SwapTokenL2.minter() = $_actual, expected $_l2_vault"
+        _errors=$((_errors + 1))
+    fi
+
+    _actual=$(cast call "$_l2_dex" "liquidityProvider()(address)" --rpc-url "$_l2_rpc" 2>/dev/null)
+    if [[ "$_actual" != "$_l2_vault" ]]; then
+        log_error "SimpleDEX.liquidityProvider() = $_actual, expected $_l2_vault"
+        _errors=$((_errors + 1))
+    fi
+
+    if [[ $_errors -gt 0 ]]; then
+        log_error "DEX vault verification failed ($_errors errors)"
+        return 1
+    fi
+
+    touch "$DEPLOYMENT_DIR/cross_chain_dex.lock"
+    log_success "DEX vaults linked and verified"
+    return 0
+}
+
+# Register L1 Bridge and Signal Service on L2 Shared Resolver (for cross-chain DEX).
+# Uses L2 pre-deployed resolver (L2_SHARED_RESOLVER), NOT the L1 REALTIME_SHARED_RESOLVER.
+setup_dex_resolver() {
+    if [[ -f "$DEPLOYMENT_DIR/setup_l2.lock" ]]; then
+        log_info "L2 resolver already configured, skipping..."
+        return 0
+    fi
+
+    local _l1_rpc="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-http://localhost:32003}}"
+    local _l2_rpc="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-http://localhost:8547}}"
+    local _l2_resolver="${L2_SHARED_RESOLVER:-0x7633740000000000000000000000000000000006}"
+    local _l1_chain_id
+    _l1_chain_id=$(cast chain-id --rpc-url "$_l1_rpc")
+
+    log_info "Registering L1 Bridge on L2 resolver ($_l2_resolver)..."
+    cast send "$_l2_resolver" \
+        "registerAddress(uint256,bytes32,address)" \
+        "$_l1_chain_id" \
+        "$(cast format-bytes32-string "bridge")" \
+        "$REALTIME_BRIDGE" \
+        --private-key "$PRIVATE_KEY" \
+        --rpc-url "$_l2_rpc" 2>/dev/null
+
+    log_info "Registering L1 Signal Service on L2 resolver ($_l2_resolver)..."
+    cast send "$_l2_resolver" \
+        "registerAddress(uint256,bytes32,address)" \
+        "$_l1_chain_id" \
+        "$(cast format-bytes32-string "signal_service")" \
+        "$REALTIME_SIGNAL_SERVICE" \
+        --private-key "$PRIVATE_KEY" \
+        --rpc-url "$_l2_rpc" 2>/dev/null
+
+    # Verify registrations via the public resolve() function
+    log_info "Verifying resolver registrations..."
+    local _errors=0
+
+    local _actual
+    _actual=$(cast call "$_l2_resolver" \
+        "resolve(uint256,bytes32,bool)(address)" \
+        "$_l1_chain_id" \
+        "$(cast format-bytes32-string "bridge")" \
+        true \
+        --rpc-url "$_l2_rpc" 2>/dev/null)
+    if [[ "$_actual" != "$REALTIME_BRIDGE" ]]; then
+        log_error "Resolver bridge = $_actual, expected $REALTIME_BRIDGE"
+        _errors=$((_errors + 1))
+    fi
+
+    _actual=$(cast call "$_l2_resolver" \
+        "resolve(uint256,bytes32,bool)(address)" \
+        "$_l1_chain_id" \
+        "$(cast format-bytes32-string "signal_service")" \
+        true \
+        --rpc-url "$_l2_rpc" 2>/dev/null)
+    if [[ "$_actual" != "$REALTIME_SIGNAL_SERVICE" ]]; then
+        log_error "Resolver signal_service = $_actual, expected $REALTIME_SIGNAL_SERVICE"
+        _errors=$((_errors + 1))
+    fi
+
+    if [[ $_errors -gt 0 ]]; then
+        log_error "Resolver verification failed ($_errors errors)"
+        return 1
+    fi
+
+    touch "$DEPLOYMENT_DIR/setup_l2.lock"
+    log_success "L2 resolver configured and verified"
+    return 0
 }
 
 # Extract L1 deployment results from JSON file
@@ -734,11 +899,6 @@ extract_l1_deployment_results() {
 
     export REALTIME_ZISK_PLONK_VERIFIER; REALTIME_ZISK_PLONK_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.zisk_plonk_verifier')
     update_env_var "$ENV_FILE" "REALTIME_ZISK_PLONK_VERIFIER" "$REALTIME_ZISK_PLONK_VERIFIER"
-
-    if [[ -f "$DEPLOYMENT_DIR/deployment_relay.lock" ]]; then
-        export CROSS_CHAIN_RELAY; CROSS_CHAIN_RELAY=$(cat "$DEPLOYMENT_DIR/deployment_relay.json" | jq -r '.cross_chain_relay')
-        update_env_var "$ENV_FILE" "CROSS_CHAIN_RELAY" "$CROSS_CHAIN_RELAY"
-    fi
 
     if [[ -f "$CROSS_CHAIN_DEX_L1_FILE" ]]; then
         export L1_VAULT; L1_VAULT=$(jq -r '.CrossChainSwapVaultL1' "$CROSS_CHAIN_DEX_L1_FILE")
@@ -1202,19 +1362,24 @@ main() {
     local mock_proof="1"  # default: real prover (no raiko)
     if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
 
-        # Deploy L1 contracts
-
-        echo
-        echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "  ⚠️  Using mock prover?                                        "
-        echo "║══════════════════════════════════════════════════════════════║"
-        echo "║  0 for Using mock prover                                     ║"
-        echo "║  1 for Using real prover                                     ║"
-        echo "║ [default: 0]                                                 ║"
-        echo "╚══════════════════════════════════════════════════════════════╝"
-        echo
-        read -p "Enter choice [0]: " mock_proof
-        mock_proof=${mock_proof:-0}
+        # Determine mock/real prover: --mock-prover flag > MOCK_PROOF_MODE env > interactive prompt
+        if [[ "$mock_prover" == "true" || "${MOCK_PROOF_MODE:-}" == "true" ]]; then
+            mock_proof="0"
+        elif [[ -n "$mock_prover" ]]; then
+            mock_proof="1"
+        else
+            echo
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "  ⚠️  Using mock prover?                                        "
+            echo "║══════════════════════════════════════════════════════════════║"
+            echo "║  0 for Using mock prover                                     ║"
+            echo "║  1 for Using real prover                                     ║"
+            echo "║ [default: 0]                                                 ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            echo
+            read -p "Enter choice [0]: " mock_proof
+            mock_proof=${mock_proof:-0}
+        fi
         
         # Run L1 contracts simulation
         if ! deploy_l1_contracts "$mode_choice" false $mock_proof false; then
@@ -1333,9 +1498,33 @@ main() {
         fi
     fi
 
-    # Deploy Cross Chain Dex Contracts on L1 and L2
-    if ! deploy_cross_chain_dex "$mode_choice"; then
-        log_error "Failed to deploy Cross Chain Dex Contracts on L1 and L2"
+    # Always use the locally deployed test token as the DEX swap token on devnet.
+    # L1_TEST_TOKEN is set by deploy_test_token and points at the freshly deployed
+    # contract. Any pre-existing SWAP_TOKEN may reference a stale or buggy deployment.
+    if [[ -n "${L1_TEST_TOKEN:-}" ]]; then
+        export SWAP_TOKEN="$L1_TEST_TOKEN"
+        update_env_var "$ENV_FILE" "SWAP_TOKEN" "$SWAP_TOKEN"
+        log_info "Using TestToken ($L1_TEST_TOKEN) as DEX swap token"
+    fi
+
+    # Deploy Cross-Chain DEX (4 steps)
+    if ! deploy_dex_l1 "$mode_choice"; then
+        log_error "Failed to deploy DEX L1 contracts"
+        exit 1
+    fi
+
+    if ! deploy_dex_l2 "$mode_choice"; then
+        log_error "Failed to deploy DEX L2 contracts"
+        exit 1
+    fi
+
+    if ! link_dex_vaults; then
+        log_error "Failed to link DEX vaults"
+        exit 1
+    fi
+
+    if ! setup_dex_resolver; then
+        log_error "Failed to configure L2 resolver for DEX"
         exit 1
     fi
 

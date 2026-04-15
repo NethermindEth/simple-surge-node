@@ -79,14 +79,14 @@ The script runs interactively. You can also pass flags to skip prompts:
 
 ```bash
 # Mock prover — no GPU required (fastest for local testing)
-MOCK_PROOF_MODE=true ./deploy-surge-full.sh \
+./deploy-surge-full.sh \
   --environment devnet --deploy-devnet true \
-  --deployment local --stack-option 2 --force
+  --deployment local --stack-option 2 --mock-prover --mode silence --force
 
 # Real prover — point at a running Raiko instance
 RAIKO_HOST_ZKVM=http://<prover-ip>:8082 ./deploy-surge-full.sh \
   --environment devnet --deploy-devnet true \
-  --deployment local --stack-option 2 --force
+  --deployment local --stack-option 2 --mode silence --force
 ```
 
 ### Interactive prompts (in order)
@@ -118,6 +118,7 @@ RAIKO_HOST_ZKVM=http://<prover-ip>:8082 ./deploy-surge-full.sh \
 | `--deploy-devnet` | `true` \| `false` | interactive |
 | `--deployment` | `local` \| `remote` | interactive |
 | `--stack-option` | `1`–`3` | interactive |
+| `--mock-prover` | — | use mock prover (no GPU) |
 | `--mode` | `silence` \| `debug` | interactive |
 | `--running-provers` | `true` \| `false` | interactive |
 | `-f`, `--force` | — | skip all confirmations |
