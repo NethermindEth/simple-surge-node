@@ -1442,59 +1442,64 @@ main() {
         exit 1
     fi
 
-    # Deploy TestToken ERC20 on L1 (optional, skipped if already done)
-    if [[ -f "$DEPLOYMENT_DIR/test-token-l1.json" ]]; then
-        log_info "TestToken already deployed on L1, skipping..."
+    # Deploy TestToken ERC20 on L1 and L2 (devnet only — existing chains have real tokens)
+    if [[ "$deploy_devnet_choice" == "1" ]]; then
+        log_info "Deploying on existing chain — skipping TestToken deployment"
     else
-        local token_l1_choice
-        if [[ -z "${test_token_l1_option:-}" ]]; then
-            echo >&2
-            echo "╔══════════════════════════════════════════════════════════════╗" >&2
-            echo "║ Do you want to deploy TestToken ERC20 on L1?                 ║" >&2
-            echo "║ 0 for Yes                                                    ║" >&2
-            echo "║ 1 for No                                                     ║" >&2
-            echo "╚══════════════════════════════════════════════════════════════╝" >&2
-            echo >&2
-            read -p "Enter choice [0]: " token_l1_choice
-            token_l1_choice=${token_l1_choice:-0}
+        # L1 TestToken
+        if [[ -f "$DEPLOYMENT_DIR/test-token-l1.json" ]]; then
+            log_info "TestToken already deployed on L1, skipping..."
         else
-            token_l1_choice=$test_token_l1_option
-        fi
-
-        if [[ "$token_l1_choice" == "0" ]]; then
-            if ! deploy_test_token "$mode_choice" "l1"; then
-                log_warning "TestToken deployment on L1 failed, continuing..."
+            local token_l1_choice
+            if [[ -z "${test_token_l1_option:-}" && "$force" != "true" ]]; then
+                echo >&2
+                echo "╔══════════════════════════════════════════════════════════════╗" >&2
+                echo "║ Do you want to deploy TestToken ERC20 on L1?                 ║" >&2
+                echo "║ 0 for Yes                                                    ║" >&2
+                echo "║ 1 for No                                                     ║" >&2
+                echo "╚══════════════════════════════════════════════════════════════╝" >&2
+                echo >&2
+                read -p "Enter choice [0]: " token_l1_choice
+                token_l1_choice=${token_l1_choice:-0}
+            else
+                token_l1_choice=${test_token_l1_option:-0}
             fi
-        else
-            log_info "Skipping TestToken deployment on L1"
-        fi
-    fi
 
-    # Deploy TestToken ERC20 on L2 (optional, skipped if already done)
-    if [[ -f "$DEPLOYMENT_DIR/test-token-l2.json" ]]; then
-        log_info "TestToken already deployed on L2, skipping..."
-    else
-        local token_l2_choice
-        if [[ -z "${test_token_l2_option:-}" ]]; then
-            echo >&2
-            echo "╔══════════════════════════════════════════════════════════════╗" >&2
-            echo "║ Do you want to deploy TestToken ERC20 on L2?                 ║" >&2
-            echo "║ 0 for Yes                                                    ║" >&2
-            echo "║ 1 for No                                                     ║" >&2
-            echo "╚══════════════════════════════════════════════════════════════╝" >&2
-            echo >&2
-            read -p "Enter choice [0]: " token_l2_choice
-            token_l2_choice=${token_l2_choice:-0}
-        else
-            token_l2_choice=$test_token_l2_option
-        fi
-
-        if [[ "$token_l2_choice" == "0" ]]; then
-            if ! deploy_test_token "$mode_choice" "l2"; then
-                log_warning "TestToken deployment on L2 failed, continuing..."
+            if [[ "$token_l1_choice" == "0" ]]; then
+                if ! deploy_test_token "$mode_choice" "l1"; then
+                    log_warning "TestToken deployment on L1 failed, continuing..."
+                fi
+            else
+                log_info "Skipping TestToken deployment on L1"
             fi
+        fi
+
+        # L2 TestToken
+        if [[ -f "$DEPLOYMENT_DIR/test-token-l2.json" ]]; then
+            log_info "TestToken already deployed on L2, skipping..."
         else
-            log_info "Skipping TestToken deployment on L2"
+            local token_l2_choice
+            if [[ -z "${test_token_l2_option:-}" && "$force" != "true" ]]; then
+                echo >&2
+                echo "╔══════════════════════════════════════════════════════════════╗" >&2
+                echo "║ Do you want to deploy TestToken ERC20 on L2?                 ║" >&2
+                echo "║ 0 for Yes                                                    ║" >&2
+                echo "║ 1 for No                                                     ║" >&2
+                echo "╚══════════════════════════════════════════════════════════════╝" >&2
+                echo >&2
+                read -p "Enter choice [0]: " token_l2_choice
+                token_l2_choice=${token_l2_choice:-0}
+            else
+                token_l2_choice=${test_token_l2_option:-0}
+            fi
+
+            if [[ "$token_l2_choice" == "0" ]]; then
+                if ! deploy_test_token "$mode_choice" "l2"; then
+                    log_warning "TestToken deployment on L2 failed, continuing..."
+                fi
+            else
+                log_info "Skipping TestToken deployment on L2"
+            fi
         fi
     fi
 

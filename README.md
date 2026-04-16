@@ -99,8 +99,8 @@ RAIKO_HOST_ZKVM=http://<prover-ip>:8082 ./deploy-surge-full.sh \
 | 4 | Execution mode | `silence` (progress bar) / `debug` (full output) |
 | 5 | Mock or real prover | `0` mock / `1` real (devnet only) |
 | 6 | L2 stack option | See table below |
-| 7 | Deploy test token on L1 | Yes / No |
-| 8 | Deploy test token on L2 | Yes / No |
+| 7 | Deploy test token on L1 | Yes / No (devnet only, skipped on existing chains) |
+| 8 | Deploy test token on L2 | Yes / No (devnet only, skipped on existing chains) |
 
 ### L2 stack options
 
@@ -121,7 +121,7 @@ RAIKO_HOST_ZKVM=http://<prover-ip>:8082 ./deploy-surge-full.sh \
 | `--mock-prover` | — | use mock prover (no GPU) |
 | `--mode` | `silence` \| `debug` | interactive |
 | `--running-provers` | `true` \| `false` | interactive |
-| `-f`, `--force` | — | skip all confirmations |
+| `-f`, `--force` | — | skip all prompts (defaults: deploy tokens, silence mode) |
 | `-h`, `--help` | — | show help |
 
 ### What gets deployed
