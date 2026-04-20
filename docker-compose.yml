@@ -444,7 +444,7 @@ services:
     container_name: dex
     restart: always
     ports:
-      - 8080:5173
+      - 5173:5173
     env_file:
       - ./surge-taiko-mono/packages/cross-chain-dex-ui/.env
     networks:

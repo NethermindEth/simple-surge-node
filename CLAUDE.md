@@ -100,7 +100,7 @@
   ├──────────────────────────┼───────────────────┤
   │ L2 Explorer (Blockscout) │ http://<IP>:3001  │
   ├──────────────────────────┼───────────────────┤
-  │ DEX UI                   │ http://<IP>:8080  │
+  │ DEX UI                   │ http://<IP>:5173  │
   ├──────────────────────────┼───────────────────┤
   │ Raiko (mock prover)      │ http://<IP>:8082  │
   └──────────────────────────┴───────────────────┘
@@ -129,7 +129,7 @@
   Common pitfalls
 
   - Wrong --deployment flag: local on a remote VM means DEX UI and Blockscout make browser requests to localhost, which fails. Use remote for VMs.
-  - Missing --force: Without it, the script blocks on interactive prompts (test token deploy, prover selection, redeployment confirmation) that can't be answered over a non-interactive SSH session.
+  - Missing --force: Without it, the script blocks on interactive prompts (prover selection, redeployment confirmation) that can't be answered over a non-interactive SSH session.
   - Foundry not in PATH: After installing, cast lives at ~/.foundry/bin/cast. Either source ~/.bashrc or prepend PATH="$HOME/.foundry/bin:$PATH" before running the deploy script.
   - Kurtosis engine not started: Run kurtosis engine start after installing the CLI — the deploy script assumes it's already running.
   - Stale .env: Always re-copy .env.devnet to .env before a fresh deployment. A leftover .env from a previous run has stale contract addresses and block heights.

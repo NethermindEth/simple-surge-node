@@ -99,8 +99,6 @@ RAIKO_HOST_ZKVM=http://<prover-ip>:8082 ./deploy-surge-full.sh \
 | 4 | Execution mode | `silence` (progress bar) / `debug` (full output) |
 | 5 | Mock or real prover | `0` mock / `1` real (devnet only) |
 | 6 | L2 stack option | See table below |
-| 7 | Deploy test token on L1 | Yes / No (devnet only, skipped on existing chains) |
-| 8 | Deploy test token on L2 | Yes / No (devnet only, skipped on existing chains) |
 
 ### L2 stack options
 
@@ -338,9 +336,10 @@ simple-surge-node/
 │   ├── deploy-userops-submitter.sh
 │   ├── generate-genesis.sh      # Generates L2 genesis from L1 state
 │   ├── setup-zisk.sh            # Registers ZisK program vkey on ZiskVerifier
-│   ├── setup-cross-chain-dex.sh
-│   ├── deploy-test-token.sh
-│   └── deploy-cross-chain-relay.sh
+│   ├── deploy-cross-chain-relay.sh
+│   └── dex/                     # Cross-Chain DEX deployment
+│       ├── deploy-dex-l1.sh     # L1 vault + SwapToken + L1 DEX (test or live mode)
+│       └── deploy-dex-l2.sh     # L2 vault + SwapTokenL2 + SimpleDEX
 │
 ├── script/                      # Container entrypoint scripts
 │   ├── start-nethermind.sh      # Launches L2 execution client

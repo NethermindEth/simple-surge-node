@@ -176,7 +176,19 @@ services:
     environment:
       PRIVATE_KEY: ${PRIVATE_KEY}
       L1_RPC: ${L1_ENDPOINT_HTTP}
+      L2_CHAIN_ID: ${L2_CHAIN_ID}
       L1_BRIDGE: ${REALTIME_BRIDGE}
+      SWAP_TOKEN: ${SWAP_TOKEN}
+      TOKEN_DECIMALS: ${TOKEN_DECIMALS}
+      INITIAL_TOKEN_SUPPLY: ${INITIAL_TOKEN_SUPPLY}
+      # L1 DEX mode: live (router+weth) or test (fresh WETH9Stub + SimpleDEXL1)
+      L1_DEX_ROUTER: ${L1_DEX_ROUTER}
+      L1_DEX_WETH: ${L1_DEX_WETH}
+      L1_DEX_SEED_ETH: ${L1_DEX_SEED_ETH}
+      L1_DEX_SEED_TOKEN: ${L1_DEX_SEED_TOKEN}
+      # L1 Vault inventory seeding — required for L2→L1→L2 swaps on day one
+      L1_VAULT_SEED_TOKEN: ${L1_VAULT_SEED_TOKEN}
+      L1_VAULT_SEED_ETH: ${L1_VAULT_SEED_ETH}
     networks:
       - surge
     extra_hosts:
@@ -203,6 +215,8 @@ services:
     environment:
       PRIVATE_KEY: ${PRIVATE_KEY}
       L2_RPC: ${L2_ENDPOINT_HTTP}
+      L1_CHAIN_ID: ${L1_CHAIN_ID}
+      TOKEN_DECIMALS: ${TOKEN_DECIMALS}
     networks:
       - surge
     extra_hosts:
@@ -212,62 +226,6 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - dex-l2-deployer
-
-  # Deploys TestToken ERC20 on L1 and mints initial supply to the deployer
-  surge-test-token-l1-deployer:
-    image: ${PROTOCOL_IMAGE}
-    container_name: surge-test-token-l1-deployer
-    pull_policy: always
-    volumes:
-      - ./deployer:/deployer
-      - ./deployment:/deployment
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /deployer/deploy-test-token.sh
-    env_file:
-      - .env
-    environment:
-      PRIVATE_KEY: ${PRIVATE_KEY}
-      FORK_URL: ${L1_ENDPOINT_HTTP}
-      CHAIN_LABEL: l1
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - test-token-l1-deployer
-
-  # Deploys TestToken ERC20 on L2 and mints initial supply to the deployer
-  surge-test-token-l2-deployer:
-    image: ${PROTOCOL_IMAGE}
-    container_name: surge-test-token-l2-deployer
-    pull_policy: always
-    volumes:
-      - ./deployer:/deployer
-      - ./deployment:/deployment
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /deployer/deploy-test-token.sh
-    env_file:
-      - .env
-    environment:
-      PRIVATE_KEY: ${PRIVATE_KEY}
-      FORK_URL: ${L2_ENDPOINT_HTTP}
-      CHAIN_LABEL: l2
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - test-token-l2-deployer
 
 networks:
   surge:

@@ -735,7 +735,7 @@ configure_environment_urls() {
                 export L2_CATALYST="http://${_host}:4545"
             fi
             if [[ -z "${L2_DEX_UI:-}" ]]; then
-                export L2_DEX_UI="http://${_host}:8080"
+                export L2_DEX_UI="http://${_host}:5173"
             fi
             ;;
 
@@ -1084,7 +1084,9 @@ VITE_SAFE_FALLBACK_HANDLER=0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99
 # Deployed contract addresses
 VITE_USER_OPS_FACTORY=${USEROPS_SUBMITTER_FACTORY_ADDRESS}
 VITE_L1_VAULT=${L1_VAULT}
-VITE_USDC_TOKEN=${L1_TEST_TOKEN:-${L1_TOKEN}}
+VITE_L1_ROUTER=${L1_ROUTER}
+VITE_L1_WETH=${L1_WETH}
+VITE_USDC_TOKEN=${L1_TOKEN}
 VITE_USDC_DECIMALS=${TOKEN_DECIMALS}
 VITE_SIMPLE_DEX=${L2_DEX}
 VITE_L1_BRIDGE=${REALTIME_BRIDGE}
