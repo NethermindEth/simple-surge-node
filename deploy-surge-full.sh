@@ -1148,7 +1148,7 @@ generate_prover_chain_spec() {
   {
     "name": "surge_dev",
     "chain_id": $L2_CHAIN_ID,
-    "max_spec_id": "PACAYA",
+    "max_spec_id": "SHASTA",
     "hard_forks": {
         "ONTAKE": {
             "Block": 1
@@ -1540,7 +1540,7 @@ generate_l2_genesis() {
 
     update_env_var "$ENV_FILE" "SHASTA_TIMESTAMP" "$HEX_TIMESTAMP"
 
-    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, useSurgeGasPriceOracle: true, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' | jq '.params.rip7728TransitionTimestamp = "0x0"' > "$DEPLOYMENT_DIR/surge_chainspec.json"
+    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, useSurgeGasPriceOracle: true, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' | jq '.engine.Taiko.rip7728TransitionTimestamp = "0x0"' | jq '.engine.Taiko.l1StaticCallTransitionTimestamp = "0x0"' > "$DEPLOYMENT_DIR/surge_chainspec.json"
     
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
@@ -2708,7 +2708,9 @@ main() {
     fi
     
     # Step 5b: Start spammer now that L2 deploy is done (if stack option included it)
-    if [[ "$stack_choice" == "3" || "$stack_choice" == "4" || "$stack_choice" == "6" || -z "$stack_choice" ]]; then
+    # DISABLED for L1STATICCALL e2e — spammer uses our test PRIVATE_KEY and its txs
+    # land in early L2 blocks with nonces that confuse raiko's preflight state resolution.
+    if false && [[ "$stack_choice" == "3" || "$stack_choice" == "4" || "$stack_choice" == "6" || -z "$stack_choice" ]]; then
         log_info "Starting tx spammer..."
         docker compose --profile spammer up -d tx-spammer >/dev/null 2>&1 || true
     fi

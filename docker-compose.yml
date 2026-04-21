@@ -51,7 +51,7 @@ services:
     image: ${NETHERMIND_CLIENT_IMAGE}
     container_name: l2-nethermind-execution-client
     restart: unless-stopped
-    pull_policy: always
+    pull_policy: ${NETHERMIND_PULL_POLICY:-always}
     stop_grace_period: 3m
     tty: true
     volumes:
@@ -276,7 +276,7 @@ services:
     image: ${RAIKO_IMAGE}
     container_name: l2-raiko-zk-client
     restart: unless-stopped
-    pull_policy: always
+    pull_policy: ${RAIKO_PULL_POLICY:-always}
     volumes:
       - ./configs:/raiko/config
     ports:
