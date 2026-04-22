@@ -16,4 +16,6 @@
 .vscode/
 .cursorignore
 
-*.backup
+# Rotating backups of deploy-generated artifacts (chainspecs, chain-spec-list JSON).
+/deployment/*.backup
+/configs/*.backup
