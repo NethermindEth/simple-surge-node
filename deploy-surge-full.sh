@@ -1122,7 +1122,9 @@ generate_prover_chain_spec() {
     local l1_beacon_docker="${L1_BEACON_HTTP_DOCKER:-http://host.docker.internal:33001}"
     local l2_rpc_docker="${L2_ENDPOINT_HTTP_DOCKER:-http://host.docker.internal:8547}"
 
-    # Generate chain spec list
+    # Generate chain spec list. The two entries below are L1 and L2 respectively — different
+    # `max_spec_id`s are intentional: L1 is Ethereum mainnet-style (CANCUN), L2 is Taiko's
+    # SHASTA fork (includes the L1STATICCALL precompile at `0x10002`).
     cat > "$CONFIGS_DIR/chain_spec_list_default.json" << EOF
 [
   {
@@ -1148,7 +1150,7 @@ generate_prover_chain_spec() {
   {
     "name": "surge_dev",
     "chain_id": $L2_CHAIN_ID,
-    "max_spec_id": "PACAYA",
+    "max_spec_id": "SHASTA",
     "hard_forks": {
         "ONTAKE": {
             "Block": 1
@@ -1540,7 +1542,12 @@ generate_l2_genesis() {
 
     update_env_var "$ENV_FILE" "SHASTA_TIMESTAMP" "$HEX_TIMESTAMP"
 
-    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, useSurgeGasPriceOracle: true, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' | jq '.params.rip7728TransitionTimestamp = "0x0"' > "$DEPLOYMENT_DIR/surge_chainspec.json"
+    # Requires NMC >= NethermindEth/nethermind#11017 (schema moved rip7728 /
+    # l1staticcall transition timestamps from `.params.*` to `.engine.Taiko.*`). An older
+    # NMC build will silently ignore the fields under `.engine.Taiko.*`, which causes
+    # L1SLOAD / L1STATICCALL to not activate at genesis with no error — so deploying this
+    # branch against an older NMC is a silent-fail scenario.
+    cat "$SURGE_GENESIS_FILE" | jq --arg hex_timestamp "$HEX_TIMESTAMP" '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, useSurgeGasPriceOracle: true, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' | jq --from-file <(curl -s https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/gen2spec/gen2spec.jq) | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' | jq '.engine.Taiko.rip7728TransitionTimestamp = "0x0"' | jq '.engine.Taiko.l1StaticCallTransitionTimestamp = "0x0"' > "$DEPLOYMENT_DIR/surge_chainspec.json"
     
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
@@ -2707,8 +2714,14 @@ main() {
         log_warning "Relayer startup had issues, but continuing..."
     fi
     
-    # Step 5b: Start spammer now that L2 deploy is done (if stack option included it)
-    if [[ "$stack_choice" == "3" || "$stack_choice" == "4" || "$stack_choice" == "6" || -z "$stack_choice" ]]; then
+    # Step 5b: Start spammer now that L2 deploy is done (if stack option included it).
+    # Gated by ENABLE_SPAMMER (default false while L1STATICCALL e2e is in flight — the
+    # spammer currently uses the same test PRIVATE_KEY as our deploy flows, and its txs
+    # land in early L2 blocks with nonces that confuse raiko's preflight state resolution).
+    # TODO: give the spammer its own PRIVATE_KEY_SPAMMER so it can coexist with test fixtures,
+    # then flip the default to true.
+    if [[ "${ENABLE_SPAMMER:-false}" == "true" ]] \
+        && [[ "$stack_choice" == "3" || "$stack_choice" == "4" || "$stack_choice" == "6" || -z "$stack_choice" ]]; then
         log_info "Starting tx spammer..."
         docker compose --profile spammer up -d tx-spammer >/dev/null 2>&1 || true
     fi
