@@ -439,7 +439,7 @@ services:
   dex:
     build:
       context: ./surge-taiko-mono/packages/cross-chain-dex-ui
-      dockerfile: Dockerfile.dex
+      dockerfile: Dockerfile
       target: dev
     container_name: dex
     restart: always
@@ -447,6 +447,8 @@ services:
       - 5173:5173
     env_file:
       - ./surge-taiko-mono/packages/cross-chain-dex-ui/.env
+    volumes:
+      - ./surge-taiko-mono/packages/cross-chain-dex-ui/.env:/app/.env:ro
     networks:
       - surge
     extra_hosts:

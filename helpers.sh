@@ -88,6 +88,14 @@ validate_prerequisites() {
 }
 
 # ─── Git submodules ──────────────────────────────────────────────────────────
+# By default all submodules are checked out at the pinned SHA recorded in the
+# parent repo (reproducible). When the global $update_submodules flag is "true"
+# (set by --update-submodules in the parent script), the submodules listed in
+# UPDATABLE_SUBMODULES are fast-forwarded to the tip of their tracked branch.
+# ethereum-package is intentionally excluded — it must stay on a known-good SHA
+# because Kurtosis Starlark code on its main branch can break devnet bring-up.
+UPDATABLE_SUBMODULES=(surge-taiko-mono)
+
 initialize_submodules() {
     log_info "Initializing git submodules..."
 
@@ -95,8 +103,9 @@ initialize_submodules() {
         log_info "Synced submodule URLs"
     fi
 
+    # Always init at pinned SHAs first (covers ethereum-package etc.)
     if git submodule update --init --recursive >/dev/null 2>&1; then
-        log_success "Git submodules initialized"
+        log_success "Git submodules initialized at pinned SHAs"
     else
         log_warning "Failed to initialize git submodules with --recursive, trying without..."
         if git submodule update --init >/dev/null 2>&1; then
@@ -104,6 +113,24 @@ initialize_submodules() {
         else
             log_warning "Failed to initialize git submodules, but continuing..."
         fi
+    fi
+
+    # Then, if requested, fast-forward only the allow-listed submodules.
+    if [[ "${update_submodules:-}" == "true" ]]; then
+        for sub in "${UPDATABLE_SUBMODULES[@]}"; do
+            if [[ ! -d "$sub" ]]; then
+                log_warning "Skipping submodule fast-forward: $sub not present"
+                continue
+            fi
+            log_info "Fast-forwarding submodule '$sub' to tip of tracked branch"
+            if git submodule update --remote --merge --recursive -- "$sub" >/dev/null 2>&1; then
+                local sha
+                sha=$(git -C "$sub" rev-parse --short HEAD 2>/dev/null || echo "?")
+                log_success "Submodule '$sub' now at $sha"
+            else
+                log_warning "Failed to fast-forward submodule '$sub' — keeping pinned SHA"
+            fi
+        done
     fi
 }
 
@@ -308,14 +335,66 @@ verify_private_key_on_chain() {
 }
 
 # ─── .env file helpers ───────────────────────────────────────────────────────
-# Strip Windows CRLF line endings in-place
+# Strip Windows CRLF and auto-quote unquoted values containing whitespace.
+#
+# `bash` interprets `KEY=Test DEX` in a sourced file as: assign KEY=Test, then
+# run command DEX (which fails). Users hit this when they put display names
+# like `L1_DEX_NAME=Test DEX` without quotes. We auto-fix in place and warn,
+# rather than letting `source .env` blow up with a cryptic error.
 _sanitize_env_file() {
     local file="$1"
+
+    # 1. CRLF → LF
     if grep -qP '\r' "$file" 2>/dev/null || (file "$file" 2>/dev/null | grep -q CRLF); then
         log_warning "$file has Windows CRLF line endings — converting to LF"
         sed -i.bak 's/\r//' "$file"
         rm -f "${file}.bak"
     fi
+
+    # 2. Auto-quote unquoted values with whitespace.
+    #    Skips: comments, blank lines, already-quoted values (single or double),
+    #    and values that look like ${VAR} expansions only.
+    local tmp="${file}.tmp.$$"
+    local fixed_lines=()
+    awk '
+        BEGIN { fixed = 0 }
+        # Pass through comments and blank lines unchanged
+        /^[[:space:]]*(#|$)/ { print; next }
+        # Match KEY=... lines
+        /^[A-Za-z_][A-Za-z0-9_]*=/ {
+            eq = index($0, "=")
+            key = substr($0, 1, eq - 1)
+            val = substr($0, eq + 1)
+
+            # Already quoted (starts AND ends with same quote char)?
+            if (val ~ /^".*"$/ || val ~ /^'\''.*'\''$/) { print; next }
+
+            # Contains whitespace but no leading quote → wrap in double quotes.
+            # Escape any embedded double quotes in the value first.
+            if (val ~ /[ \t]/ && val !~ /^["'\'']/) {
+                gsub(/"/, "\\\"", val)
+                print key "=\"" val "\""
+                printf "FIXED:%s\n", key > "/dev/stderr"
+                fixed++
+                next
+            }
+
+            print
+            next
+        }
+        { print }
+    ' "$file" > "$tmp" 2> "${tmp}.fixed"
+
+    if [[ -s "${tmp}.fixed" ]]; then
+        while IFS= read -r line; do
+            fixed_lines+=("${line#FIXED:}")
+        done < "${tmp}.fixed"
+        log_warning "$file had unquoted values with whitespace — auto-quoted: ${fixed_lines[*]}"
+        mv "$tmp" "$file"
+    else
+        rm -f "$tmp"
+    fi
+    rm -f "${tmp}.fixed"
 }
 
 # check_env_file <env_name>  — loads .env or .env.<env_name>
@@ -789,10 +868,12 @@ check_l1_health() {
 prompt_environment_selection() {
     echo >&2
     echo "╔══════════════════════════════════════════════════════════════╗" >&2
-    echo "  ⚠️  Select which Surge environment to use:                    " >&2
+    echo "  ⚠️  Select .env preset to load (Surge config defaults):       " >&2
+    echo "║  Note: this is the config preset, not the target L1 chain.   ║" >&2
+    echo "║  To target Sepolia / Gnosis / mainnet, edit .env and pick    ║" >&2
+    echo "║  'Use existing chain' at the next prompt.                    ║" >&2
     echo "║══════════════════════════════════════════════════════════════║" >&2
-    echo "║  1 for Devnet                                                ║" >&2
-    echo "║  2 for Alphanet (WIP)                                        ║" >&2
+    echo "║  1 for Devnet (.env.devnet)                                  ║" >&2
     echo "║ [default: Devnet]                                            ║" >&2
     echo "╚══════════════════════════════════════════════════════════════╝" >&2
     echo >&2
@@ -835,6 +916,7 @@ prompt_stack_option_selection() {
     echo >&2
     echo "╔══════════════════════════════════════════════════════════════╗" >&2
     echo "║ Enter L2 stack option:                                       ║" >&2
+    echo "║ 0 for none (verify external L2 RPC only, dev-only)           ║" >&2
     echo "║ 1 for driver only                                            ║" >&2
     echo "║ 2 for driver + catalyst                                      ║" >&2
     echo "║ 3 for driver + catalyst + spammer                            ║" >&2
@@ -1061,9 +1143,22 @@ VITE_L1_RPC_URL=${l1_endpoint}
 # L2 RPC URL — browser-reachable (DEX reserves)
 VITE_L2_RPC_URL=${l2_endpoint}
 
-# Builder RPC URL — proxied at /api/builder via nginx (runtime BUILDER_URL env var)
-VITE_BUILDER_RPC_URL=http://l2-catalyst-node:4545
-VITE_BUILDER_API_URL=http://l2-catalyst-node:4545
+# Builder + Catalyst RPC URLs.
+#
+# In dev mode (current default — Dockerfile target: dev), userOp.ts hardcodes
+# /api/builder and lets Vite's dev-server proxy forward to Catalyst. The proxy
+# target is read from VITE_BUILDER_API_URL (note: _API_, not _RPC_) inside
+# vite.config.ts and runs *inside the dex container*, so it must use a
+# container-reachable address — host.docker.internal works because the dex
+# service has extra_hosts mapping it to host-gateway. localhost/127.0.0.1 would
+# point at the dex container's own loopback and fail with 500.
+#
+# VITE_BUILDER_RPC_URL / VITE_CATALYST_RPC_URL are browser-facing; they're only
+# read by code paths that run outside dev mode (e.g., production runtime
+# build). They use ${L2_CATALYST} which is host-aware (localhost / VM IP).
+VITE_BUILDER_API_URL=http://host.docker.internal:4545
+VITE_BUILDER_RPC_URL=${L2_CATALYST:-http://localhost:4545}
+VITE_CATALYST_RPC_URL=${L2_CATALYST:-http://localhost:4545}
 
 # Chain IDs
 VITE_CHAIN_ID=${L1_CHAIN_ID}
@@ -1075,24 +1170,32 @@ VITE_L1_NATIVE_SYMBOL=ETH
 VITE_L1_NATIVE_NAME=Ether
 VITE_L1_NATIVE_LOGO=/eth-logo.svg
 
-# Safe contract addresses
+# L1 block explorer (Blockscout running alongside the L2 stack on the L1 host)
+VITE_EXPLORER_URL=${L1_EXPLORER:-}
+
+# Safe contract addresses (same on both chains, deterministic CREATE2)
 VITE_SAFE_PROXY_FACTORY=0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67
 VITE_SAFE_SINGLETON=0x29fcB43b46531BcA003ddC8FCB67FFE91900C762
 VITE_SAFE_MULTISEND=0x38869bf66a61cF6bDB996A6aE40D5853Fd43B526
 VITE_SAFE_FALLBACK_HANDLER=0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99
 
-# Deployed contract addresses
-VITE_USER_OPS_FACTORY=${USEROPS_SUBMITTER_FACTORY_ADDRESS}
+# L1 contracts (from deployment/cross-chain-dex-l1.json + deploy_l1.json)
 VITE_L1_VAULT=${L1_VAULT}
-VITE_L1_ROUTER=${L1_ROUTER}
-VITE_L1_WETH=${L1_WETH}
 VITE_USDC_TOKEN=${L1_TOKEN}
 VITE_USDC_DECIMALS=${TOKEN_DECIMALS}
-VITE_SIMPLE_DEX=${L2_DEX}
 VITE_L1_BRIDGE=${REALTIME_BRIDGE}
-VITE_L2_RELAY=${CROSS_CHAIN_RELAY}
+VITE_L1_ROUTER=${L1_ROUTER:-0x0000000000000000000000000000000000000000}
+VITE_L1_DEX_WETH=${L1_WETH:-0x0000000000000000000000000000000000000000}
+# Display name shown in the swap UI ("Test DEX" for fresh deploys, "Uniswap V2"
+# when L1_DEX_ROUTER points at a live router in .env)
+VITE_L1_DEX_NAME=${L1_DEX_NAME:-Test DEX}
 
-# WalletConnect Project ID
+# L2 contracts (from deployment/cross-chain-dex-l2.json)
+VITE_SIMPLE_DEX=${L2_DEX}
+VITE_L2_VAULT=${L2_VAULT}
+VITE_L2_USDC_TOKEN=${L2_TOKEN}
+
+# WalletConnect Project ID (https://cloud.walletconnect.com)
 VITE_WALLETCONNECT_PROJECT_ID=${WALLETCONNECT_PROJECT_ID}
 EOF
 }

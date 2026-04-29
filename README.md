@@ -87,7 +87,14 @@ The script runs interactively. You can also pass flags to skip prompts:
 RAIKO_HOST_ZKVM=http://<prover-ip>:8082 ./deploy-surge-full.sh \
   --environment devnet --deploy-devnet true \
   --deployment local --stack-option 2 --mode silence --force
+
+# Deploy on an existing L1 (Sepolia/Gnosis/mainnet/etc.) — edit .env first with your RPC + keys
+./deploy-surge-full.sh \
+  --environment devnet --deploy-devnet false \
+  --deployment local --stack-option 2 --mode silence --force
 ```
+
+> `--environment` just picks the `.env` preset (only `devnet` ships today). The L1 target is controlled by `--deploy-devnet`: `true` spins up a fresh Kurtosis L1, `false` uses whatever `L1_ENDPOINT_HTTP` / `L1_CHAIN_ID` you've set in `.env`. See [Deploy on an existing L1](https://nethermind.dev/surge/docs/guides/running-surge/deploy-on-existing-l1) for Sepolia/Gnosis/mainnet presets.
 
 ### Interactive prompts (in order)
 
@@ -104,22 +111,25 @@ RAIKO_HOST_ZKVM=http://<prover-ip>:8082 ./deploy-surge-full.sh \
 
 | Option | Components |
 |--------|------------|
+| 0 | None — skip L2 stack, verify external L2 RPC only (dev-only) |
 | 1 | Driver only |
 | 2 | Driver + Catalyst (default) |
 | 3 | Driver + Catalyst + Spammer |
+
+Use `0` when you're running your own L2 node externally (e.g. a custom Nethermind or Reth build) and just want to deploy protocol + DEX contracts against it. The script verifies `L2_ENDPOINT_HTTP` is reachable and skips the Docker Compose startup.
 
 ### CLI flags
 
 | Flag | Values | Default |
 |------|--------|---------|
-| `--environment` | `devnet` | interactive |
-| `--deploy-devnet` | `true` \| `false` | interactive |
+| `--environment` | `devnet` | interactive — `.env` preset name (not the target chain) |
+| `--deploy-devnet` | `true` \| `false` | interactive — `true` spins up fresh Kurtosis; `false` uses the existing L1 in `.env` (Sepolia/Gnosis/mainnet/etc.) |
 | `--deployment` | `local` \| `remote` | interactive |
-| `--stack-option` | `1`–`3` | interactive |
+| `--stack-option` | `0`–`3` | interactive (`0` = no L2 stack, dev-only) |
 | `--mock-prover` | — | use mock prover (no GPU) |
 | `--mode` | `silence` \| `debug` | interactive |
 | `--running-provers` | `true` \| `false` | interactive |
-| `-f`, `--force` | — | skip all prompts (defaults: deploy tokens, silence mode) |
+| `-f`, `--force` | — | skip all prompts; defaults to **real prover** unless `--mock-prover` is set |
 | `-h`, `--help` | — | show help |
 
 ### What gets deployed

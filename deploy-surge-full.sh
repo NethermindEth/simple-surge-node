@@ -54,6 +54,7 @@ running_provers=""
 mock_prover=""
 mode=""
 force=""
+update_submodules=""
 # verify_key_only=""
 
 
@@ -66,18 +67,20 @@ show_help() {
     echo "  Deploy complete Surge stack with L1 (optional devnet) and L2 components"
     echo
     echo "Options:"
-    echo "  --environment ENV        Surge environment (devnet) [REQUIRED]"
-    echo "  --deploy-devnet BOOL     Deploy new devnet or use existing chain (devnet only, true|false)"
+    echo "  --environment ENV        Config preset name — loads .env.<ENV> defaults (currently only 'devnet' ships) [REQUIRED]"
+    echo "  --deploy-devnet BOOL     true = spin up fresh Kurtosis L1; false = deploy against existing L1 (Sepolia/Gnosis/mainnet/etc. configured in .env)"
     echo "  --deployment TYPE        Deployment type (local|remote)"
     echo "  --deployment-key KEY     Private key for contract deployment (will be verified)"
-    echo "  --stack-option NUM       L2 stack option (1-6, see details below)"
+    echo "  --stack-option NUM       L2 stack option (0-3, see details below)"
     echo "  --running-provers BOOL   Setup provers (devnet only, true|false)"
     echo "  --mock-prover            Use mock prover (no GPU required)"
     echo "  --mode MODE              Execution mode (silence|debug)"
-    echo "  -f, --force              Skip confirmation prompts"
+    echo "  -f, --force              Skip prompts; defaults to real prover unless --mock-prover is set"
+    echo "  --update-submodules      Fast-forward submodules to the tip of their tracked branch instead of the pinned SHA"
     echo "  -h, --help               Show this help message"
     echo
     echo "Stack Options:"
+    echo "  0 - None (skip L2 stack, verify external L2 RPC only — dev-only)"
     echo "  1 - Driver only"
     echo "  2 - Driver + Catalyst"
     echo "  3 - Driver + Catalyst + Spammer"
@@ -87,11 +90,14 @@ show_help() {
     echo "  debug   - Debug mode with full output"
     echo
     echo "Examples:"
-    echo "  # Mock prover — no GPU required"
+    echo "  # Mock prover, fresh local Kurtosis L1 — no GPU required"
     echo "  $0 --environment devnet --deploy-devnet true --mock-prover --mode silence --stack-option 2 --force"
     echo ""
     echo "  # Real prover — point at a running Raiko instance"
-    echo "  RAIKO_HOST_ZKVM=http://<prover-ip>:8082 $0 --environment devnet --deploy-devnet true --mode silence --stack-option 2 --force"
+    echo "  $0 --environment devnet --deploy-devnet true --mode silence --stack-option 2 --force"
+    echo ""
+    echo "  # Deploy against an existing L1 (Sepolia/Gnosis/mainnet/etc. — edit .env first)"
+    echo "  $0 --environment devnet --deploy-devnet false --mode silence --stack-option 2 --force"
     echo ""
     echo "  # Interactive (prompts for each step)"
     echo "  $0 --environment devnet --deploy-devnet true"
@@ -140,6 +146,10 @@ parse_arguments() {
             #     ;;
             -f|--force)
                 force="true"
+                shift
+                ;;
+            --update-submodules)
+                update_submodules="true"
                 shift
                 ;;
             -h|--help)
@@ -372,18 +382,36 @@ deploy_l1_contracts() {
         # Only create lock file after successful broadcast deployment
         if [[ "$broadcast" == "true" ]]; then
             local _l1_rpc="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-http://localhost:32003}}"
-            local _inbox _bridge _resolver _signal _verifier
+            local _inbox _bridge _resolver _signal
             _inbox=$(jq -r '.real_time_inbox // empty' "$L1_DEPLOYMENT_FILE")
             _bridge=$(jq -r '.bridge // empty' "$L1_DEPLOYMENT_FILE")
             _resolver=$(jq -r '.shared_resolver // empty' "$L1_DEPLOYMENT_FILE")
             _signal=$(jq -r '.signal_service // empty' "$L1_DEPLOYMENT_FILE")
-            _verifier=$(jq -r '.surge_verifier // empty' "$L1_DEPLOYMENT_FILE")
+
+            # In mock mode the deploy script wires the inbox to ProofVerifierDummy
+            # instead of SurgeVerifier; surge_verifier in the JSON is left at the
+            # zero address. Pick the right verifier to verify based on mode.
+            local _verifier_pair
+            if [[ "$mock_proof" == "true" ]]; then
+                local _dummy
+                _dummy=$(jq -r '.proof_verifier_dummy // empty' "$L1_DEPLOYMENT_FILE")
+                if [[ -z "$_dummy" || "$_dummy" == "0x0000000000000000000000000000000000000000" ]]; then
+                    log_error "Mock mode but proof_verifier_dummy missing/zero in $L1_DEPLOYMENT_FILE"
+                    return 1
+                fi
+                _verifier_pair="ProofVerifierDummy:$_dummy"
+            else
+                local _verifier
+                _verifier=$(jq -r '.surge_verifier // empty' "$L1_DEPLOYMENT_FILE")
+                _verifier_pair="SurgeVerifier:$_verifier"
+            fi
+
             if verify_contracts "$_l1_rpc" \
                 "RealTimeInbox:$_inbox" \
                 "Bridge:$_bridge" \
                 "SharedResolver:$_resolver" \
                 "SignalService:$_signal" \
-                "SurgeVerifier:$_verifier"; then
+                "$_verifier_pair"; then
                 touch "$L1_LOCK_FILE"
             else
                 log_error "Contract verification failed — not creating lock file"
@@ -826,7 +854,11 @@ extract_l1_deployment_results() {
     export REALTIME_ERC721_VAULT; REALTIME_ERC721_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc721_vault')
     export REALTIME_SHARED_RESOLVER; REALTIME_SHARED_RESOLVER=$(_jq_required "$L1_DEPLOYMENT_FILE" '.shared_resolver' "REALTIME_SHARED_RESOLVER") || return 1
     export REALTIME_SIGNAL_SERVICE; REALTIME_SIGNAL_SERVICE=$(_jq_required "$L1_DEPLOYMENT_FILE" '.signal_service' "REALTIME_SIGNAL_SERVICE") || return 1
-    export REALTIME_SURGE_VERIFIER; REALTIME_SURGE_VERIFIER=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.surge_verifier')
+    # In mock mode the deploy script leaves surge_verifier at the zero address
+    # (or omits it entirely); ProofVerifierDummy is used instead. Default to
+    # zero so downstream env writes don't pick up the literal string "null".
+    export REALTIME_SURGE_VERIFIER
+    REALTIME_SURGE_VERIFIER=$(jq -r '.surge_verifier // "0x0000000000000000000000000000000000000000"' "$L1_DEPLOYMENT_FILE")
     export REALTIME_INBOX; REALTIME_INBOX=$(_jq_required "$L1_DEPLOYMENT_FILE" '.real_time_inbox' "REALTIME_INBOX") || return 1
     export REALTIME_PROOF_VERIFIER_DUMMY; REALTIME_PROOF_VERIFIER_DUMMY=$(jq -r '.proof_verifier_dummy // empty' "$L1_DEPLOYMENT_FILE")
 
@@ -861,19 +893,21 @@ extract_l1_deployment_results() {
     fi
 
     # Derive GENESIS_L1_HEIGHT from the block where RealTimeInbox was activated (activation block + 1)
-    local l1_rpc="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-http://localhost:32003}}"
-    local activation_block
-    activation_block=$(cast logs --from-block 0 --to-block latest \
-        --address "$REALTIME_INBOX" \
-        "Activated(bytes32)" \
-        --rpc-url "$l1_rpc" \
-        --json 2>/dev/null | jq -r '.[0].blockNumber // empty')
-    if [[ -n "$activation_block" && "$activation_block" != "null" ]]; then
-        export GENESIS_L1_HEIGHT; GENESIS_L1_HEIGHT=$(( $(cast --to-dec "$activation_block") + 1 ))
-        update_env_var "$ENV_FILE" "GENESIS_L1_HEIGHT" "$GENESIS_L1_HEIGHT"
-        log_info "GENESIS_L1_HEIGHT set to $GENESIS_L1_HEIGHT (activation block $activation_block + 1)"
-    else
-        log_warning "Activated(bytes32) event not found on RealTimeInbox — GENESIS_L1_HEIGHT not updated"
+    if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" ]]; then
+        local l1_rpc="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-http://localhost:32003}}"
+        local activation_block
+        activation_block=$(cast logs --from-block 0 --to-block latest \
+            --address "$REALTIME_INBOX" \
+            "Activated(bytes32)" \
+            --rpc-url "$l1_rpc" \
+            --json 2>/dev/null | jq -r '.[0].blockNumber // empty')
+        if [[ -n "$activation_block" && "$activation_block" != "null" ]]; then
+            export GENESIS_L1_HEIGHT; GENESIS_L1_HEIGHT=$(( $(cast --to-dec "$activation_block") + 1 ))
+            update_env_var "$ENV_FILE" "GENESIS_L1_HEIGHT" "$GENESIS_L1_HEIGHT"
+            log_info "GENESIS_L1_HEIGHT set to $GENESIS_L1_HEIGHT (activation block $activation_block + 1)"
+        else
+            log_warning "Activated(bytes32) event not found on RealTimeInbox — GENESIS_L1_HEIGHT not updated"
+        fi
     fi
 
     export REALTIME_ZISK_VERIFIER; REALTIME_ZISK_VERIFIER=$(jq -r '.zisk_verifier // empty' "$L1_DEPLOYMENT_FILE")
@@ -991,7 +1025,9 @@ generate_l2_genesis() {
     
     log_info "Waiting for Nethermind to output genesis hash (up to 60s)..."
     local waited=0
-    while ! docker logs nethermind-genesis-hash 2>/dev/null | grep -q "Genesis hash"; do
+    # Nethermind writes its startup banner (including "Genesis hash :") to stderr,
+    # so combine streams with 2>&1 — using 2>/dev/null here would never match.
+    while ! docker logs nethermind-genesis-hash 2>&1 | grep -q "Genesis hash"; do
         if (( waited >= 60 )); then
             log_error "Timed out waiting for genesis hash after ${waited}s"
             docker logs nethermind-genesis-hash 2>&1 | tail -20
@@ -1004,8 +1040,9 @@ generate_l2_genesis() {
     done
     log_info "Genesis hash found after ${waited}s"
 
+    # Same as the wait loop above — banner goes to stderr, so combine streams.
     local genesis_hash
-    genesis_hash=$(docker logs nethermind-genesis-hash 2>/dev/null \
+    genesis_hash=$(docker logs nethermind-genesis-hash 2>&1 \
         | grep "Genesis hash" \
         | head -n 1 \
         | sed 's/\x1b\[[0-9;]*m//g' \
@@ -1053,7 +1090,12 @@ deploy_provers() {
         return 0
     fi
 
-    if [[ -z "${running_provers:-}" ]]; then
+    if [[ -n "${running_provers:-}" ]]; then
+        should_run_provers=$running_provers
+    elif [[ "$force" == "true" ]]; then
+        should_run_provers=0
+        log_info "Deploying provers (--force, default 0)"
+    else
         echo
         echo "╔══════════════════════════════════════════════════════════════╗"
         echo "  ⚠️  Running provers?                                          "
@@ -1064,8 +1106,6 @@ deploy_provers() {
         echo "╚══════════════════════════════════════════════════════════════╝"
         read -p "Enter choice [0]: " should_run_provers
         should_run_provers=${should_run_provers:-0}
-    else
-        should_run_provers=$running_provers
     fi
 
     if [[ "$should_run_provers" == "0" || "$should_run_provers" == "true" ]]; then
@@ -1073,17 +1113,23 @@ deploy_provers() {
 
         if [[ "$mock_proof" == "1" ]]; then
             if [[ ! -f "$DEPLOYMENT_DIR/zisk_setup.lock" ]]; then
-                echo
-                echo "╔══════════════════════════════════════════════════════════════╗"
-                echo "  ⚠️  Running ZISK?                                             "
-                echo "║══════════════════════════════════════════════════════════════║"
-                echo "║  0 for Deploy ZISK                                           ║"
-                echo "║  1 for Skip ZISK                                             ║"
-                echo "║ [default: 0]                                                 ║"
-                echo "╚══════════════════════════════════════════════════════════════╝"
-                echo
-                read -p "Enter choice [0]: " running_zisk
-                running_zisk=${running_zisk:-0}
+                local running_zisk
+                if [[ "$force" == "true" ]]; then
+                    running_zisk=0
+                    log_info "Deploying ZISK (--force, default 0)"
+                else
+                    echo
+                    echo "╔══════════════════════════════════════════════════════════════╗"
+                    echo "  ⚠️  Running ZISK?                                             "
+                    echo "║══════════════════════════════════════════════════════════════║"
+                    echo "║  0 for Deploy ZISK                                           ║"
+                    echo "║  1 for Skip ZISK                                             ║"
+                    echo "║ [default: 0]                                                 ║"
+                    echo "╚══════════════════════════════════════════════════════════════╝"
+                    echo
+                    read -p "Enter choice [0]: " running_zisk
+                    running_zisk=${running_zisk:-0}
+                fi
 
                 if [[ "$running_zisk" == "0" ]]; then
                     retrieve_guest_data
@@ -1112,6 +1158,122 @@ deploy_provers() {
     fi
 }
 
+# Verify Raiko is reachable and ready to serve proof requests.
+#
+# Two flavours of checks based on prover mode:
+#   - Mock prover (is_mock=true): only `GET /health` — `surge-raiko-mock` returns
+#     `{}` for /guest_data (no real ZisK setup) and rejects the realtime probe
+#     payload, so the deeper checks would loop forever. Mock proofs are
+#     instant; nothing else needs warmup.
+#   - Real prover (is_mock=false): full three-stage check:
+#       1. GET /health     — server is up
+#       2. GET /guest_data — vkey is computed (loads guest binary; ~4-5 min cold)
+#       3. POST /v3/proof/batch/realtime with sources=[] — proof endpoint alive
+#          (Raiko treats sources=[] as a status poll; no actual proof generation)
+#
+# The real-prover check does NOT fully warm the ZisK proofman pipeline. The
+# first real proof request from Catalyst will still trigger proofman init
+# (~16 min on a single GPU). Multi-GPU setups overlap proofman init with the
+# checks above, so by the time L2 starts producing blocks the prover is hot.
+#
+# Usage: wait_for_raiko_ready <raiko_url> <is_mock:true|false> [timeout_seconds]
+wait_for_raiko_ready() {
+    local raiko_url="$1"
+    local is_mock="${2:-false}"
+    local timeout_seconds="${3:-1800}"  # 30 min default — first cold start can take ~16 min on 1x L40
+    local start_time
+    start_time=$(date +%s)
+    local poll_interval=10
+
+    if [[ -z "$raiko_url" ]]; then
+        log_error "wait_for_raiko_ready: raiko_url is empty (RAIKO_HOST_ZKVM not set)"
+        return 1
+    fi
+
+    local total_steps=3
+    if [[ "$is_mock" == "true" ]]; then
+        total_steps=1
+        log_info "Verifying mock Raiko at $raiko_url is reachable (mock prover, single liveness check only)..."
+    else
+        log_info "Verifying real Raiko at $raiko_url is ready (3 checks, may take 4-5 min on cold start)..."
+    fi
+
+    # ── Check 1/N: /health ──
+    log_info " [1/$total_steps] Polling $raiko_url/health (basic liveness)..."
+    while true; do
+        local now elapsed
+        now=$(date +%s); elapsed=$(( now - start_time ))
+        if [[ $elapsed -ge $timeout_seconds ]]; then
+            log_error "Raiko /health did not respond within $timeout_seconds seconds"
+            return 1
+        fi
+        local code
+        code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$raiko_url/health" 2>/dev/null || echo "000")
+        if [[ "$code" == "200" ]]; then
+            log_success "  [1/$total_steps] Raiko /health → 200"
+            break
+        fi
+        sleep "$poll_interval"
+    done
+
+    # Mock prover: skip the rest. /guest_data and the realtime probe both
+    # require real ZisK state that the mock image doesn't have.
+    if [[ "$is_mock" == "true" ]]; then
+        local elapsed_total=$(( $(date +%s) - start_time ))
+        log_success "Mock Raiko is ready (${elapsed_total}s)"
+        return 0
+    fi
+
+    # ── Check 2/3: /guest_data ──
+    log_info " [2/3] Polling $raiko_url/guest_data (this takes 4-5 min on first cold start)..."
+    while true; do
+        local now elapsed
+        now=$(date +%s); elapsed=$(( now - start_time ))
+        if [[ $elapsed -ge $timeout_seconds ]]; then
+            log_error "Raiko /guest_data did not return vkey within $timeout_seconds seconds"
+            return 1
+        fi
+        local body
+        body=$(curl -s --max-time 30 "$raiko_url/guest_data" 2>/dev/null || echo "")
+        if [[ -n "$body" ]] && echo "$body" | jq -e '.zisk.batch_vkey' >/dev/null 2>&1; then
+            local vkey
+            vkey=$(echo "$body" | jq -r '.zisk.batch_vkey')
+            log_success "  [2/3] Raiko /guest_data ready (zisk.batch_vkey=$vkey)"
+            break
+        fi
+        sleep "$poll_interval"
+    done
+
+    # ── Check 3/3: POST /v3/proof/batch/realtime with sources=[] (status poll) ──
+    # Raiko treats sources=[] as a status query — no proof generation kicks off.
+    # We just want to confirm the proof endpoint's request handler responds.
+    log_info " [3/3] Probing $raiko_url/v3/proof/batch/realtime (status-poll mode)..."
+    local probe_payload='{"l2_block_numbers":[1],"max_anchor_block_number":1,"basefee_sharing_pctg":75,"last_finalized_block_hash":"0x0000000000000000000000000000000000000000000000000000000000000000","sources":[],"blobs":[],"signal_slots":[],"proof_type":"zisk","blob_proof_type":"proof_of_equivalence"}'
+    while true; do
+        local now elapsed
+        now=$(date +%s); elapsed=$(( now - start_time ))
+        if [[ $elapsed -ge $timeout_seconds ]]; then
+            log_error "Raiko proof endpoint did not respond within $timeout_seconds seconds"
+            return 1
+        fi
+        local code
+        code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            -X POST -H "Content-Type: application/json" \
+            -d "$probe_payload" \
+            "$raiko_url/v3/proof/batch/realtime" 2>/dev/null || echo "000")
+        # 2xx = success, 4xx = endpoint up but rejected our probe (expected for status-poll on a non-existent request key)
+        if [[ "$code" =~ ^[24][0-9][0-9]$ ]]; then
+            log_success "  [3/3] Raiko proof endpoint responding (HTTP $code)"
+            break
+        fi
+        sleep "$poll_interval"
+    done
+
+    local elapsed_total=$(( $(date +%s) - start_time ))
+    log_success "Raiko is ready (warmed up in ${elapsed_total}s)"
+    return 0
+}
+
 # Start L2 stack with specified configuration
 # Usage: start_l2_stack <stack_option> [mock_proof]
 #   mock_proof: "0" = mock prover selected → also start raiko; "1" = real prover (default)
@@ -1119,11 +1281,33 @@ start_l2_stack() {
     local stack_option="$1"
     local mock_proof="${2:-1}"
 
-    log_info "Starting L2 stack..."
-
     local compose_cmd="docker compose"
     local exit_status=0
     local temp_output="/tmp/surge_l2_stack_output_$$"
+
+    # Stack option 0: dev-only mode — skip L2 stack entirely, just verify the
+    # external L2 RPC is healthy so downstream protocol/DEX deploy steps work.
+    if [[ "$stack_option" == "0" ]]; then
+        local _l2_rpc="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-http://localhost:8547}}"
+        log_info "Stack option 0: skipping L2 stack startup (dev mode)"
+        log_info "Verifying external L2 RPC at $_l2_rpc..."
+        if ! test_rpc_connection "$_l2_rpc"; then
+            log_error "External L2 RPC at $_l2_rpc is not responding to eth_blockNumber"
+            log_error "Start your own L2 node and retry, or pick a different --stack-option"
+            return 1
+        fi
+        local _l2_chain_id
+        if _l2_chain_id=$(get_chain_id "$_l2_rpc") && [[ -n "${L2_CHAIN_ID:-}" ]]; then
+            if [[ "$_l2_chain_id" != "$L2_CHAIN_ID" ]]; then
+                log_error "External L2 chain ID mismatch: got $_l2_chain_id, .env L2_CHAIN_ID=$L2_CHAIN_ID"
+                return 1
+            fi
+        fi
+        log_success "External L2 RPC healthy (chain_id=$_l2_chain_id) — skipping stack startup"
+        return 0
+    fi
+
+    log_info "Starting L2 stack..."
 
     # Include raiko + redis-zk when mock proof mode is selected
     local prover_profiles=""
@@ -1152,6 +1336,10 @@ start_l2_stack() {
         3)
             log_info "Starting driver + catalyst + spammer"
             MOCK_MODE=$mock_mode $compose_cmd --profile catalyst --profile spammer --profile blockscout $prover_profiles up -d >"$temp_output" 2>&1 &
+            ;;
+        *)
+            log_error "Unknown stack option: $stack_option (expected 0/1/2/3)"
+            return 1
             ;;
     esac
     
@@ -1205,7 +1393,12 @@ main() {
     else
         case "$environment" in
             1|"devnet") env_choice=1 ;;
-            *) log_error "Invalid environment: $environment (only 'devnet' is supported)"; exit 1 ;;
+            *)
+                log_error "Invalid --environment: '$environment' (only 'devnet' preset ships today)"
+                log_error "Note: --environment sets the .env preset, not the target L1 chain."
+                log_error "To deploy against an existing L1 (Sepolia/Gnosis/mainnet/etc.) use --deploy-devnet false."
+                exit 1
+                ;;
         esac
     fi
 
@@ -1213,7 +1406,7 @@ main() {
     local env_name
     case "$env_choice" in
         1|"devnet") env_name="devnet" ;;
-        *) log_error "Invalid environment choice: $env_choice (only 'devnet' is supported)"; exit 1 ;;
+        *) log_error "Invalid environment choice: $env_choice"; exit 1 ;;
     esac
 
     # Load environment file
@@ -1346,11 +1539,22 @@ main() {
     local mock_proof="1"  # default: real prover (no raiko)
     if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
 
-        # Determine mock/real prover: --mock-prover flag > MOCK_PROOF_MODE env > interactive prompt
+        # Determine mock/real prover. Resolution order:
+        #   1. --mock-prover flag (explicit)
+        #   2. MOCK_PROOF_MODE=true env var (explicit)
+        #   3. --force without --mock-prover → real prover (the assumption is that
+        #      anyone passing --force has set RAIKO_HOST_ZKVM in .env and wants
+        #      a fully non-interactive deployment)
+        #   4. Interactive prompt
         if [[ "$mock_prover" == "true" || "${MOCK_PROOF_MODE:-}" == "true" ]]; then
             mock_proof="0"
+            log_info "Using mock prover (--mock-prover or MOCK_PROOF_MODE=true)"
         elif [[ -n "$mock_prover" ]]; then
             mock_proof="1"
+            log_info "Using real prover (--mock-prover=$mock_prover)"
+        elif [[ "$force" == "true" ]]; then
+            mock_proof="1"
+            log_info "Using real prover (--force without --mock-prover defaults to real)"
         else
             echo
             echo "╔══════════════════════════════════════════════════════════════╗"
@@ -1420,10 +1624,44 @@ main() {
     else
         stack_choice=$stack_option
     fi
-    
+
     if ! start_l2_stack "$stack_choice" "$mock_proof"; then
         log_error "Failed to start L2 stack"
         exit 1
+    fi
+
+    # Verify Raiko is ready BEFORE the first L2 tx (DEX L2 deploy below) so the
+    # very first proof request from Catalyst doesn't time out during Raiko's
+    # warmup window. Applies to both mock and real prover:
+    #   - Mock prover: Raiko comes up via `--profile prover` inside start_l2_stack;
+    #     it's reachable from the host at localhost:8082 (host port mapping).
+    #   - Real prover: RAIKO_HOST_ZKVM points at the prover machine; transform
+    #     host.docker.internal → localhost for the host-side curl probes.
+    # Skipped only for --stack-option 0 (no L2 stack at all).
+    if [[ "$stack_choice" != "0" ]]; then
+        local raiko_check_url=""
+        local is_mock_raiko="false"
+        if [[ "$mock_proof" == "0" ]]; then
+            raiko_check_url="http://localhost:8082"
+            is_mock_raiko="true"
+        elif [[ -n "${RAIKO_HOST_ZKVM:-}" ]]; then
+            raiko_check_url=$(echo "$RAIKO_HOST_ZKVM" | sed 's|host\.docker\.internal|localhost|g')
+        fi
+
+        if [[ -z "$raiko_check_url" ]]; then
+            log_warning "RAIKO_HOST_ZKVM not set — skipping Raiko readiness check"
+            log_warning "Catalyst's first proof request may time out if Raiko isn't warm yet"
+        else
+            if ! wait_for_raiko_ready "$raiko_check_url" "$is_mock_raiko"; then
+                log_error "Raiko is not ready — aborting before triggering any L2 transactions"
+                if [[ "$mock_proof" == "0" ]]; then
+                    log_error "Mock prover diagnostics: docker compose logs -f l2-raiko-zk-client"
+                else
+                    log_error "Real prover diagnostics: docker compose -f docker/docker-compose-zk.yml logs -f (on prover host)"
+                fi
+                exit 1
+            fi
+        fi
     fi
 
     # Deploy Cross-Chain DEX (4 steps)

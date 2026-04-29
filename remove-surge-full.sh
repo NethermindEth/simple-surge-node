@@ -269,9 +269,21 @@ cleanup_kurtosis_resources() {
 # Remove L2 stack containers
 remove_l2_stack() {
     local mode_choice="$1"
-    
+
     log_info "Removing L2 stack containers..."
-    
+
+    # Source .env so docker compose can resolve ${VAR} substitutions in compose files.
+    # Without this, compose treats every var as empty and bails out with errors like
+    # "invalid proto:" or "service has neither an image nor a build context specified".
+    # If .env was already removed (e.g. previous --remove-env true), skip — the
+    # fallback `docker rm -f` by name will still clean things up.
+    if [[ -f .env ]]; then
+        set -a
+        # shellcheck disable=SC1091
+        source .env 2>/dev/null || true
+        set +a
+    fi
+
     local exit_status=0
     local temp_output="/tmp/surge_remove_l2_output_$$"
     
@@ -296,24 +308,51 @@ remove_l2_stack() {
         exit_status=$?
     fi
     
-    if [[ $exit_status -ne 0 ]]; then
-        log_warning "compose down failed (exit $exit_status) — forcing container removal..."
-        if [[ "$mode_choice" == "silence" ]]; then
-            log_warning "Run with debug mode for more details: --mode debug"
-        fi
+    # `compose down` is best-effort: it fails when .env is missing or has unset
+    # vars referenced in the compose files (e.g. empty L2_HTTP_PORT → "invalid
+    # proto:", empty PROTOCOL_IMAGE → "service has neither an image nor a build
+    # context"). The hard fallback below removes containers by name regardless,
+    # so we don't surface compose-down failures unless that fallback ALSO fails.
+    if [[ $exit_status -ne 0 ]] && [[ "$mode_choice" == "debug" ]]; then
+        log_info "compose down exited non-zero (likely due to missing .env vars) — relying on docker rm -f fallback"
     fi
 
     # Hard fallback: kill and remove all known containers by name
     local known_containers=(
         l2-nethermind-execution-client l2-taiko-consensus-client
-        web3signer-l1 web3signer-l2 l2-catalyst-node l2-raiko-zk-client 
-        redis-zk l2-tx-spammer l2-blockscout-postgres l2-blockscout-verif 
+        web3signer-l1 web3signer-l2 l2-catalyst-node l2-raiko-zk-client
+        redis-zk l2-tx-spammer l2-blockscout-postgres l2-blockscout-verif
         l2-blockscout l2-blockscout-frontend dex
         surge-l1-deployer surge-multicall-deployer surge-userops-submitter-deployer
         surge-genesis-generator surge-zisk-setup surge-dex-l1-deployer surge-dex-l2-deployer
     )
     docker kill --signal=SIGKILL "${known_containers[@]}" 2>/dev/null || true
     docker rm -f "${known_containers[@]}" 2>/dev/null || true
+
+    # Verify nothing leaked through both paths
+    local still_present=()
+    local existing_names
+    existing_names=$(docker ps -a --format '{{.Names}}' 2>/dev/null || true)
+    for c in "${known_containers[@]}"; do
+        if echo "$existing_names" | grep -q "^${c}$"; then
+            still_present+=("$c")
+        fi
+    done
+
+    if [[ ${#still_present[@]} -gt 0 ]]; then
+        log_error "Containers still present after cleanup: ${still_present[*]}"
+        log_error "Manual removal: docker rm -f ${still_present[*]}"
+        if [[ -f "$temp_output" ]]; then
+            local real_errors
+            real_errors=$(grep -vE 'level=warning msg="The "' "$temp_output" \
+                | grep -vE '^$' | tail -10)
+            if [[ -n "$real_errors" ]]; then
+                log_error "  compose down output (last 10 non-warning lines):"
+                echo "$real_errors" | sed 's/^/    /' >&2
+            fi
+        fi
+        return 1
+    fi
 
     log_success "L2 stack containers removed"
     return 0
