@@ -39,21 +39,20 @@ brew install kurtosis-tech/tap/kurtosis-cli   # macOS
 
 ### Prover
 
-There are two proving modes:
+Two proving modes:
 
 **Mock prover** (default for local testing)
 - No GPU or external prover required
-- Deploys a `ProofVerifierDummy` contract that accepts any signed proof
-- Select `0` at the prover prompt, or set `MOCK_PROOF_MODE=true` in `.env`
-- The L2 stack includes an embedded Raiko instance (`l2-raiko-zk-client`) when mock mode is active
+- Deploys `ProofVerifierDummy` (accepts any signed proof)
+- Pass `--mock-prover`, or set `MOCK_PROOF_MODE=true` in `.env`
+- The L2 stack runs an embedded Raiko instance (`l2-raiko-zk-client`) on `:8082`
 
-**Real prover (ZisK)**
-- Requires a separate machine with an NVIDIA GPU (RTX 5090 or L40 class, 32 GB+ VRAM)
-- Set `RAIKO_HOST_ZKVM=http://<prover-ip>:8082` in `.env` before deploying
-- Select `1` at the prover prompt
-- After L1 deployment the script registers the ZisK program vkey on-chain via `setup-zisk.sh` and verifies it with `isProgramTrusted` before locking
+**Real ZisK prover**
+- Minimum 1x L40 or 1x RTX 5090; single-GPU configs require two VMs (prover + L2 stack on separate machines). For one VM, use 4x L40 or 8x RTX 5090.
+- Set `RAIKO_HOST_ZKVM=http://<prover-ip>:8080` in `.env` before deploying (don't pass it inline — `.env` is sourced on every run)
+- The deploy script auto-fetches the ZisK batch vkey from `<prover-ip>:8080/guest_data` and registers it via `setup-zisk.sh` (verifies with `isProgramTrusted` before locking)
 
-See [Prover Setup](https://docs.surge.wtf/guides/running-surge/provers) for full GPU requirements and Raiko configuration.
+See [PROVER.md](./PROVER.md) for the full two-VM setup, or [docs.surge.wtf](https://docs.surge.wtf/guides/running-surge/provers) for the public guide.
 
 ## Setup
 

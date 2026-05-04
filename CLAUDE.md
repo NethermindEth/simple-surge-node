@@ -1,135 +1,202 @@
 # Simple Surge Node — Claude Code Instructions
 
-  ## Deploying a Surge Devnet
+One-shot deploy a full Surge devnet (L1 + L2 + prover) on local, single-VM, or two-VM split. **Always pass `--force`** — without it the deploy script blocks on `read -p` prompts that Claude can't answer.
 
-  Claude can one-shot deploy a full Surge devnet (L1 + L2 + mock prover) on a local machine or remote VM. Always use `--force` to skip all interactive prompts — without it, the script blocks on `read -p`
-  prompts that Claude can't answer.
+## `--deployment local` vs `--deployment remote`
 
-  ### Choosing `--deployment local` vs `--deployment remote`
+The most common mistake. Get it wrong and DEX UI / Blockscout configs point at `localhost` instead of the VM's IP — they work on the VM but fail in any browser elsewhere.
 
-  This is the most common mistake. Get it wrong and services (Blockscout, DEX UI) point at `localhost` instead of the VM's public IP — they'll work on the VM itself but break for anyone connecting from a
-  browser.
+| Flag | What it does | Use when |
+|------|--------------|----------|
+| `--deployment local` | Service URLs use `localhost` | Deploying **and** browsing on the same machine |
+| `--deployment remote` | Auto-detects the machine's public IP and writes it into Blockscout/DEX UI configs | Deploying on a VM, accessing services from elsewhere |
 
-  | Flag | What it does | When to use |
-  |------|-------------|-------------|
-  | `--deployment local` | Configs use `localhost` for all service URLs | Deploying **and** browsing on the same machine |
-  | `--deployment remote` | Auto-detects the machine's public IP and writes it into Blockscout/DEX UI configs | Deploying on a VM, accessing services from a different machine |
+If you SSH'd in to deploy → `--deployment remote`.
 
-  **Rule of thumb:** If you're SSH-ing into the machine to deploy, use `--deployment remote`.
+## Prerequisites (fresh VM)
 
-  ### Prerequisites (fresh VM)
+```bash
+# Docker
+curl -fsSL https://get.docker.com | sh
 
-  Install these before running the deploy script — it won't install them for you:
+# Foundry (cast, forge, anvil)
+curl -L https://foundry.paradigm.xyz | bash
+source ~/.bashrc
+foundryup
 
-  ```bash
-  # Docker Engine + Compose plugin
-  curl -fsSL https://get.docker.com | sh
+# Kurtosis CLI
+echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
+sudo apt-get update && sudo apt-get install -y kurtosis-cli
+kurtosis engine start
 
-  # Foundry (cast, forge, anvil)
-  curl -L https://foundry.paradigm.xyz | bash
-  source ~/.bashrc
-  foundryup
+# Standard tools
+sudo apt install -y jq curl bc
+```
 
-  # Kurtosis CLI (Ubuntu/Debian)
-  echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | tee /etc/apt/sources.list.d/kurtosis.list
-  apt-get update && apt-get install -y kurtosis-cli
-  kurtosis engine start
+## Clone and prepare
 
-  # Standard tools (usually pre-installed)
-  apt install -y jq curl bc
+```bash
+git clone https://github.com/NethermindEth/simple-surge-node.git
+cd simple-surge-node
+git submodule update --init --recursive
+cp .env.devnet .env
+```
 
-  Clone and prepare
+---
 
-  git clone https://github.com/NethermindEth/simple-surge-node.git
-  cd simple-surge-node
-  git submodule update --init --recursive
-  cp .env.devnet .env
+## Mock prover (no GPU)
 
-  One-shot deploy (mock prover)
+Fastest path. No external prover required.
 
-  # Local machine
-  ./deploy-surge-full.sh \
-    --environment devnet \
-    --deploy-devnet true \
-    --deployment local \
-    --stack-option 2 \
-    --mock-prover \
-    --mode silence \
-    --force
+```bash
+# Local machine
+./deploy-surge-full.sh \
+  --environment devnet --deploy-devnet true \
+  --deployment local --stack-option 2 \
+  --mock-prover --mode silence --force
 
-  # Remote VM
-  ./deploy-surge-full.sh \
-    --environment devnet \
-    --deploy-devnet true \
-    --deployment remote \
-    --stack-option 2 \
-    --mock-prover \
-    --mode silence \
-    --force
+# Remote VM
+./deploy-surge-full.sh \
+  --environment devnet --deploy-devnet true \
+  --deployment remote --stack-option 2 \
+  --mock-prover --mode silence --force
+```
 
-  One-shot deploy (real prover)
+---
 
-  Requires a running Raiko instance. Verify it's up first:
+## Real ZisK prover (two-VM, recommended)
 
-  curl http://<prover-ip>:<prover-port>/guest_data
+Minimum: 1x L40 or 1x RTX 5090. Single-GPU configs **must** be split across two VMs — a single GPU + L2 stack on one machine cannot keep up with Catalyst's preconf reorg window. For same-VM, use 4x L40 or 8x RTX 5090 minimum.
 
-  Then deploy:
+### Step 1 — Prover VM (has GPU)
 
-  RAIKO_HOST_ZKVM=http://<prover-ip>:<prover-port> ./deploy-surge-full.sh \
-    --environment devnet \
-    --deploy-devnet true \
-    --deployment remote \
-    --stack-option 2 \
-    --mode silence \
-    --force
+```bash
+git clone https://github.com/NethermindEth/raiko.git
+cd raiko
 
-  Post-deployment
+# Installs apt deps, Rust, CUDA 12.x. Detects and purges legacy CUDA 11.x
+# leftovers that cause "undefined symbol: cudaGetDeviceProperties_v2".
+./script/install-zisk-deps.sh
 
-  Always report service endpoints to the user. Replace <IP> with localhost (local) or the VM's public IP (remote):
+# Install ZisK SDK + proving keys (~150 GB to ~/.zisk)
+TARGET=zisk make install
 
-  ┌──────────────────────────┬───────────────────┐
-  │         Service          │        URL        │
-  ├──────────────────────────┼───────────────────┤
-  │ L1 RPC                   │ http://<IP>:32003 │
-  ├──────────────────────────┼───────────────────┤
-  │ L2 RPC                   │ http://<IP>:8547  │
-  ├──────────────────────────┼───────────────────┤
-  │ L2 WebSocket             │ ws://<IP>:8548    │
-  ├──────────────────────────┼───────────────────┤
-  │ L2 Catalyst              │ http://<IP>:4545  │
-  ├──────────────────────────┼───────────────────┤
-  │ L2 Explorer (Blockscout) │ http://<IP>:3001  │
-  ├──────────────────────────┼───────────────────┤
-  │ DEX UI                   │ http://<IP>:5173  │
-  ├──────────────────────────┼───────────────────┤
-  │ Raiko (mock prover)      │ http://<IP>:8082  │
-  └──────────────────────────┴───────────────────┘
+# Start Raiko
+cp docker/.env.sample.zk docker/.env
+docker compose -f docker/docker-compose-zk.yml up -d
 
-  Verify the deployment:
+# Wait for the vkey (4–5 min multi-GPU; ~16 min single-GPU cold start)
+curl localhost:8080/guest_data
+# {"zisk":{"batch_vkey":"<64 hex>"}}
+```
 
-  # All containers running
-  docker compose ps
+Open TCP/8080 to the L2 stack VM, verify reachability from there:
 
-  # L2 RPC responds
-  curl -s -X POST -H "Content-Type: application/json" \
-    --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-    http://localhost:8547
+```bash
+# From the L2 stack VM
+curl http://<prover-ip>:8080/guest_data
+```
 
-  Check Catalyst logs for Batches: N (N > 0) to confirm blocks are being proposed.
+### Step 2 — L2 stack VM
 
-  Teardown and redeploy
+```bash
+git clone https://github.com/NethermindEth/simple-surge-node.git
+cd simple-surge-node
+git submodule update --init --recursive
+cp .env.devnet .env
+```
 
-  # Full teardown
-  ./remove-surge-full.sh --force
+**Edit `.env`** (don't pass it inline — `deploy-surge-full.sh` sources `.env` and overrides inline exports):
 
-  # Fresh deploy
-  cp .env.devnet .env
-  ./deploy-surge-full.sh --environment devnet --deploy-devnet true --deployment remote --stack-option 2 --mock-prover --mode silence --force
+```bash
+RAIKO_HOST_ZKVM=http://<prover-ip>:8080
+```
 
-  Common pitfalls
+Deploy:
 
-  - Wrong --deployment flag: local on a remote VM means DEX UI and Blockscout make browser requests to localhost, which fails. Use remote for VMs.
-  - Missing --force: Without it, the script blocks on interactive prompts (prover selection, redeployment confirmation) that can't be answered over a non-interactive SSH session.
-  - Foundry not in PATH: After installing, cast lives at ~/.foundry/bin/cast. Either source ~/.bashrc or prepend PATH="$HOME/.foundry/bin:$PATH" before running the deploy script.
-  - Kurtosis engine not started: Run kurtosis engine start after installing the CLI — the deploy script assumes it's already running.
-  - Stale .env: Always re-copy .env.devnet to .env before a fresh deployment. A leftover .env from a previous run has stale contract addresses and block heights.
+```bash
+./deploy-surge-full.sh \
+  --environment devnet --deploy-devnet true \
+  --deployment remote --stack-option 2 \
+  --mode silence --force
+```
+
+The script auto-fetches the ZisK vkey from `<prover-ip>:8080/guest_data`, registers it on the verifier, and generates `configs/chain_spec_list.json` + `configs/config.json`.
+
+### Step 3 — Sync configs back to the Prover VM
+
+Raiko started with the default chain spec; replace it and restart:
+
+```bash
+# From the L2 stack VM
+scp configs/chain_spec_list.json <prover-host>:~/raiko/host/config/devnet/chain_spec_list.json
+scp configs/config.json         <prover-host>:~/raiko/host/config/devnet/config.json
+
+# On the Prover VM
+cd ~/raiko
+docker compose -f docker/docker-compose-zk.yml up -d --force-recreate
+```
+
+The first proof after `--force-recreate` triggers another ~16 min cold start on single-GPU configs. Multi-GPU is faster.
+
+---
+
+## Real ZisK prover (single VM, 4x L40 / 8x RTX 5090 only)
+
+In `simple-surge-node/.env`:
+
+```bash
+RAIKO_HOST_ZKVM=http://host.docker.internal:8080
+```
+
+(`localhost` won't work — Catalyst is in a container.) Run `./deploy-surge-full.sh --deployment local` (or `remote`). No scp/restart step — configs are local.
+
+---
+
+## Post-deployment
+
+Always report endpoints. Replace `<IP>` with `localhost` (local) or the VM's public IP (remote):
+
+| Service | URL |
+|---------|-----|
+| L1 RPC | `http://<IP>:32003` |
+| L2 RPC | `http://<IP>:8547` |
+| L2 WebSocket | `ws://<IP>:8548` |
+| L2 Catalyst | `http://<IP>:4545` |
+| L2 Blockscout | `http://<IP>:3001` |
+| DEX UI | `http://<IP>:5173` |
+| Raiko (mock) | `http://<IP>:8082` |
+| Raiko (zisk, two-VM) | `http://<prover-ip>:8080` |
+
+Verify:
+
+```bash
+docker compose ps
+curl -s -X POST -H "Content-Type: application/json" \
+  --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+  http://localhost:8547
+docker logs l2-catalyst-node | grep Batches    # Batches: N (N>0) confirms blocks landing
+```
+
+## Teardown and redeploy
+
+```bash
+./remove-surge-full.sh --force   # full teardown
+cp .env.devnet .env              # always re-copy before fresh deploy
+./deploy-surge-full.sh --environment devnet --deploy-devnet true \
+  --deployment remote --stack-option 2 --mock-prover --mode silence --force
+```
+
+For real-prover redeploys: also scp configs back to the Prover VM and `docker compose -f docker/docker-compose-zk.yml up -d --force-recreate`.
+
+## Common pitfalls
+
+- **Wrong `--deployment` flag.** `local` on a remote VM means DEX UI / Blockscout reach `localhost` from a browser elsewhere. Use `remote` for VMs.
+- **Missing `--force`.** Script blocks on interactive prompts over a non-interactive SSH session.
+- **Foundry not in PATH.** `cast` lives at `~/.foundry/bin/cast`. Source `~/.bashrc` or prepend `PATH="$HOME/.foundry/bin:$PATH"`.
+- **Kurtosis engine not started.** Run `kurtosis engine start` after installing the CLI.
+- **Stale `.env`.** Always re-copy `.env.devnet` before a fresh deploy. Stale contract addresses + block heights from a previous run silently break things.
+- **Real prover: `RAIKO_HOST_ZKVM` set inline.** Gets overridden when `.env` is sourced. Edit `.env` directly.
+- **Real prover: `localhost` for `RAIKO_HOST_ZKVM`.** Catalyst is in a container; `localhost` is the container's loopback. Use `host.docker.internal:8080` (same-VM) or `<prover-ip>:8080` (two-VM).
+- **Real prover: TCP/8080 not open on the prover VM.** Catalyst can't reach Raiko. Open the port and verify with `docker exec l2-catalyst-node curl -m 5 $RAIKO_HOST_ZKVM/guest_data`.
+- **Real prover: `Batches: 0` and `currOperator=0x0` in driver logs.** `currOperator=0x0` is harmless legacy noise; the realtime fork doesn't use the preconf whitelist. Real cause is usually proof timeout (single-GPU cold start) or Raiko unreachable from Catalyst's container.
