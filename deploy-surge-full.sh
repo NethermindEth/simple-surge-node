@@ -1181,6 +1181,11 @@ wait_for_raiko_ready() {
     local raiko_url="$1"
     local is_mock="${2:-false}"
     local timeout_seconds="${3:-1800}"  # 30 min default — first cold start can take ~16 min on 1x L40
+    # Real-prover liveness budget. If /health doesn't respond fast, Raiko isn't
+    # actually running on the prover VM (port closed, container down, configs not
+    # synced + restarted). No point waiting the full warmup window — fail in
+    # ~90 seconds with an actionable hint instead of 30 minutes of silence.
+    local health_timeout_seconds=90
     local start_time
     start_time=$(date +%s)
     local poll_interval=10
@@ -1199,12 +1204,28 @@ wait_for_raiko_ready() {
     fi
 
     # ── Check 1/N: /health ──
-    log_info " [1/$total_steps] Polling $raiko_url/health (basic liveness)..."
+    # Mock prover keeps the full timeout (Raiko comes up alongside the L2 stack
+    # so a slow Docker pull can legitimately push it past 60s). Real prover uses
+    # the shorter health budget — Raiko should already be up on the prover VM.
+    local _step1_budget=$timeout_seconds
+    if [[ "$is_mock" != "true" ]]; then
+        _step1_budget=$health_timeout_seconds
+    fi
+    log_info " [1/$total_steps] Polling $raiko_url/health (basic liveness, ${_step1_budget}s budget)..."
     while true; do
         local now elapsed
         now=$(date +%s); elapsed=$(( now - start_time ))
-        if [[ $elapsed -ge $timeout_seconds ]]; then
-            log_error "Raiko /health did not respond within $timeout_seconds seconds"
+        if [[ $elapsed -ge $_step1_budget ]]; then
+            log_error "Raiko /health did not respond within $_step1_budget seconds"
+            if [[ "$is_mock" != "true" ]]; then
+                log_error "Real prover failure-mode checklist:"
+                log_error "  • Is the Raiko container running on the prover VM?"
+                log_error "      docker compose -f docker/docker-compose-zk.yml ps"
+                log_error "  • Is TCP/8080 open on the prover VM and reachable from this host?"
+                log_error "      curl -m 5 $raiko_url/guest_data"
+                log_error "  • Did you scp simple-surge-node/configs/{chain_spec_list,config}.json"
+                log_error "    to the prover VM and run 'docker compose ... up -d --force-recreate'?"
+            fi
             return 1
         fi
         local code
@@ -1225,12 +1246,26 @@ wait_for_raiko_ready() {
     fi
 
     # ── Check 2/3: /guest_data ──
+    # Distinguishes three real-prover failure modes:
+    #   1. Empty body / connection error  → Raiko not serving (already covered above)
+    #   2. Body present but no zisk.batch_vkey  → Raiko started against the default
+    #      chain spec and never picked up the one simple-surge-node generated.
+    #      User skipped step 6 (scp configs + force-recreate raiko-zk).
+    #   3. Body present with vkey → ready.
     log_info " [2/3] Polling $raiko_url/guest_data (this takes 4-5 min on first cold start)..."
+    local _saw_empty_guest_data=0
     while true; do
         local now elapsed
         now=$(date +%s); elapsed=$(( now - start_time ))
         if [[ $elapsed -ge $timeout_seconds ]]; then
             log_error "Raiko /guest_data did not return vkey within $timeout_seconds seconds"
+            if [[ "$_saw_empty_guest_data" == "1" ]]; then
+                log_error "Raiko answered /guest_data but never returned a zisk.batch_vkey."
+                log_error "Most common cause: the Raiko on the prover VM is still running"
+                log_error "against the default chain spec. Sync configs and restart:"
+                log_error "  scp configs/{chain_spec_list,config}.json <prover-host>:~/raiko/host/config/devnet/"
+                log_error "  ssh <prover-host> 'cd ~/raiko && docker compose -f docker/docker-compose-zk.yml up -d --force-recreate'"
+            fi
             return 1
         fi
         local body
@@ -1240,6 +1275,11 @@ wait_for_raiko_ready() {
             vkey=$(echo "$body" | jq -r '.zisk.batch_vkey')
             log_success "  [2/3] Raiko /guest_data ready (zisk.batch_vkey=$vkey)"
             break
+        fi
+        # Track whether we ever saw a non-empty body so the timeout error can
+        # distinguish "Raiko unreachable" from "Raiko up but on wrong chain spec".
+        if [[ -n "$body" ]]; then
+            _saw_empty_guest_data=1
         fi
         sleep "$poll_interval"
     done
@@ -1653,11 +1693,16 @@ main() {
             log_warning "Catalyst's first proof request may time out if Raiko isn't warm yet"
         else
             if ! wait_for_raiko_ready "$raiko_check_url" "$is_mock_raiko"; then
-                log_error "Raiko is not ready — aborting before triggering any L2 transactions"
+                log_error "Raiko is not ready — aborting before any DEX/L2 transactions hit Catalyst"
                 if [[ "$mock_proof" == "0" ]]; then
                     log_error "Mock prover diagnostics: docker compose logs -f l2-raiko-zk-client"
                 else
-                    log_error "Real prover diagnostics: docker compose -f docker/docker-compose-zk.yml logs -f (on prover host)"
+                    log_error "Real prover (two-VM): on the prover VM, verify"
+                    log_error "  cd ~/raiko && docker compose -f docker/docker-compose-zk.yml ps"
+                    log_error "  curl -m 5 localhost:8080/guest_data    # must return zisk.batch_vkey"
+                    log_error "If Raiko is up but the vkey is missing/wrong, sync configs and restart:"
+                    log_error "  scp configs/{chain_spec_list,config}.json <prover-host>:~/raiko/host/config/devnet/"
+                    log_error "  ssh <prover-host> 'cd ~/raiko && docker compose -f docker/docker-compose-zk.yml up -d --force-recreate'"
                 fi
                 exit 1
             fi

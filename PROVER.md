@@ -13,7 +13,7 @@ Run a real-time ZisK prover for your Surge devnet. Proofs finalize L2 blocks on 
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| GPU | 1x L40 or 1x RTX 5090 | 4x L40 or 8x RTX 5090 |
+| GPU | 1x RTX 5090 | 8x RTX 5090 |
 | RAM | 128 GB | 256 GB |
 | CPU | 32 cores | 64 cores |
 | Disk | 150 GB SSD | 300 GB NVMe |

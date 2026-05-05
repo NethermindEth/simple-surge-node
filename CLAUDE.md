@@ -66,7 +66,7 @@ Fastest path. No external prover required.
 
 ## Real ZisK prover (two-VM, recommended)
 
-Minimum: 1x L40 or 1x RTX 5090. Single-GPU configs **must** be split across two VMs — a single GPU + L2 stack on one machine cannot keep up with Catalyst's preconf reorg window. For same-VM, use 4x L40 or 8x RTX 5090 minimum.
+Recommended: 8x RTX 5090. 
 
 ### Step 1 — Prover VM (has GPU)
 
@@ -200,3 +200,5 @@ For real-prover redeploys: also scp configs back to the Prover VM and `docker co
 - **Real prover: `localhost` for `RAIKO_HOST_ZKVM`.** Catalyst is in a container; `localhost` is the container's loopback. Use `host.docker.internal:8080` (same-VM) or `<prover-ip>:8080` (two-VM).
 - **Real prover: TCP/8080 not open on the prover VM.** Catalyst can't reach Raiko. Open the port and verify with `docker exec l2-catalyst-node curl -m 5 $RAIKO_HOST_ZKVM/guest_data`.
 - **Real prover: `Batches: 0` and `currOperator=0x0` in driver logs.** `currOperator=0x0` is harmless legacy noise; the realtime fork doesn't use the preconf whitelist. Real cause is usually proof timeout (single-GPU cold start) or Raiko unreachable from Catalyst's container.
+- **Real prover, single-GPU: deploy fails at "Failed to link DEX vaults".** The script's tail step (`setL1Vault` cast send to L2, resolver registration) needs Catalyst to seal an L2 batch — which needs Raiko on the *new* chain spec. But the new chain spec only exists once the script generates `configs/chain_spec_list.json` + `configs/config.json` mid-deploy. On multi-GPU the cold start is short enough that you can scp + `--force-recreate` Raiko before the cast sends fire, so the gap closes; on single-GPU the gap is always too long. **Recovery**: scp the configs to the prover and `--force-recreate` Raiko, then `rm -f deployment/link_vaults_l1.lock deployment/link_vaults_l2.lock deployment/cross_chain_dex.lock` and re-run `deploy-surge-full.sh` with `--deploy-devnet false`.
+- **Lock files don't survive Catalyst reorgs.** `cast send` timeouts still trigger `touch <step>.lock` (the script doesn't gate the lock on cast's exit code), so retries silently skip txns that never actually landed. Worse, if Catalyst reorged the L2 back to genesis while you were debugging, contracts recorded in `deployment/cross-chain-dex-l2.json` no longer have any code on-chain — the script will still skip "DEX L2 contracts already deployed" on retry. If `cast call <l2_vault> "l1Vault()(address)" --rpc-url <l2-rpc>` returns *"contract does not have any code"*, the L2 was reorged out from under you; tear down the L2 stack and start over rather than retrying.
