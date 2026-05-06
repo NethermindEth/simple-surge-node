@@ -195,7 +195,11 @@ derive_address_from_key() {
         return 0
     fi
 
-    if address=$(docker run --rm "$SURGE_PROTOCOL_IMAGE" cast wallet address "$private_key" 2>/dev/null | head -n1); then
+    # Fallback: derive via the same protocol image used to deploy contracts.
+    # PROTOCOL_IMAGE comes from .env (which check_env_file sources before this
+    # function runs); avoids pinning a second SHA that drifts from .env.devnet.
+    local protocol_image="${PROTOCOL_IMAGE:-nethermind/surge-protocol:latest}"
+    if address=$(docker run --rm "$protocol_image" cast wallet address "$private_key" 2>/dev/null | head -n1); then
         if [[ -n "$address" ]]; then
             echo "$address"
             return 0
@@ -702,23 +706,6 @@ configure_spamoor() {
     log_success "Configured spamoor for fixed port..."
 }
 
-configure_nethermind_launcher() {
-    if [[ ! -f "$NETHERMIND_LAUNCHER_CONFIG_FILE" ]]; then
-        log_warning "Nethermind launcher configuration file not found: $NETHERMIND_LAUNCHER_CONFIG_FILE"
-        return 0
-    fi
-
-    if [[ ! -d "$(dirname "$NETHERMIND_LAUNCHER_FILE")" ]]; then
-        log_warning "Nethermind launcher target directory not found: $(dirname "$NETHERMIND_LAUNCHER_FILE")"
-        return 0
-    fi
-
-    log_info "Copy nethermind launcher configuration..."
-    cp "$NETHERMIND_LAUNCHER_CONFIG_FILE" "$NETHERMIND_LAUNCHER_FILE"
-
-    log_success "Configured nethermind launcher for enabling proofs translation..."
-}
-
 # configure_environment_urls <env_choice> <deployment_choice> <machine_ip>
 #
 # Sets and exports the three canonical URL families:
@@ -799,7 +786,7 @@ configure_environment_urls() {
             if _is_remote; then _host="$machine_ip"; else _host="localhost"; fi
 
             if [[ -z "${L1_EXPLORER:-}" ]]; then
-                export L1_EXPLORER="http://${_host}:36005"
+                export L1_EXPLORER="http://${_host}:36002"
             fi
             if [[ -z "${L2_EXPLORER:-}" ]]; then
                 export L2_EXPLORER="http://${_host}:${BLOCKSCOUT_FRONTEND_PORT:-3001}"

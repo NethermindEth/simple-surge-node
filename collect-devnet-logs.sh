@@ -115,21 +115,36 @@ collect_l2_logs() {
         return 0
     fi
 
-    # All L2 containers defined in docker-compose.yml
-    local containers=(
-        l2-nethermind-execution-client
-        l2-taiko-consensus-client
-        web3signer-l1
-        web3signer-l2
-        l2-catalyst-node
-        l2-raiko-zk-client
-        l2-tx-spammer
-        l2-blockscout-postgres
-        l2-blockscout-verif
-        l2-blockscout
-        l2-blockscout-frontend
-        dex
-    )
+    # Discover L2 containers dynamically from docker-compose.yml so this list
+    # doesn't drift every time someone adds or removes a service.
+    # `compose ps -a` returns names of all containers (running or stopped) the
+    # current compose project owns; falls back to the previously-hardcoded
+    # superset only if compose can't enumerate (e.g. compose plugin missing).
+    local containers=()
+    local compose_names
+    if compose_names=$(docker compose -f docker-compose.yml --profile catalyst --profile spammer --profile blockscout --profile dex --profile prover --profile web3signer ps -a --format '{{.Name}}' 2>/dev/null) && [[ -n "$compose_names" ]]; then
+        # Newline-split into the array
+        while IFS= read -r name; do
+            [[ -n "$name" ]] && containers+=("$name")
+        done <<< "$compose_names"
+    fi
+    if [[ ${#containers[@]} -eq 0 ]]; then
+        log_warning "compose service enumeration failed; falling back to hardcoded list"
+        containers=(
+            l2-nethermind-execution-client
+            l2-taiko-consensus-client
+            web3signer-l1
+            web3signer-l2
+            l2-catalyst-node
+            l2-raiko-zk-client
+            l2-tx-spammer
+            l2-blockscout-postgres
+            l2-blockscout-verif
+            l2-blockscout
+            l2-blockscout-frontend
+            dex
+        )
+    fi
 
     # Build docker logs flags (docker logs has no --no-color flag)
     local logs_flags=(--timestamps)

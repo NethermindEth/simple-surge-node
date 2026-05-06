@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -eou pipefail
+set -eu
 
 if [ "$ENABLE_P2P_SYNC" = "true" ]; then
     ARGS="--p2p.sync --p2p.checkPointSyncUrl ${P2P_SYNC_URL}"

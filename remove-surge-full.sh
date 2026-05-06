@@ -9,11 +9,11 @@ readonly ENCLAVE_NAME="surge-devnet"
 readonly DATA_DIRS=("execution-data" "blockscout-postgres-data" "mysql-data" "rabbitmq" "driver-data")
 
 # Default values for command line arguments
-remove_l1_devnet=""
-remove_l2_stack=""
-remove_data=""
-remove_configs=""
-remove_env=""
+do_remove_l1_devnet=""
+do_remove_l2_stack=""
+do_remove_data=""
+do_remove_configs=""
+do_remove_env=""
 mode=""
 force=""
 
@@ -76,23 +76,23 @@ parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             --remove-l1-devnet)
-                remove_l1_devnet="$2"
+                do_remove_l1_devnet="$2"
                 shift 2
                 ;;
             --remove-l2-stack)
-                remove_l2_stack="$2"
+                do_remove_l2_stack="$2"
                 shift 2
                 ;;
             --remove-data)
-                remove_data="$2"
+                do_remove_data="$2"
                 shift 2
                 ;;
             --remove-configs)
-                remove_configs="$2"
+                do_remove_configs="$2"
                 shift 2
                 ;;
             --remove-env)
-                remove_env="$2"
+                do_remove_env="$2"
                 shift 2
                 ;;
             --mode)
@@ -408,9 +408,44 @@ remove_data() {
 }
 
 # Remove configuration files
+# _reset_deploy_derived_env_vars
+# Resets values in .env that are populated by deploy-surge-full.sh from on-disk
+# artefacts (deploy_l1.json, cross-chain-dex-l*.json, cast logs). When configs
+# are removed, those artefacts are gone but .env still carries the old values —
+# subsequent deploys would silently reuse stale block heights and addresses.
+# GENESIS_L1_HEIGHT is the most load-bearing of these because the deploy script
+# short-circuits its expensive cast-logs derivation when it's already non-zero.
+_reset_deploy_derived_env_vars() {
+    [[ -f .env ]] || return 0
+    log_info "Resetting deploy-derived values in .env..."
+
+    local zero_addr="0x0000000000000000000000000000000000000000"
+    local keys_to_zero_addr=(
+        REALTIME_INBOX REALTIME_BRIDGE REALTIME_EMPTY_IMPL
+        REALTIME_ERC20_VAULT REALTIME_ERC721_VAULT REALTIME_ERC1155_VAULT
+        REALTIME_SHARED_RESOLVER REALTIME_SIGNAL_SERVICE
+        REALTIME_SURGE_VERIFIER REALTIME_ZISK_VERIFIER REALTIME_ZISK_PLONK_VERIFIER
+        REALTIME_PROOF_VERIFIER_DUMMY
+        MULTICALL_ADDRESS USEROPS_SUBMITTER_FACTORY_ADDRESS
+        L1_VAULT L1_TOKEN L1_ROUTER L1_WETH
+        L2_TOKEN L2_DEX L2_VAULT
+    )
+    local key
+    for key in "${keys_to_zero_addr[@]}"; do
+        if grep -q "^${key}=" .env 2>/dev/null; then
+            sed -i.bak "s|^${key}=.*|${key}=${zero_addr}|" .env
+        fi
+    done
+    if grep -q "^GENESIS_L1_HEIGHT=" .env 2>/dev/null; then
+        sed -i.bak "s|^GENESIS_L1_HEIGHT=.*|GENESIS_L1_HEIGHT=0|" .env
+    fi
+    rm -f .env.bak
+    log_success "Reset deploy-derived values (addresses → 0x0, GENESIS_L1_HEIGHT → 0)"
+}
+
 remove_configs() {
     log_info "Removing configuration files..."
-    
+
     local removed_files=()
     local failed_files=()
     
@@ -468,7 +503,11 @@ remove_configs() {
     if [[ ${#removed_files[@]} -eq 0 ]]; then
         log_info "No configuration files found to remove"
     fi
-    
+
+    # The on-disk deploy artefacts are gone — clear .env values that were
+    # derived from them so the next deploy starts from a clean baseline.
+    _reset_deploy_derived_env_vars
+
     return 0
 }
 
@@ -667,12 +706,12 @@ main() {
     local components_to_remove
     if [[ "$force" == "true" ]]; then
         # --force: remove everything except env by default
-        remove_l1_devnet="${remove_l1_devnet:-true}"
-        remove_l2_stack="${remove_l2_stack:-true}"
-        remove_data="${remove_data:-true}"
-        remove_configs="${remove_configs:-true}"
-        remove_env="${remove_env:-false}"
-    elif [[ -z "${remove_l1_devnet:-}${remove_l2_stack:-}${remove_data:-}${remove_configs:-}${remove_env:-}" ]]; then
+        do_remove_l1_devnet="${do_remove_l1_devnet:-true}"
+        do_remove_l2_stack="${do_remove_l2_stack:-true}"
+        do_remove_data="${do_remove_data:-true}"
+        do_remove_configs="${do_remove_configs:-true}"
+        do_remove_env="${do_remove_env:-false}"
+    elif [[ -z "${do_remove_l1_devnet:-}${do_remove_l2_stack:-}${do_remove_data:-}${do_remove_configs:-}${do_remove_env:-}" ]]; then
         components_to_remove=$(prompt_component_selection)
     fi
 
@@ -682,11 +721,11 @@ main() {
         IFS=',' read -ra COMPONENTS <<< "$components_to_remove"
         for component in "${COMPONENTS[@]}"; do
             case "$component" in
-                1) remove_l1_devnet="true" ;;
-                2) remove_l2_stack="true" ;;
-                3) remove_data="true" ;;
-                4) remove_configs="true" ;;
-                5) remove_env="true" ;;
+                1) do_remove_l1_devnet="true" ;;
+                2) do_remove_l2_stack="true" ;;
+                3) do_remove_data="true" ;;
+                4) do_remove_configs="true" ;;
+                5) do_remove_env="true" ;;
             esac
         done
     fi
@@ -717,7 +756,7 @@ main() {
     
     # Build confirmation message
     local confirmation_msg
-    confirmation_msg=$(build_confirmation_message "$remove_l1_devnet" "$remove_l2_stack" "$remove_data" "$remove_configs" "$remove_env")
+    confirmation_msg=$(build_confirmation_message "$do_remove_l1_devnet" "$do_remove_l2_stack" "$do_remove_data" "$do_remove_configs" "$do_remove_env")
     
     # Get confirmation unless force flag is used
     if [[ "$force" != "true" ]]; then
@@ -730,33 +769,33 @@ main() {
     log_info "Beginning Surge Stack removal process..."
     
     # Remove components based on selection
-    if [[ "$remove_l1_devnet" == "true" ]]; then
+    if [[ "$do_remove_l1_devnet" == "true" ]]; then
         if ! remove_l1_devnet "$mode_choice"; then
             log_error "Failed to remove L1 devnet"
             exit 1
         fi
     fi
     
-    if [[ "$remove_l2_stack" == "true" ]]; then
+    if [[ "$do_remove_l2_stack" == "true" ]]; then
         if ! remove_l2_stack "$mode_choice"; then
             log_error "Failed to remove L2 stack"
             exit 1
         fi
     fi
     
-    if [[ "$remove_data" == "true" ]]; then
+    if [[ "$do_remove_data" == "true" ]]; then
         if ! remove_data; then
             log_warning "Failed to remove some data directories (continuing anyway)"
         fi
     fi
     
-    if [[ "$remove_configs" == "true" ]]; then
+    if [[ "$do_remove_configs" == "true" ]]; then
         if ! remove_configs; then
             log_warning "Failed to remove some configuration files (continuing anyway)"
         fi
     fi
     
-    if [[ "$remove_env" == "true" ]]; then
+    if [[ "$do_remove_env" == "true" ]]; then
         if ! remove_env_file; then
             log_error "Failed to remove environment file"
             exit 1
@@ -767,7 +806,7 @@ main() {
     remove_network
     
     # Display summary
-    display_removal_summary "$remove_l1_devnet" "$remove_l2_stack" "$remove_data" "$remove_configs"
+    display_removal_summary "$do_remove_l1_devnet" "$do_remove_l2_stack" "$do_remove_data" "$do_remove_configs"
     
     log_success "Surge Stack removal complete!"
 }

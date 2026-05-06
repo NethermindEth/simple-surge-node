@@ -16,8 +16,6 @@ cast send ${ZISK_VERIFIER_ADDRESS} \
 
 echo
 echo "============================================="
-echo " ✅ ZISK setup successfully"
+echo " ✅ ZISK setup tx broadcast — host will verify isProgramTrusted"
 echo "============================================="
 echo
-
-touch /deployment/zisk_setup.lock

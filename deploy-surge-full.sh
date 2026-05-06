@@ -26,16 +26,12 @@ readonly SPAMOOR_FILE="$ETHEREUM_PACKAGE_DIR/src/spamoor/spamoor.star"
 readonly SPAMOOR_CONFIG_FILE="$CONFIGS_DIR/spamoor.star"
 readonly MAIN_FILE="$ETHEREUM_PACKAGE_DIR/main.star"
 readonly MAIN_CONFIG_FILE="$CONFIGS_DIR/main.star"
-readonly NETHERMIND_LAUNCHER_FILE="$ETHEREUM_PACKAGE_DIR/src/el/nethermind/nethermind_launcher.star"
-readonly NETHERMIND_LAUNCHER_CONFIG_FILE="$CONFIGS_DIR/nethermind_launcher.star"
-
 # L2 Deployment
 readonly ENV_FILE=".env"
 readonly L1_DEPLOYMENT_FILE="$DEPLOYMENT_DIR/deploy_l1.json"
 readonly L1_LOCK_FILE="$DEPLOYMENT_DIR/deploy_l1.lock"
 readonly SURGE_GENESIS_FILE="$DEPLOYMENT_DIR/surge_genesis.json"
 readonly L2_DEPLOYMENT_FILE="$DEPLOYMENT_DIR/setup_l2.json"
-readonly SURGE_PROTOCOL_IMAGE="nethermind/surge-protocol:sha-91d3867"
 readonly COMPOSABILITY_MULTICALL_FILE="$DEPLOYMENT_DIR/composability_multicall.json"
 readonly COMPOSABILITY_USEROPS_SUBMITTER_FILE="$DEPLOYMENT_DIR/composability_userops_submitter.json"
 readonly CROSS_CHAIN_DEX_L1_FILE="$DEPLOYMENT_DIR/cross-chain-dex-l1.json"
@@ -273,7 +269,6 @@ deploy_l1_devnet() {
     configure_shared_utils
     configure_input_parser
     configure_spamoor
-    # configure_nethermind_launcher
 
     # Run Kurtosis
     if ! run_kurtosis "$env_name" "$mode"; then
@@ -309,8 +304,11 @@ _cleanup() {
     fi
 }
 
-trap '_cleanup; exit 130' INT TERM
-trap '_cleanup' EXIT
+# INT/TERM gets converted to a normal exit so the EXIT trap runs once.
+# Without the explicit exit on signal, bash unwinds without firing EXIT.
+# Two traps both calling _cleanup would have it fire twice on Ctrl-C.
+trap 'exit 130' INT TERM
+trap _cleanup EXIT
 
 # Deploy L1 smart contracts (devnet only)
 deploy_l1_contracts() {
@@ -332,16 +330,26 @@ deploy_l1_contracts() {
     # Check if Surge L1 is already deployed (only skip if both files exist AND we're broadcasting)
     if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" ]]; then
         log_info "Surge L1 already deployed..."
-        echo
-        echo "╔══════════════════════════════════════════════════════════════╗"
-        echo "  ⚠️  Start a new deployment?                                   " 
-        echo "║══════════════════════════════════════════════════════════════║"
-        echo "║  0 for Use existing deployment                               ║"
-        echo "║  1 for Redeployment                                          ║"
-        echo "║ [default: 0]                                                 ║"
-        echo "╚══════════════════════════════════════════════════════════════╝"
-        read -p "Enter choice [0]: " choice
-        choice=${choice:-0}
+
+        local choice
+        if [[ "${force:-}" == "true" ]]; then
+            # Non-interactive: keep the existing deployment. Re-running with
+            # --force should never silently nuke a working L1 — if you want
+            # a clean redeploy, run `./remove-surge-full.sh --force` first.
+            log_info "--force set → using existing deployment (run remove-surge-full.sh first to redeploy)"
+            choice=0
+        else
+            echo
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "  ⚠️  Start a new deployment?                                   "
+            echo "║══════════════════════════════════════════════════════════════║"
+            echo "║  0 for Use existing deployment                               ║"
+            echo "║  1 for Redeployment                                          ║"
+            echo "║ [default: 0]                                                 ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            read -p "Enter choice [0]: " choice
+            choice=${choice:-0}
+        fi
 
         if [[ "$choice" == "1" ]]; then
             log_info "Starting a redeployment..."
@@ -892,8 +900,24 @@ extract_l1_deployment_results() {
         update_env_var "$ENV_FILE" "USEROPS_SUBMITTER_FACTORY_ADDRESS" "$USEROPS_SUBMITTER_FACTORY_ADDRESS"
     fi
 
-    # Derive GENESIS_L1_HEIGHT from the block where RealTimeInbox was activated (activation block + 1)
-    if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" ]]; then
+    # Derive GENESIS_L1_HEIGHT from the block where RealTimeInbox was activated (activation block + 1).
+    # `cast logs --from-block 0` is fine on a fresh Kurtosis devnet (handful of
+    # blocks) but expensive/likely rejected on Sepolia/mainnet for an
+    # --deploy-devnet false flow. Skip if already set in this run, or if the
+    # value already lives in .env from a previous run.
+    # TODO(#18): when the L1 deployer Forge script can persist the activation
+    # block into deploy_l1.json, switch to reading it directly and drop the
+    # cast logs call entirely.
+    local _existing_genesis_height
+    _existing_genesis_height="${GENESIS_L1_HEIGHT:-}"
+    if [[ -z "$_existing_genesis_height" || "$_existing_genesis_height" == "0" ]]; then
+        _existing_genesis_height=$(grep -E '^GENESIS_L1_HEIGHT=' "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2-)
+    fi
+
+    if [[ -n "$_existing_genesis_height" && "$_existing_genesis_height" != "0" ]]; then
+        log_info "GENESIS_L1_HEIGHT already set ($_existing_genesis_height) — skipping cast logs lookup"
+        export GENESIS_L1_HEIGHT="$_existing_genesis_height"
+    elif [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" ]]; then
         local l1_rpc="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-http://localhost:32003}}"
         local activation_block
         activation_block=$(cast logs --from-block 0 --to-block latest \
@@ -1709,7 +1733,23 @@ main() {
         fi
     fi
 
-    # Deploy Cross-Chain DEX (4 steps)
+    # Deploy Cross-Chain DEX (4 steps).
+    # Pre-flight: the DEX deployers and extract_l1_deployment_results below
+    # both consume $L1_DEPLOYMENT_FILE (deployment/deploy_l1.json). For
+    # --deploy-devnet false against an existing L1 that wasn't deployed by
+    # this script, the file isn't produced and the failure mode further
+    # down is a confusing _jq_required error far from the root cause. Fail
+    # fast with a useful pointer instead.
+    if [[ ! -f "$L1_DEPLOYMENT_FILE" ]]; then
+        log_error "DEX setup requires $L1_DEPLOYMENT_FILE but it's missing."
+        log_error "Likely cause: --deploy-devnet false against an L1 that wasn't"
+        log_error "deployed by simple-surge-node. The DEX deployers expect the"
+        log_error "L1 contract addresses produced by deploy_l1_contracts."
+        log_error "Either run with --deploy-devnet true (fresh L1) or pre-populate"
+        log_error "$L1_DEPLOYMENT_FILE with the existing L1's contract addresses."
+        exit 1
+    fi
+
     # If SWAP_TOKEN is unset, the L1 deployer will deploy a fresh SwapToken.
     # On existing chains, set SWAP_TOKEN in .env to use a real USDC/ERC20.
     if ! deploy_dex_l1 "$mode_choice"; then
@@ -1741,10 +1781,15 @@ main() {
     # Start DEX UI
     prepare_dex_ui_configs
     log_info "Starting DEX UI..."
-    if ! docker compose -f docker-compose.yml --profile dex up -d --build >/dev/null 2>&1; then
+    local dex_ui_output="/tmp/surge_dex_ui_output_$$"
+    if ! docker compose -f docker-compose.yml --profile dex up -d --build >"$dex_ui_output" 2>&1; then
         log_warning "Failed to start DEX UI"
+        log_warning "Build/start output saved in: $dex_ui_output"
+        log_warning "Tail of output:"
+        tail -n 20 "$dex_ui_output" 2>/dev/null | sed 's/^/    /' || true
     else
         log_success "DEX UI started successfully"
+        rm -f "$dex_ui_output"
     fi
     
     # Step 6: Verification
