@@ -9,12 +9,11 @@ readonly ENCLAVE_NAME="surge-devnet"
 readonly DATA_DIRS=("execution-data" "blockscout-postgres-data" "mysql-data" "rabbitmq" "driver-data")
 
 # Default values for command line arguments
-remove_l1_devnet=""
-remove_l2_stack=""
-remove_relayers=""
-remove_data=""
-remove_configs=""
-remove_env=""
+do_remove_l1_devnet=""
+do_remove_l2_stack=""
+do_remove_data=""
+do_remove_configs=""
+do_remove_env=""
 mode=""
 force=""
 
@@ -53,7 +52,6 @@ show_help() {
     echo "Options:"
     echo "  --remove-l1-devnet BOOL  Remove L1 devnet enclave (true|false)"
     echo "  --remove-l2-stack BOOL   Remove L2 stack containers (true|false)"
-    echo "  --remove-relayers BOOL   Remove relayer containers (true|false)"
     echo "  --remove-data BOOL       Remove persistent data (true|false)"
     echo "  --remove-configs BOOL   Remove configuration files (true|false)"
     echo "  --remove-env BOOL        Remove .env file (true|false)"
@@ -78,27 +76,23 @@ parse_arguments() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             --remove-l1-devnet)
-                remove_l1_devnet="$2"
+                do_remove_l1_devnet="$2"
                 shift 2
                 ;;
             --remove-l2-stack)
-                remove_l2_stack="$2"
-                shift 2
-                ;;
-            --remove-relayers)
-                remove_relayers="$2"
+                do_remove_l2_stack="$2"
                 shift 2
                 ;;
             --remove-data)
-                remove_data="$2"
+                do_remove_data="$2"
                 shift 2
                 ;;
             --remove-configs)
-                remove_configs="$2"
+                do_remove_configs="$2"
                 shift 2
                 ;;
             --remove-env)
-                remove_env="$2"
+                do_remove_env="$2"
                 shift 2
                 ;;
             --mode)
@@ -275,24 +269,36 @@ cleanup_kurtosis_resources() {
 # Remove L2 stack containers
 remove_l2_stack() {
     local mode_choice="$1"
-    
+
     log_info "Removing L2 stack containers..."
-    
+
+    # Source .env so docker compose can resolve ${VAR} substitutions in compose files.
+    # Without this, compose treats every var as empty and bails out with errors like
+    # "invalid proto:" or "service has neither an image nor a build context specified".
+    # If .env was already removed (e.g. previous --remove-env true), skip — the
+    # fallback `docker rm -f` by name will still clean things up.
+    if [[ -f .env ]]; then
+        set -a
+        # shellcheck disable=SC1091
+        source .env 2>/dev/null || true
+        set +a
+    fi
+
     local exit_status=0
     local temp_output="/tmp/surge_remove_l2_output_$$"
     
     if [[ "$mode_choice" == "debug" ]]; then
         # Debug mode: run in foreground with full output
         {
-            docker compose --profile driver --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>&1
-            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile proposer-wrapper-deployer --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
+            docker compose --profile driver --profile catalyst --profile prover --profile spammer --profile blockscout --profile dex --profile web3signer down --remove-orphans 2>&1
+            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile multicall-deployer --profile userops-submitter-deployer --profile genesis-generator --profile zisk-setup --profile dex-l1-deployer --profile dex-l2-deployer down --remove-orphans 2>&1
         } | tee "$temp_output"
         exit_status=${PIPESTATUS[0]}
     else
         # Silent mode: run in background with progress indicator
         {
-            docker compose --profile driver --profile proposer --profile spammer --profile prover --profile blockscout down --remove-orphans 2>&1
-            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile proposer-wrapper-deployer --profile sgx-reth-verifier-setup --profile sgx-geth-verifier-setup --profile sp1-verifier-setup --profile risc0-verifier-setup --profile bond-deposit --profile l2-deployer down --remove-orphans 2>&1
+            docker compose --profile driver --profile catalyst --profile prover --profile spammer --profile blockscout --profile dex --profile web3signer down --remove-orphans 2>&1
+            docker compose -f docker-compose-protocol.yml --profile l1-deployer --profile multicall-deployer --profile userops-submitter-deployer --profile genesis-generator --profile zisk-setup --profile dex-l1-deployer --profile dex-l2-deployer down --remove-orphans 2>&1
         } >"$temp_output" 2>&1 &
         local remove_pid=$!
         
@@ -302,103 +308,144 @@ remove_l2_stack() {
         exit_status=$?
     fi
     
-    if [[ $exit_status -eq 0 ]]; then
-        log_success "L2 stack containers removed successfully"
-        return 0
-    else
-        log_error "Failed to remove L2 stack containers (exit code: $exit_status)"
-        if [[ "$mode_choice" == "silence" ]]; then
-            log_error "Run with debug mode for more details: --mode debug"
-        fi
-        if [[ -f "$temp_output" ]]; then
-            log_error "Removal output saved in: $temp_output"
-        fi
-        return 1
+    # `compose down` is best-effort: it fails when .env is missing or has unset
+    # vars referenced in the compose files (e.g. empty L2_HTTP_PORT → "invalid
+    # proto:", empty PROTOCOL_IMAGE → "service has neither an image nor a build
+    # context"). The hard fallback below removes containers by name regardless,
+    # so we don't surface compose-down failures unless that fallback ALSO fails.
+    if [[ $exit_status -ne 0 ]] && [[ "$mode_choice" == "debug" ]]; then
+        log_info "compose down exited non-zero (likely due to missing .env vars) — relying on docker rm -f fallback"
     fi
-}
 
-# Remove relayer containers
-remove_relayers() {
-    local mode_choice="$1"
-    
-    log_info "Removing relayer containers..."
-    
-    local exit_status=0
-    local temp_output="/tmp/surge_remove_relayers_output_$$"
-    
-    if [[ "$mode_choice" == "debug" ]]; then
-        # Debug mode: run in foreground with full output
-        {
-            docker compose -f docker-compose-relayer.yml --profile relayer-l1 --profile relayer-l2 --profile relayer-api --profile bridge-ui down --remove-orphans 2>&1
-            docker compose -f docker-compose-relayer.yml --profile relayer-init --profile relayer-migrations down --remove-orphans 2>&1
-        } | tee "$temp_output"
-        exit_status=${PIPESTATUS[0]}
-    else
-        # Silent mode: run in background with progress indicator
-        {
-            docker compose -f docker-compose-relayer.yml --profile relayer-l1 --profile relayer-l2 --profile relayer-api --profile bridge-ui down --remove-orphans 2>&1
-            docker compose -f docker-compose-relayer.yml --profile relayer-init --profile relayer-migrations down --remove-orphans 2>&1
-        } >"$temp_output" 2>&1 &
-        local remove_pid=$!
-        
-        show_progress $remove_pid "Removing relayer containers..."
-        
-        wait $remove_pid
-        exit_status=$?
-    fi
-    
-    if [[ $exit_status -eq 0 ]]; then
-        log_success "Relayer containers removed successfully"
-        return 0
-    else
-        log_error "Failed to remove relayer containers (exit code: $exit_status)"
-        if [[ "$mode_choice" == "silence" ]]; then
-            log_error "Run with debug mode for more details: --mode debug"
+    # Hard fallback: kill and remove all known containers by name
+    local known_containers=(
+        l2-nethermind-execution-client l2-taiko-consensus-client
+        web3signer-l1 web3signer-l2 l2-catalyst-node l2-raiko-zk-client
+        redis-zk l2-tx-spammer l2-blockscout-postgres l2-blockscout-verif
+        l2-blockscout l2-blockscout-frontend dex
+        surge-l1-deployer surge-multicall-deployer surge-userops-submitter-deployer
+        surge-genesis-generator surge-zisk-setup surge-dex-l1-deployer surge-dex-l2-deployer
+    )
+    docker kill --signal=SIGKILL "${known_containers[@]}" 2>/dev/null || true
+    docker rm -f "${known_containers[@]}" 2>/dev/null || true
+
+    # Verify nothing leaked through both paths
+    local still_present=()
+    local existing_names
+    existing_names=$(docker ps -a --format '{{.Names}}' 2>/dev/null || true)
+    for c in "${known_containers[@]}"; do
+        if echo "$existing_names" | grep -q "^${c}$"; then
+            still_present+=("$c")
         fi
+    done
+
+    if [[ ${#still_present[@]} -gt 0 ]]; then
+        log_error "Containers still present after cleanup: ${still_present[*]}"
+        log_error "Manual removal: docker rm -f ${still_present[*]}"
         if [[ -f "$temp_output" ]]; then
-            log_error "Removal output saved in: $temp_output"
+            local real_errors
+            real_errors=$(grep -vE 'level=warning msg="The "' "$temp_output" \
+                | grep -vE '^$' | tail -10)
+            if [[ -n "$real_errors" ]]; then
+                log_error "  compose down output (last 10 non-warning lines):"
+                echo "$real_errors" | sed 's/^/    /' >&2
+            fi
         fi
         return 1
     fi
+
+    log_success "L2 stack containers removed"
+    return 0
 }
 
 # Remove persistent data directories
+# Docker containers write files as root (or other UIDs), so plain rm -rf can fail
+# with EPERM on macOS. Fall back to a one-shot Alpine container that deletes the
+# contents from inside Docker (where it has the correct permissions), then remove
+# the now-empty directory from the host.
 remove_data() {
     log_info "Removing persistent data directories..."
-    
+
     local removed_dirs=()
     local failed_dirs=()
-    
+
     for dir in "${DATA_DIRS[@]}"; do
         if [[ -d "$dir" ]]; then
             if rm -rf "$dir" 2>/dev/null; then
                 removed_dirs+=("$dir")
             else
-                failed_dirs+=("$dir")
+                log_warning "rm -rf failed for '$dir' (likely owned by Docker root) — using container fallback..."
+                local abs_dir
+                abs_dir="$(cd "$(dirname "$dir")" && pwd)/$(basename "$dir")"
+                if docker run --rm \
+                        -v "${abs_dir}:/data" \
+                        --entrypoint sh alpine \
+                        -c "rm -rf /data/* /data/.[!.]* 2>/dev/null; true" 2>/dev/null \
+                   && rm -rf "$dir" 2>/dev/null; then
+                    removed_dirs+=("$dir")
+                else
+                    failed_dirs+=("$dir")
+                fi
             fi
         fi
     done
-    
+
     if [[ ${#removed_dirs[@]} -gt 0 ]]; then
         log_success "Removed data directories: ${removed_dirs[*]}"
     fi
-    
+
     if [[ ${#failed_dirs[@]} -gt 0 ]]; then
         log_error "Failed to remove data directories: ${failed_dirs[*]}"
+        log_error "Try: sudo rm -rf ${failed_dirs[*]}"
         return 1
     fi
-    
+
     if [[ ${#removed_dirs[@]} -eq 0 ]]; then
         log_info "No data directories found to remove"
     fi
-    
+
     return 0
 }
 
 # Remove configuration files
+# _reset_deploy_derived_env_vars
+# Resets values in .env that are populated by deploy-surge-full.sh from on-disk
+# artefacts (deploy_l1.json, cross-chain-dex-l*.json, cast logs). When configs
+# are removed, those artefacts are gone but .env still carries the old values —
+# subsequent deploys would silently reuse stale block heights and addresses.
+# GENESIS_L1_HEIGHT is the most load-bearing of these because the deploy script
+# short-circuits its expensive cast-logs derivation when it's already non-zero.
+_reset_deploy_derived_env_vars() {
+    [[ -f .env ]] || return 0
+    log_info "Resetting deploy-derived values in .env..."
+
+    local zero_addr="0x0000000000000000000000000000000000000000"
+    local keys_to_zero_addr=(
+        REALTIME_INBOX REALTIME_BRIDGE REALTIME_EMPTY_IMPL
+        REALTIME_ERC20_VAULT REALTIME_ERC721_VAULT REALTIME_ERC1155_VAULT
+        REALTIME_SHARED_RESOLVER REALTIME_SIGNAL_SERVICE
+        REALTIME_SURGE_VERIFIER REALTIME_ZISK_VERIFIER REALTIME_ZISK_PLONK_VERIFIER
+        REALTIME_PROOF_VERIFIER_DUMMY
+        MULTICALL_ADDRESS USEROPS_SUBMITTER_FACTORY_ADDRESS
+        L1_VAULT L1_TOKEN L1_ROUTER L1_WETH
+        L2_TOKEN L2_DEX L2_VAULT
+    )
+    local key
+    for key in "${keys_to_zero_addr[@]}"; do
+        if grep -q "^${key}=" .env 2>/dev/null; then
+            sed -i.bak "s|^${key}=.*|${key}=${zero_addr}|" .env
+        fi
+    done
+    if grep -q "^GENESIS_L1_HEIGHT=" .env 2>/dev/null; then
+        sed -i.bak "s|^GENESIS_L1_HEIGHT=.*|GENESIS_L1_HEIGHT=0|" .env
+    fi
+    rm -f .env.bak
+    log_success "Reset deploy-derived values (addresses → 0x0, GENESIS_L1_HEIGHT → 0)"
+}
+
 remove_configs() {
     log_info "Removing configuration files..."
-    
+
     local removed_files=()
     local failed_files=()
     
@@ -456,7 +503,11 @@ remove_configs() {
     if [[ ${#removed_files[@]} -eq 0 ]]; then
         log_info "No configuration files found to remove"
     fi
-    
+
+    # The on-disk deploy artefacts are gone — clear .env values that were
+    # derived from them so the next deploy starts from a clean baseline.
+    _reset_deploy_derived_env_vars
+
     return 0
 }
 
@@ -524,15 +575,14 @@ prompt_component_selection() {
     echo "║══════════════════════════════════════════════════════════════║" >&2
     echo "║  1. L1 devnet enclave (Kurtosis)                             ║" >&2
     echo "║  2. L2 stack containers                                      ║" >&2
-    echo "║  3. Relayer containers and Bridge UI                         ║" >&2
-    echo "║  4. Persistent data directories                              ║" >&2
-    echo "║  5. Configuration files                                      ║" >&2
-    echo "║  6. Environment file (.env)                                  ║" >&2
+    echo "║  3. Persistent data directories                              ║" >&2
+    echo "║  4. Configuration files                                      ║" >&2
+    echo "║  5. Environment file (.env)                                  ║" >&2
     echo "║ [default: Remove all except environment file]                ║" >&2
     echo "╚══════════════════════════════════════════════════════════════╝" >&2
     echo >&2
-    read -p "Enter components to remove (1-6, comma-separated) [1,2,3,4,5]: " components
-    components=${components:-"1,2,3,4,5"}
+    read -p "Enter components to remove (1-5, comma-separated) [1,2,3,4]: " components
+    components=${components:-"1,2,3,4"}
     echo $components
 }
 
@@ -555,21 +605,17 @@ prompt_mode_selection() {
 build_confirmation_message() {
     local l1="$1"
     local l2="$2"
-    local relayers="$3"
-    local data="$4"
-    local configs="$5"
-    local env="$6"
-    
+    local data="$3"
+    local configs="$4"
+    local env="$5"
+
     local msg=""
-    
+
     if [[ "$l1" == "true" ]]; then
         msg+="║  • L1 devnet enclave (Kurtosis)                              ║\n"
     fi
     if [[ "$l2" == "true" ]]; then
         msg+="║  • L2 stack containers and services                          ║\n"
-    fi
-    if [[ "$relayers" == "true" ]]; then
-        msg+="║  • Relayer containers and Bridge UI                          ║\n"
     fi
     if [[ "$data" == "true" ]]; then
         msg+="║  • Persistent data directories                               ║\n"
@@ -592,26 +638,21 @@ build_confirmation_message() {
 display_removal_summary() {
     local l1="$1"
     local l2="$2"
-    local relayers="$3"
-    local data="$4"
-    local configs="$5"
-    
-    echo
+    local data="$3"
+    local configs="$4"
+
     log_info "Removal Summary:"
     echo
     echo "╔══════════════════════════════════════════════════════════════╗"
     echo "║  Surge Stack has been removed successfully!                  ║"
     echo "║                                                              ║"
     echo "║  Components removed:                                         ║"
-    
+
     if [[ "$l1" == "true" ]]; then
         echo "║  • L1 devnet enclave                                         ║"
     fi
     if [[ "$l2" == "true" ]]; then
         echo "║  • L2 stack containers and services                          ║"
-    fi
-    if [[ "$relayers" == "true" ]]; then
-        echo "║  • Relayer containers and Bridge UI                          ║"
     fi
     if [[ "$data" == "true" ]]; then
         echo "║  • Persistent data directories                               ║"
@@ -624,7 +665,6 @@ display_removal_summary() {
     echo "║  To deploy a new instance, run:                              ║"
     echo "║  ./deploy-surge-full.sh                                      ║"
     echo "╚══════════════════════════════════════════════════════════════╝"
-    echo
 }
 
 # Main function
@@ -662,37 +702,39 @@ main() {
         has_l2_containers=true
     fi
     
-    local has_relayers=false
-    if docker ps --filter "name=relayer" --format "{{.Names}}" 2>/dev/null | grep -q .; then
-        log_info "Found relayer containers"
-        has_relayers=true
-    fi
-    
     # Get component selection if not specified
     local components_to_remove
-    if [[ -z "${remove_l1_devnet:-}${remove_l2_stack:-}${remove_relayers:-}${remove_data:-}${remove_configs:-}${remove_env:-}" ]]; then
+    if [[ "$force" == "true" ]]; then
+        # --force: remove everything except env by default
+        do_remove_l1_devnet="${do_remove_l1_devnet:-true}"
+        do_remove_l2_stack="${do_remove_l2_stack:-true}"
+        do_remove_data="${do_remove_data:-true}"
+        do_remove_configs="${do_remove_configs:-true}"
+        do_remove_env="${do_remove_env:-false}"
+    elif [[ -z "${do_remove_l1_devnet:-}${do_remove_l2_stack:-}${do_remove_data:-}${do_remove_configs:-}${do_remove_env:-}" ]]; then
         components_to_remove=$(prompt_component_selection)
     fi
-    
+
     # Parse component selection
     if [[ -n "${components_to_remove:-}" ]]; then
         local COMPONENTS=()
         IFS=',' read -ra COMPONENTS <<< "$components_to_remove"
         for component in "${COMPONENTS[@]}"; do
             case "$component" in
-                1) remove_l1_devnet="true" ;;
-                2) remove_l2_stack="true" ;;
-                3) remove_relayers="true" ;;
-                4) remove_data="true" ;;
-                5) remove_configs="true" ;;
-                6) remove_env="true" ;;
+                1) do_remove_l1_devnet="true" ;;
+                2) do_remove_l2_stack="true" ;;
+                3) do_remove_data="true" ;;
+                4) do_remove_configs="true" ;;
+                5) do_remove_env="true" ;;
             esac
         done
     fi
-    
+
     # Get mode choice
     local mode_choice
-    if [[ -z "${mode:-}" ]]; then
+    if [[ "$force" == "true" && -z "${mode:-}" ]]; then
+        mode_choice="silence"
+    elif [[ -z "${mode:-}" ]]; then
         mode_choice=$(prompt_mode_selection)
     else
         mode_choice=$mode
@@ -714,7 +756,7 @@ main() {
     
     # Build confirmation message
     local confirmation_msg
-    confirmation_msg=$(build_confirmation_message "$remove_l1_devnet" "$remove_l2_stack" "$remove_relayers" "$remove_data" "$remove_configs" "$remove_env")
+    confirmation_msg=$(build_confirmation_message "$do_remove_l1_devnet" "$do_remove_l2_stack" "$do_remove_data" "$do_remove_configs" "$do_remove_env")
     
     # Get confirmation unless force flag is used
     if [[ "$force" != "true" ]]; then
@@ -724,44 +766,36 @@ main() {
         fi
     fi
     
-    echo
     log_info "Beginning Surge Stack removal process..."
     
     # Remove components based on selection
-    if [[ "$remove_l1_devnet" == "true" ]]; then
+    if [[ "$do_remove_l1_devnet" == "true" ]]; then
         if ! remove_l1_devnet "$mode_choice"; then
             log_error "Failed to remove L1 devnet"
             exit 1
         fi
     fi
     
-    if [[ "$remove_l2_stack" == "true" ]]; then
+    if [[ "$do_remove_l2_stack" == "true" ]]; then
         if ! remove_l2_stack "$mode_choice"; then
             log_error "Failed to remove L2 stack"
             exit 1
         fi
     fi
     
-    if [[ "$remove_relayers" == "true" ]]; then
-        if ! remove_relayers "$mode_choice"; then
-            log_error "Failed to remove relayers"
-            exit 1
-        fi
-    fi
-    
-    if [[ "$remove_data" == "true" ]]; then
+    if [[ "$do_remove_data" == "true" ]]; then
         if ! remove_data; then
             log_warning "Failed to remove some data directories (continuing anyway)"
         fi
     fi
     
-    if [[ "$remove_configs" == "true" ]]; then
+    if [[ "$do_remove_configs" == "true" ]]; then
         if ! remove_configs; then
             log_warning "Failed to remove some configuration files (continuing anyway)"
         fi
     fi
     
-    if [[ "$remove_env" == "true" ]]; then
+    if [[ "$do_remove_env" == "true" ]]; then
         if ! remove_env_file; then
             log_error "Failed to remove environment file"
             exit 1
@@ -772,7 +806,7 @@ main() {
     remove_network
     
     # Display summary
-    display_removal_summary "$remove_l1_devnet" "$remove_l2_stack" "$remove_relayers" "$remove_data" "$remove_configs"
+    display_removal_summary "$do_remove_l1_devnet" "$do_remove_l2_stack" "$do_remove_data" "$do_remove_configs"
     
     log_success "Surge Stack removal complete!"
 }

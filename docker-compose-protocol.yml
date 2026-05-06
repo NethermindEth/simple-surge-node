@@ -1,36 +1,4 @@
 services:
-  pacaya-deployer:
-    image: ${PACAYA_PROTOCOL_IMAGE}
-    container_name: pacaya-deployer
-    pull_policy: always
-    volumes:
-      - ./deployer:/deployer
-      - ./deployment:/deployment
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /deployer/deploy-pacaya.sh
-    env_file:
-      - .env
-    environment:
-      FOUNDRY_PROFILE: layer1
-      BROADCAST: ${BROADCAST}
-      VERIFY: ${VERIFY}
-      SLOW: ${SLOW}
-      VERIFY_ARG: ${VERIFY_ARG}
-      FORK_URL: ${L1_ENDPOINT_HTTP}
-      CONTRACT_OWNER: ${PUBLIC_KEY}
-      PRIVATE_KEY: ${PRIVATE_KEY}
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - pacaya-deployer
-
   surge-l1-deployer:
     image: ${PROTOCOL_IMAGE}
     container_name: surge-l1-deployer
@@ -51,11 +19,11 @@ services:
       VERIFY: ${VERIFY}
       SLOW: ${SLOW}
       VERIFY_ARG: ${VERIFY_ARG}
-      USE_DUMMY_VERIFIER: ${USE_DUMMY_VERIFIER}
+      MOCK_PROOF_MODE: ${MOCK_PROOF_MODE}
       FORK_URL: ${L1_ENDPOINT_HTTP}
       CONTRACT_OWNER: ${PUBLIC_KEY}
       PRIVATE_KEY: ${PRIVATE_KEY}
-      PERMISSIONLESS_PROVING_DELAY: 42300
+      # PERMISSIONLESS_PROVING_DELAY: 42300
       GENESIS_BLOCK_HASH: ${L2_GENESIS_HASH}
       NUM_PROOF_THRESHOLD: 1
     networks:
@@ -131,36 +99,6 @@ services:
     profiles:
       - userops-submitter-deployer
 
-  surge-relay-deployer:
-    image: ${PROTOCOL_IMAGE}
-    container_name: surge-relay-deployer
-    pull_policy: always
-    volumes:
-      - ./deployer:/deployer
-      - ./deployment:/deployment
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /deployer/deploy-cross-chain-relay.sh
-    env_file:
-      - .env
-    environment:
-      FOUNDRY_PROFILE: shared
-      BROADCAST: ${BROADCAST}
-      VERIFY: ${VERIFY}
-      SLOW: ${SLOW}
-      FORK_URL: ${L2_ENDPOINT_HTTP}
-      PRIVATE_KEY: ${PRIVATE_KEY}
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - relay-deployer
-
   surge-genesis-generator:
     image: ${PROTOCOL_IMAGE}
     container_name: surge-genesis-generator
@@ -178,7 +116,7 @@ services:
       # SEED_ADDRESS: ${PUBLIC_KEY}
       CONTRACT_OWNER: ${PUBLIC_KEY}
       CHAIN_ID: ${L2_CHAIN_ID}
-      REMOTE_SIGNAL_SERVICE: ${SHASTA_SIGNAL_SERVICE}
+      REMOTE_SIGNAL_SERVICE: ${REALTIME_SIGNAL_SERVICE}
       FORK_URL: ${L1_ENDPOINT_HTTP}
       PRIVATE_KEY: ${PRIVATE_KEY}
     networks:
@@ -190,90 +128,6 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - genesis-generator
-  
-  surge-accept-ownership:
-    image: ${PROTOCOL_IMAGE}
-    container_name: surge-accept-ownership
-    pull_policy: always
-    volumes:
-      - ./deployer:/deployer
-      - ./deployment:/deployment
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /deployer/accept-ownership.sh
-    env_file:
-      - .env
-    environment:
-      FOUNDRY_PROFILE: layer1
-      BROADCAST: ${BROADCAST}
-      VERIFY: ${VERIFY}
-      VERIFY_ARG: ${VERIFY_ARG}
-      CONTRACT_ADDRESSES: ${CONTRACT_ADDRESSES}
-      FORK_URL: ${L1_ENDPOINT_HTTP}
-      PRIVATE_KEY: ${PRIVATE_KEY}
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - accept-ownership
-
-  surge-switch-fork:
-    image: ${PROTOCOL_IMAGE}
-    container_name: surge-switch-fork
-    pull_policy: always
-    volumes:
-      - ./deployer:/deployer
-      - ./deployment:/deployment
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /deployer/switch-fork.sh
-    env_file:
-      - .env
-    environment:
-      PRIVATE_KEY: ${PRIVATE_KEY}
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - switch-fork
-
-  surge-bond-deposit:
-    image: ${PROTOCOL_IMAGE}
-    container_name: surge-bond-deposit
-    pull_policy: always
-    volumes:
-      - ./deployer:/deployer
-      - ./deployment:/deployment
-    entrypoint:
-      - /bin/sh
-      - -c
-      - /deployer/deposit-bond.sh
-    env_file:
-      - .env
-    environment:
-      SURGE_PROPOSER_WRAPPER: ${SURGE_PROPOSER_WRAPPER}
-      ADMIN: ${PUBLIC_KEY}
-      BOND_AMOUNT: ${BOND_AMOUNT:-1000}
-      TAIKO_INBOX: ${TAIKO_INBOX}
-    networks:
-      - surge
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - bond-deposit
 
   surge-zisk-setup:
     image: ${PROTOCOL_IMAGE}
@@ -293,7 +147,7 @@ services:
       BROADCAST: ${BROADCAST}
       VERIFY: ${VERIFY}
       VERIFY_ARG: ${VERIFY_ARG}
-      ZISK_VERIFIER_ADDRESS: ${ZISK_VERIFIER}
+      ZISK_VERIFIER_ADDRESS: ${REALTIME_ZISK_VERIFIER}
       ZISK_BATCH_VKEY: ${ZISK_BATCH_VKEY}
       FORK_URL: ${L1_ENDPOINT_HTTP}
     networks:
@@ -306,9 +160,9 @@ services:
     profiles:
       - zisk-setup
 
-  surge-risc0-verifier-setup:
+  surge-dex-l1-deployer:
     image: ${PROTOCOL_IMAGE}
-    container_name: surge-risc0-verifier-setup
+    container_name: surge-dex-l1-deployer
     pull_policy: always
     volumes:
       - ./deployer:/deployer
@@ -316,19 +170,25 @@ services:
     entrypoint:
       - /bin/sh
       - -c
-      - /deployer/setup-risc0-verifier.sh
+      - /deployer/dex/deploy-dex-l1.sh
     env_file:
       - .env
     environment:
-      FOUNDRY_PROFILE: layer1
-      BROADCAST: ${BROADCAST}
-      VERIFY: ${VERIFY}
-      VERIFY_ARG: ${VERIFY_ARG}
-      RISC0_VERIFIER_ADDRESS: ${RISC0_RETH_VERIFIER}
-      RISC0_AGGREGATION_IMAGE_ID: ${RISC0_AGGREGATION_IMAGE_ID}
-      RISC0_BLOCK_PROVING_IMAGE_ID: ${RISC0_BLOCK_PROVING_IMAGE_ID}
-      NEW_OWNER: ${L1_OWNER}
-      FORK_URL: ${L1_ENDPOINT_HTTP}
+      PRIVATE_KEY: ${PRIVATE_KEY}
+      L1_RPC: ${L1_ENDPOINT_HTTP}
+      L2_CHAIN_ID: ${L2_CHAIN_ID}
+      L1_BRIDGE: ${REALTIME_BRIDGE}
+      SWAP_TOKEN: ${SWAP_TOKEN}
+      TOKEN_DECIMALS: ${TOKEN_DECIMALS}
+      INITIAL_TOKEN_SUPPLY: ${INITIAL_TOKEN_SUPPLY}
+      # L1 DEX mode: live (router+weth) or test (fresh WETH9Stub + SimpleDEXL1)
+      L1_DEX_ROUTER: ${L1_DEX_ROUTER}
+      L1_DEX_WETH: ${L1_DEX_WETH}
+      L1_DEX_SEED_ETH: ${L1_DEX_SEED_ETH}
+      L1_DEX_SEED_TOKEN: ${L1_DEX_SEED_TOKEN}
+      # L1 Vault inventory seeding — required for L2→L1→L2 swaps on day one
+      L1_VAULT_SEED_TOKEN: ${L1_VAULT_SEED_TOKEN}
+      L1_VAULT_SEED_ETH: ${L1_VAULT_SEED_ETH}
     networks:
       - surge
     extra_hosts:
@@ -337,11 +197,11 @@ services:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
-      - risc0-verifier-setup
+      - dex-l1-deployer
 
-  surge-sp1-verifier-setup:
+  surge-dex-l2-deployer:
     image: ${PROTOCOL_IMAGE}
-    container_name: surge-sp1-verifier-setup
+    container_name: surge-dex-l2-deployer
     pull_policy: always
     volumes:
       - ./deployer:/deployer
@@ -349,19 +209,14 @@ services:
     entrypoint:
       - /bin/sh
       - -c
-      - /deployer/setup-sp1-verifier.sh
+      - /deployer/dex/deploy-dex-l2.sh
     env_file:
       - .env
     environment:
-      FOUNDRY_PROFILE: layer1
-      BROADCAST: ${BROADCAST}
-      VERIFY: ${VERIFY}
-      VERIFY_ARG: ${VERIFY_ARG}
-      SP1_VERIFIER_ADDRESS: ${SP1_RETH_VERIFIER}
-      SP1_BLOCK_PROVING_PROGRAM_VKEY: ${SP1_BLOCK_PROVING_PROGRAM_VKEY}
-      SP1_AGGREGATION_PROGRAM_VKEY: ${SP1_AGGREGATION_PROGRAM_VKEY}
-      NEW_OWNER: ${L1_OWNER}
-      FORK_URL: ${L1_ENDPOINT_HTTP}
+      PRIVATE_KEY: ${PRIVATE_KEY}
+      L2_RPC: ${L2_ENDPOINT_HTTP}
+      L1_CHAIN_ID: ${L1_CHAIN_ID}
+      TOKEN_DECIMALS: ${TOKEN_DECIMALS}
     networks:
       - surge
     extra_hosts:
@@ -370,7 +225,7 @@ services:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
-      - sp1-verifier-setup
+      - dex-l2-deployer
 
 networks:
   surge:

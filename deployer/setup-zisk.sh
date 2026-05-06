@@ -3,9 +3,9 @@
 set -e
 
 echo
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║ Starting to setup ZISK...                                    ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
+echo "============================================="
+echo " Starting to setup ZISK..."
+echo "============================================="
 echo
 
 cast send ${ZISK_VERIFIER_ADDRESS} \
@@ -15,9 +15,7 @@ cast send ${ZISK_VERIFIER_ADDRESS} \
   --rpc-url ${L1_ENDPOINT_HTTP}
 
 echo
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║ ✅ ZISK setup successfully                                   ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
+echo "============================================="
+echo " ✅ ZISK setup tx broadcast — host will verify isProgramTrusted"
+echo "============================================="
 echo
-
-touch /deployment/zisk_setup.lock

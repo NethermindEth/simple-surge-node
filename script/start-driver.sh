@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -eou pipefail
+set -eu
 
 if [ "$ENABLE_P2P_SYNC" = "true" ]; then
     ARGS="--p2p.sync --p2p.checkPointSyncUrl ${P2P_SYNC_URL}"
@@ -15,9 +15,9 @@ ARGS="${ARGS} \
     --l1.beacon ${L1_BEACON_HTTP} \
     --l2.auth http://l2-nethermind-execution-client:${L2_ENGINE_API_PORT} \
     --fork realtime \
+    --genesis.l1Height ${GENESIS_L1_HEIGHT} \
     --realtimeInbox ${REALTIME_INBOX} \
     --taikoAnchor ${TAIKO_ANCHOR} \
-    --preconfirmation.whitelist ${SHASTA_PRECONF_WHITELIST} \
     --preconfirmation.serverPort ${PRECONF_SERVER_PORT} \
     --jwtSecret /tmp/jwt/jwtsecret \
     --p2p.sequencer.key=${OPERATOR_PRIVATE_KEY} \

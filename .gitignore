@@ -11,6 +11,7 @@
 /deployment/*.lock
 /configs/*.json
 /blockscout-postgres-data/
+/logs/
 
 .DS_Store
 .vscode/

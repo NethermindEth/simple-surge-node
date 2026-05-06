@@ -47,10 +47,6 @@ services:
       - prover
       - spammer
       - blockscout
-      - l2-deployer
-      - relayer-l1
-      - relayer-l2
-      - relayer-api
 
   taiko_client_driver:
     image: ${TAIKO_CLIENT_IMAGE}
@@ -92,10 +88,6 @@ services:
       - prover
       - spammer
       - blockscout
-      - l2-deployer
-      - relayer-l1
-      - relayer-l2
-      - relayer-api
 
   web3signer-l1:
     container_name: web3signer-l1
@@ -118,7 +110,7 @@ services:
       retries: 5
       start_period: 10s
     profiles:
-      - catalyst
+      - web3signer
 
   web3signer-l2:
     container_name: web3signer-l2
@@ -141,7 +133,7 @@ services:
       retries: 5
       start_period: 10s
     profiles:
-      - catalyst
+      - web3signer
 
   catalyst:
     image: ${CATALYST_IMAGE}
@@ -163,34 +155,36 @@ services:
     env_file:
       - .env
     environment:
-      TAIKO_GETH_RPC_URL: ${L2_ENDPOINT_WS}
-      TAIKO_GETH_AUTH_RPC_URL: ${L2_AUTH_HTTP}
+      # Signer
+      CATALYST_NODE_ECDSA_PRIVATE_KEY: ${OPERATOR_PRIVATE_KEY}
+      # Mock prover
+      MOCK_MODE: ${MOCK_MODE}
+      # L1
       L1_RPC_URLS: ${L1_ENDPOINT_WS}
       L1_BEACON_URL: ${L1_BEACON_HTTP}
-      TAIKO_INBOX_ADDRESS: ${SHASTA_SURGE_INBOX}
+      # L2
+      TAIKO_GETH_RPC_URL: ${L2_ENDPOINT_WS}
+      TAIKO_GETH_AUTH_RPC_URL: ${L2_AUTH_HTTP}
       TAIKO_ANCHOR_ADDRESS: ${TAIKO_ANCHOR}
-      SHASTA_INBOX_ADDRESS: ${SHASTA_SURGE_INBOX}
-      ANCHOR_ADDRESS: ${TAIKO_ANCHOR}
-      PRECONF_WHITELIST_ADDRESS: ${SHASTA_PRECONF_WHITELIST}
-      PRECONF_ROUTER_ADDRESS: ${PACAYA_PRECONF_ROUTER}
-      TAIKO_WRAPPER_ADDRESS: ${PACAYA_TAIKO_WRAPPER}
-      FORCED_INCLUSION_STORE_ADDRESS: ${PACAYA_FORCED_INCLUSION_STORE}
-      TAIKO_BRIDGE_L2_ADDRESS: ${SHASTA_BRIDGE}
-      MAX_BLOCKS_PER_BATCH: 1
-      PRECONF_HEARTBEAT_MS: 12000
-      CATALYST_NODE_ECDSA_PRIVATE_KEY: ${OPERATOR_PRIVATE_KEY}
-      PROPOSER_MULTICALL_ADDRESS: ${MULTICALL_ADDRESS}
-      L1_BRIDGE_ADDRESS: ${SHASTA_BRIDGE}
+      TAIKO_DRIVER_URL: ${TAIKO_DRIVER_URL}
+      # Realtime inbox + multicall
       REALTIME_INBOX_ADDRESS: ${REALTIME_INBOX}
-      PRECONF_ONLY: false
-      PROOF_REQUEST_BYPASS: false
-      PROOF_TYPE: zisk
-      RAIKO_POLL_INTERVAL_MS: 500
-      RAIKO_MAX_RETRIES: 100
+      PROPOSER_MULTICALL_ADDRESS: ${MULTICALL_ADDRESS}
+      # Bridge + SignalService addresses
+      L1_BRIDGE_ADDRESS: ${REALTIME_BRIDGE}
+      L1_SIGNAL_SERVICE_ADDRESS: ${REALTIME_SIGNAL_SERVICE}
+      L2_BRIDGE_ADDRESS: ${L2_BRIDGE}
+      L2_SIGNAL_SERVICE_ADDRESS: ${L2_SIGNAL_SERVICE}
+      # surge_simulateReturnMessage's trace logic looks up the L2 bridge under
+      # this name (NOT L2_BRIDGE_ADDRESS — that's read by a different catalyst
+      # subsystem). Without it, catalyst defaults the L2 bridge to 0x0 and the
+      # trace never matches, returning "No outbound Bridge.sendMessage found".
+      TAIKO_BRIDGE_L2_ADDRESS: ${L2_BRIDGE}
+      # Bridge handler RPC bind. Default in this image is 127.0.0.1:4545 which
+      # is not reachable through Docker port forwarding — must be 0.0.0.0.
+      BRIDGE_RPC_ADDR: "0.0.0.0:4545"
+      # Raiko endpoint
       RAIKO_URL: ${RAIKO_HOST_ZKVM}
-      RAIKO_L2_NETWORK: surge_dev
-      RAIKO_L1_NETWORK: surge_dev_l1
-      FORK: realtime
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -205,43 +199,6 @@ services:
       - spammer
       - l2-deployer
 
-  taiko_client_prover_relayer:
-    image: ${TAIKO_CLIENT_IMAGE}
-    container_name: l2-taiko-prover-relayer-client
-    restart: unless-stopped
-    pull_policy: always
-    depends_on:
-      nethermind_execution_client:
-        condition: service_healthy
-        restart: true
-      taiko_client_driver:
-        condition: service_started
-    volumes:
-      - ./static/jwtsecret:/tmp/jwt/jwtsecret
-      - ./script:/script
-    ports:
-      - 6062:6062
-    env_file:
-      - .env
-    environment:
-      TAIKO_INBOX: ${TAIKO_INBOX}
-      SURGE_PROPOSER_WRAPPER: ${SURGE_PROPOSER_WRAPPER}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    entrypoint:
-      - /bin/sh
-      - -c
-      - "/script/start-prover-relayer.sh"
-    networks:
-      - surge
-    labels:
-      com.kurtosistech.custom.metrics_enabled: "true"
-      com.kurtosistech.custom.metrics_port: "6062"
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    profiles:
-      - prover
-  
   raiko:
     image: ${RAIKO_IMAGE}
     container_name: l2-raiko-zk-client
@@ -256,34 +213,17 @@ services:
     environment:
       RAIKO_CONF_DIR: "/raiko/config"
       BASE_CONFIG_FILE: "config.json"
-      BASE_CHAINSPEC_FILE: "chain_spec_list_default.json"
-      REDIS_URL: "redis://redis-zk:6379"
+      BASE_CHAINSPEC_FILE: "chain_spec_list.json"
       RUST_LOG: "info"
       MOCK_KEY: ${PRIVATE_KEY}
-      ZK: "true"
     entrypoint:
       - /opt/raiko/bin/raiko-host
       - --config-path=/raiko/config/config.json
-      - --chain-spec-path=/raiko/config/chain_spec_list_default.json
+      - --chain-spec-path=/raiko/config/chain_spec_list.json
     networks:
       - surge
     profiles:
       - prover
-    labels:
-      com.kurtosistech.custom.logs_enabled: "true"
-      com.kurtosistech.custom.custom_network: "devnet"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-  
-  redis-zk:
-    image: redis
-    container_name: redis-zk
-    ports:
-      - "6379:6379"
-    profiles:
-      - prover
-    networks:
-      - surge
     labels:
       com.kurtosistech.custom.logs_enabled: "true"
       com.kurtosistech.custom.custom_network: "devnet"
@@ -332,7 +272,7 @@ services:
     environment:
       POSTGRES_DB: blockscout
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: MyPassword1!
+      POSTGRES_PASSWORD: ${BLOCKSCOUT_POSTGRES_PASSWORD}
       PGDATA: /var/lib/postgresql/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -399,7 +339,7 @@ services:
       MICROSERVICE_SC_VERIFIER_URL: http://l2-blockscout-verif:${VERIFIER_PORT}/api
       ECTO_USE_SSL: false
       ETHEREUM_JSONRPC_HTTP_URL: http://${BLOCKSCOUT_L2_HOST}:${L2_HTTP_PORT}/
-      DATABASE_URL: postgresql://postgres:MyPassword1!@l2-blockscout-postgres:5432/blockscout
+      DATABASE_URL: postgresql://postgres:${BLOCKSCOUT_POSTGRES_PASSWORD}@l2-blockscout-postgres:5432/blockscout
       ETHEREUM_JSONRPC_VARIANT: nethermind
       ETHEREUM_JSONRPC_TRACE_URL: http://${BLOCKSCOUT_L2_HOST}:${L2_HTTP_PORT}/
       SUBNETWORK: Surge
@@ -469,7 +409,10 @@ services:
       NEXT_PUBLIC_API_PROTOCOL: http
       NEXT_PUBLIC_API_HOST: ${BLOCKSCOUT_API_HOST}:${BLOCKSCOUT_PORT}
       NEXT_PUBLIC_USE_NEXT_JS_PROXY: false
-      NEXT_PUBLIC_NETWORK_RPC_URL: http://l2-nethermind-execution-client:${L2_HTTP_PORT}
+      # Browser-facing — must resolve from outside the docker network.
+      # BLOCKSCOUT_API_HOST is set to "localhost" (local) or the VM IP
+      # (remote) by configure_remote_blockscout in helpers.sh.
+      NEXT_PUBLIC_NETWORK_RPC_URL: http://${BLOCKSCOUT_API_HOST}:${L2_HTTP_PORT}
       NEXT_PUBLIC_IS_TESTNET: true
       NEXT_PUBLIC_API_WEBSOCKET_PROTOCOL: ws
       NEXT_PUBLIC_APP_PORT: ${BLOCKSCOUT_FRONTEND_PORT}
@@ -488,6 +431,32 @@ services:
       com.kurtosistech.custom.custom_network: "devnet"
     profiles:
       - blockscout
+
+  dex:
+    build:
+      context: ./surge-taiko-mono/packages/cross-chain-dex-ui
+      dockerfile: Dockerfile
+      target: dev
+    container_name: dex
+    restart: always
+    ports:
+      - 5173:5173
+    env_file:
+      - ./surge-taiko-mono/packages/cross-chain-dex-ui/.env
+    environment:
+      # Used only by the prod (target: runtime) image's nginx template
+      # (cross-chain-dex-ui/nginx.conf → /etc/nginx/templates/default.conf.template).
+      # The dev target above doesn't run nginx, but setting it here keeps the
+      # prod path build-able from this same compose file.
+      BUILDER_URL: ${L2_CATALYST:-http://host.docker.internal:4545}
+    volumes:
+      - ./surge-taiko-mono/packages/cross-chain-dex-ui/.env:/app/.env:ro
+    networks:
+      - surge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - dex
 
 networks:
   surge:
