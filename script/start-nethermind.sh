@@ -17,6 +17,7 @@ ARGS="${ARGS} \
     --datadir=/data/surge \
     --Init.ChainSpecPath=/chainspec.json \
     --Init.GenesisHash=${L2_GENESIS_HASH} \
+    --Surge.L1EthApiEndpoint=${L1_ENDPOINT_HTTP} \
     --Metrics.Enabled=true \
     --Metrics.ExposePort=${L2_METRICS_PORT} \
     --JsonRpc.Enabled=true \
