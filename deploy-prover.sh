@@ -19,15 +19,19 @@
 #      (~150 GB; ZISK_DIR env override supported).
 #   4. Copy docker/.env.sample.zk → docker/.env (skipped if .env exists).
 #   5. (Optional, --privacy-mode) apply the L2-side privacy bundle to
-#      docker/.env and run raiko/script/build-guest-with-hashes.sh so the
-#      guest ELFs bake the hashes in. NEVER generates a bundle here — the
-#      L2 stack VM is canonical (its deploy-surge-full.sh runs the keygen).
-#      Bundle must already exist at ./.privacy.env (same-VM) or be passed
-#      via --privacy-env <path> (two-VM, scp'd from L2 VM). Without
-#      --privacy-mode the prebuilt image's empty-hash defaults are used
-#      (privacy bypass).
-#   6. docker compose -f docker/docker-compose-zk.yml up -d
-#   7. Poll http://localhost:8080/guest_data until the vkey returns or the
+#      docker/.env. NEVER generates a bundle here — the L2 stack VM is
+#      canonical (its deploy-surge-full.sh runs the keygen). Bundle must
+#      already exist at ./.privacy.env (same-VM) or be passed via
+#      --privacy-env <path> (two-VM, scp'd from L2 VM).
+#   6. Populate raiko/docker/guest-elfs/ via build-guest-with-hashes.sh.
+#      Runs ALWAYS (privacy on or off) because docker-compose-zk.yml has
+#      file-level bind-mounts on the three guest ELFs — sources must exist
+#      before `docker compose up`. With empty hashes (privacy off) the
+#      script `docker cp`s the defaults out of the runtime image; with
+#      hashes set it pulls the surge-raiko-zk-toolchain image and runs
+#      `TARGET=zisk make guest`.
+#   7. docker compose -f docker/docker-compose-zk.yml up -d
+#   8. Poll http://localhost:8080/guest_data until the vkey returns or the
 #      timeout expires.
 
 set -euo pipefail
@@ -180,7 +184,7 @@ install_deps() {
         log_info "--skip-install → skipping raiko/script/install-zisk-deps.sh"
         return 0
     fi
-    log_info "Step 2/7: install apt deps + Rust + CUDA (raiko/script/install-zisk-deps.sh)"
+    log_info "Step 2/8: install apt deps + Rust + CUDA (raiko/script/install-zisk-deps.sh)"
     log_info "  This is idempotent — already-installed pieces are detected and skipped."
     local flag=""
     [[ "$force" == "true" ]] && flag="--yes"
@@ -200,7 +204,7 @@ install_zisk_sdk() {
         log_info "ZisK proving keys already present at ${ZISK_DIR:-$HOME/.zisk}/provingKey — skipping download."
         return 0
     fi
-    log_info "Step 3/7: TARGET=zisk make install (downloads ~150 GB of proving keys to ${ZISK_DIR:-$HOME/.zisk})"
+    log_info "Step 3/8: TARGET=zisk make install (downloads ~150 GB of proving keys to ${ZISK_DIR:-$HOME/.zisk})"
     if [[ "$force" != "true" ]]; then
         if ! confirm_or_force "This downloads ~150 GB. Continue?"; then
             log_warning "Skipped by user. Re-run without --force to be prompted again, or with --skip-zisk-sdk to skip on re-runs."
@@ -222,7 +226,7 @@ install_zisk_sdk() {
 }
 
 prepare_raiko_env() {
-    log_info "Step 4/7: prepare raiko docker/.env"
+    log_info "Step 4/8: prepare raiko docker/.env"
     if [[ ! -f "$raiko_dir/docker/.env" ]]; then
         if [[ ! -f "$raiko_dir/docker/.env.sample.zk" ]]; then
             log_error "raiko/docker/.env.sample.zk missing — submodule looks broken."
@@ -244,7 +248,7 @@ prepare_raiko_env() {
 configure_privacy() {
     [[ "$privacy_mode" != "true" ]] && return 0
 
-    log_info "Step 5/7: configure Surge privacy mode"
+    log_info "Step 5/8: configure Surge privacy mode"
 
     # Resolution order for the bundle:
     #   1. Explicit --privacy-env <path>
@@ -302,23 +306,50 @@ configure_privacy() {
         echo "SURGE_PRIVACY_MODE=true" >> "$raiko_dir/docker/.env"
     fi
     log_success "Privacy values applied; SURGE_PRIVACY_MODE=true on prover side."
+}
 
-    # Rebuild the guest ELFs so the new hashes are baked in.
+# Populate raiko/docker/guest-elfs/ so the file-level bind-mounts in
+# docker-compose-zk.yml have valid sources before `docker compose up`. Runs
+# unconditionally — the build script is smart enough to fast-path when there
+# are no privacy hashes set:
+#   - hashes empty → `docker cp` the default ELFs out of the runtime image
+#     (no toolchain image pulled, no cargo build, ~5s)
+#   - hashes set   → pull surge-raiko-zk-toolchain, run `TARGET=zisk make
+#     guest` inside it with the hashes exported, ~30s on warm cache
+# Without this step the bind-mounts target nonexistent paths and raiko-host
+# can't locate any guest ELF at startup.
+populate_guest_elfs() {
+    log_info "Step 6/8: populate raiko/docker/guest-elfs/ (sources for docker-compose-zk.yml bind-mounts)"
     if [[ ! -x "$raiko_dir/script/build-guest-with-hashes.sh" ]]; then
-        log_warning "raiko/script/build-guest-with-hashes.sh missing — submodule may be too old."
-        log_warning "Skipping guest rebuild. Privacy mode will not work end-to-end until you bump raiko."
-        return 0
+        log_error "raiko/script/build-guest-with-hashes.sh missing — submodule may be too old."
+        log_error "Bump the raiko submodule (--update-submodules on deploy-surge-full.sh side)."
+        exit 1
     fi
-    log_info "Rebuilding ZisK guest ELFs with the new hashes (one-off, ~30 s on warm caches)"
+    # Export the image pins from simple-surge-node's env so the raiko-side
+    # script sees them. .env wins if it exists (the user may have customised),
+    # otherwise fall back to the .env.devnet template.
+    local _env_source=""
+    if [[ -f "${HERE}/.env" ]]; then _env_source="${HERE}/.env"
+    elif [[ -f "${HERE}/.env.devnet" ]]; then _env_source="${HERE}/.env.devnet"
+    fi
+    if [[ -n "$_env_source" ]]; then
+        set -a
+        # shellcheck disable=SC1090
+        source "$_env_source"
+        set +a
+        log_info "  using image pins from ${_env_source/#$HERE\//}: RAIKO_ZK_TOOLCHAIN_IMAGE=${RAIKO_ZK_TOOLCHAIN_IMAGE:-<unset>}, RAIKO_ZK_IMAGE=${RAIKO_ZK_IMAGE:-<unset>}"
+    else
+        log_warning "Neither .env nor .env.devnet found in ${HERE} — build script will use built-in :latest defaults"
+    fi
     (cd "$raiko_dir" && ./script/build-guest-with-hashes.sh) || {
-        log_error "Guest rebuild failed."
+        log_error "Guest ELF population failed."
         exit 1
     }
-    log_success "Guest ELFs rebuilt; raiko-zk will bind-mount them via docker-compose-zk.yml."
+    log_success "Guest ELFs in place at $raiko_dir/docker/guest-elfs/"
 }
 
 start_raiko() {
-    log_info "Step 6/7: docker compose up -d (raiko-zk)"
+    log_info "Step 7/8: docker compose up -d (raiko-zk)"
     # Source the .env so any ${VAR} substitutions in compose work.
     set -a
     # shellcheck disable=SC1090
@@ -332,7 +363,7 @@ start_raiko() {
 }
 
 wait_for_vkey() {
-    log_info "Step 7/7: wait for /guest_data to return vkey"
+    log_info "Step 8/8: wait for /guest_data to return vkey"
     log_info "  Cold start can take 4-5 min (multi-GPU) or ~16 min (single L40/3090)."
     log_info "  This script polls every 10 s for up to 30 min; Ctrl-C is safe."
 
@@ -410,13 +441,14 @@ EOF
 
 # ─── Main ───────────────────────────────────────────────────────────────────
 
-log_info "Step 1/7: pre-flight (Docker, NVIDIA driver, git)"
+log_info "Step 1/8: pre-flight (Docker, NVIDIA driver, git)"
 preflight
 ensure_raiko_submodule
 install_deps
 install_zisk_sdk
 prepare_raiko_env
 configure_privacy
+populate_guest_elfs
 start_raiko
 if ! wait_for_vkey; then
     log_warning "Skipping post-deploy summary — Raiko isn't ready yet."
