@@ -87,6 +87,127 @@ validate_prerequisites() {
     return 0
 }
 
+# ─── Privacy-mode keygen ─────────────────────────────────────────────────────
+# Generates a Surge realtime privacy key bundle and sources it into the
+# current shell so subsequent docker compose invocations see the values.
+#
+# Gated on SURGE_PRIVACY_MODE=true in .env. When the flag is off (default)
+# the function short-circuits — no keys, no .privacy.env, no side effects.
+#
+# Privacy mode is orthogonal to prover type. When enabled, EVERY component
+# except mock raiko needs the keys at runtime:
+#   - Catalyst encrypts blob source bytes
+#   - Driver decrypts to rebuild L2 blocks locally
+#   - Real ZisK raiko host decrypts to build the guest witness
+#   - Mock raiko: ignores the keys, signs an ECDSA mock proof on whatever
+#     commitment hash it receives (privacy bypasses the proof path)
+# The ZisK guest additionally needs the *_HASH values baked in at compile
+# time so the witness keys can be verified against the proof's vkey
+# commitment — handled by build-guest-with-hashes.sh, not here.
+#
+# Idempotent: skips regeneration if .privacy.env already exists with all
+# expected keys present. Force a regen by removing .privacy.env first.
+#
+# Outputs (from surge-privacy-keygen.sh):
+#   Runtime (catalyst, driver, real raiko host):
+#     SURGE_PRIVACY_MODE, SURGE_PRIVACY_SYMMETRIC_KEY, SURGE_PRIVACY_FI_PRIVKEY
+#   Build-time (raiko ZisK guest):
+#     SURGE_PRIVACY_SYMMETRIC_KEY_HASH, SURGE_PRIVACY_FI_PRIVKEY_HASH
+#   Public:
+#     SURGE_PRIVACY_FI_PUBKEY (share with external FI submitters)
+generate_privacy_bundle() {
+    local privacy_env=".privacy.env"
+    local keygen_script="surge-taiko-mono/packages/protocol/script/keygen/surge-privacy-keygen.sh"
+
+    # Privacy mode is opt-in via SURGE_PRIVACY_MODE=true in .env. When it's off
+    # (the default), keys aren't needed by any component — Catalyst doesn't
+    # encrypt, Driver doesn't decrypt, raiko's option_env!() check is a no-op.
+    # Skip the keygen entirely so we don't leave a stray .privacy.env on dev
+    # boxes that never use privacy. Mock vs ZisK prover doesn't matter — the
+    # gate is the mode flag, not the prover.
+    if [[ "${SURGE_PRIVACY_MODE:-false}" != "true" ]]; then
+        log_info "SURGE_PRIVACY_MODE=false in .env → skipping privacy keygen (set =true and re-run to enable)"
+        return 0
+    fi
+
+    if [[ ! -f "$keygen_script" ]]; then
+        log_error "Privacy keygen script not found at $keygen_script"
+        log_error "Update the surge-taiko-mono submodule: git submodule update --init --recursive"
+        return 1
+    fi
+
+    # Idempotency check — accept the existing bundle iff every expected key is present.
+    local required_keys=(
+        SURGE_PRIVACY_MODE
+        SURGE_PRIVACY_SYMMETRIC_KEY
+        SURGE_PRIVACY_SYMMETRIC_KEY_HASH
+        SURGE_PRIVACY_FI_PRIVKEY
+        SURGE_PRIVACY_FI_PRIVKEY_HASH
+        SURGE_PRIVACY_FI_PUBKEY
+    )
+    local needs_regen=0
+    if [[ -f "$privacy_env" ]]; then
+        local key
+        for key in "${required_keys[@]}"; do
+            if ! grep -qE "^${key}=" "$privacy_env"; then
+                needs_regen=1
+                break
+            fi
+        done
+    else
+        needs_regen=1
+    fi
+
+    if [[ "$needs_regen" == "1" ]]; then
+        log_info "Generating privacy key bundle → $privacy_env ..."
+        local tmp; tmp=$(mktemp)
+        if ! bash "$keygen_script" > "$tmp" 2>/tmp/surge_keygen_err.$$; then
+            log_error "surge-privacy-keygen.sh failed:"
+            sed 's/^/    /' /tmp/surge_keygen_err.$$ >&2 || true
+            rm -f "$tmp" /tmp/surge_keygen_err.$$
+            return 1
+        fi
+        rm -f /tmp/surge_keygen_err.$$
+        # Atomic rename so a partial bundle is never left on disk.
+        mv "$tmp" "$privacy_env"
+        chmod 600 "$privacy_env"
+        log_success "Privacy bundle written to $privacy_env (chmod 600 — contains secrets)"
+    else
+        log_info "Privacy bundle already present at $privacy_env — reusing"
+    fi
+
+    # Capture the user's mode preference BEFORE sourcing the bundle. The
+    # keygen script always emits SURGE_PRIVACY_MODE=true in the bundle, but the
+    # user's .env (already sourced by check_env_file) is the authoritative
+    # opt-in switch. Without this, sourcing the bundle would silently flip the
+    # mode on — which breaks any raiko image whose baked-in
+    # SURGE_PRIVACY_SYMMETRIC_KEY_HASH doesn't match the freshly-generated key
+    # ("privacy dispatch failed: Truncated" → manifest validator panic).
+    local _user_privacy_mode="${SURGE_PRIVACY_MODE:-false}"
+
+    # Export into current shell so docker compose substitutes them in
+    # `environment:` blocks (the same set -a; source pattern as .env).
+    set -a
+    # shellcheck disable=SC1090
+    source "$privacy_env"
+    set +a
+
+    # Restore the user's mode preference. The keys remain exported and ready;
+    # flipping SURGE_PRIVACY_MODE=true in .env (and rerunning) opts in.
+    export SURGE_PRIVACY_MODE="$_user_privacy_mode"
+
+    # Echo the public key so the operator can publish it.
+    if [[ -n "${SURGE_PRIVACY_FI_PUBKEY:-}" ]]; then
+        log_info "FI public key (share with external FI submitters): $SURGE_PRIVACY_FI_PUBKEY"
+    fi
+
+    if [[ "$SURGE_PRIVACY_MODE" == "true" ]]; then
+        log_info "Privacy mode is ON (.env SURGE_PRIVACY_MODE=true)"
+    else
+        log_info "Privacy mode is OFF — keys exported but unused. Set SURGE_PRIVACY_MODE=true in .env to opt in."
+    fi
+}
+
 # ─── Git submodules ──────────────────────────────────────────────────────────
 # By default all submodules are checked out at the pinned SHA recorded in the
 # parent repo (reproducible). When the global $update_submodules flag is "true"
@@ -94,7 +215,7 @@ validate_prerequisites() {
 # UPDATABLE_SUBMODULES are fast-forwarded to the tip of their tracked branch.
 # ethereum-package is intentionally excluded — it must stay on a known-good SHA
 # because Kurtosis Starlark code on its main branch can break devnet bring-up.
-UPDATABLE_SUBMODULES=(surge-taiko-mono)
+UPDATABLE_SUBMODULES=(surge-taiko-mono raiko)
 
 initialize_submodules() {
     log_info "Initializing git submodules..."

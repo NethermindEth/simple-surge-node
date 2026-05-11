@@ -1680,7 +1680,22 @@ main() {
             exit 1
         fi
     fi
-    
+
+    # Optionally generate the Surge privacy key bundle (.privacy.env). Privacy
+    # mode is orthogonal to prover type: when SURGE_PRIVACY_MODE=true in .env,
+    # Catalyst encrypts and Driver decrypts regardless of whether the prover is
+    # mock or real ZisK. Only mock raiko ignores the keys (it doesn't process
+    # blob contents); everything else needs them at runtime. The ZisK guest
+    # additionally needs the matching hashes baked in at compile time, handled
+    # separately by deploy-prover.sh / build-guest-with-hashes.sh.
+    #
+    # If SURGE_PRIVACY_MODE=false (default), the function short-circuits and
+    # no .privacy.env is written.
+    if ! generate_privacy_bundle; then
+        log_error "Failed to generate privacy bundle"
+        exit 1
+    fi
+
     # Step 4: L2 Stack Deployment (ALL environments)
     local stack_choice
     if [[ -z "${stack_option:-}" ]]; then

@@ -476,7 +476,7 @@ remove_configs() {
         shopt -s nullglob
         local config_files=("$CONFIGS_DIR"/*.json)
         shopt -u nullglob
-        
+
         # Check if array has elements before iterating
         if [[ ${#config_files[@]} -gt 0 ]]; then
             for file in "${config_files[@]}"; do
@@ -490,7 +490,22 @@ remove_configs() {
             done
         fi
     fi
-    
+
+    # Remove privacy bundle. Treat it as a deploy-time artefact: rotating it
+    # only matters alongside a fresh L1 deploy, since the symmetric key the
+    # raiko guest was built against gets baked in at image build. Leaving the
+    # old .privacy.env around between teardowns would let the next deploy
+    # silently reuse stale keys for catalyst while raiko still expects new
+    # ones — generate_privacy_bundle is idempotent, so a missing file means
+    # "regenerate fresh" on the next deploy.
+    if [[ -f .privacy.env ]]; then
+        if rm -f .privacy.env 2>/dev/null; then
+            removed_files+=(".privacy.env")
+        else
+            failed_files+=(".privacy.env")
+        fi
+    fi
+
     if [[ ${#removed_files[@]} -gt 0 ]]; then
         log_success "Removed configuration files: ${#removed_files[@]} files"
     fi
