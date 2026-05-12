@@ -49,6 +49,7 @@ skip_zisk_sdk=""
 privacy_mode=""
 privacy_env_path=""
 raiko_dir="${HERE}/raiko"
+local_guest_build=""
 
 show_help() {
     cat <<'EOF'
@@ -77,6 +78,15 @@ Options:
                             the L2 stack VM). Implies --privacy-mode.
   --raiko-dir <path>        Override the raiko clone location. Default:
                             ./raiko (a submodule of this repo).
+  --local-guest-build       Build the ZisK guest ELFs on the host (using the
+                            host's ~/.zisk toolchain installed by
+                            `TARGET=zisk make install`) instead of inside the
+                            surge-raiko-zk-toolchain Docker image. Use this
+                            when raiko panics at proof time with
+                            pil2-proofman out-of-bounds — symptom of ZisK
+                            version drift between the toolchain image and
+                            the host's proving keys. Sets BUILD_GUEST_LOCAL=true
+                            for the build script.
   -h, --help                Show this message.
 
 Same-VM flow:
@@ -103,6 +113,7 @@ while [[ $# -gt 0 ]]; do
         --privacy-mode)     privacy_mode="true"; shift ;;
         --privacy-env)      privacy_env_path="$2"; privacy_mode="true"; shift 2 ;;
         --raiko-dir)        raiko_dir="$2"; shift 2 ;;
+        --local-guest-build) local_guest_build="true"; shift ;;
         -h|--help)          show_help; exit 0 ;;
         *) log_error "Unknown option: $1"; show_help; exit 2 ;;
     esac
@@ -341,7 +352,12 @@ populate_guest_elfs() {
     else
         log_warning "Neither .env nor .env.devnet found in ${HERE} — build script will use built-in :latest defaults"
     fi
-    (cd "$raiko_dir" && ./script/build-guest-with-hashes.sh) || {
+    local build_args=()
+    if [[ "$local_guest_build" == "true" ]]; then
+        log_info "  --local-guest-build set → building on host (not in toolchain image)"
+        build_args+=(--local)
+    fi
+    (cd "$raiko_dir" && ./script/build-guest-with-hashes.sh "${build_args[@]}") || {
         log_error "Guest ELF population failed."
         exit 1
     }

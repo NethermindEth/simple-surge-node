@@ -1338,6 +1338,149 @@ wait_for_raiko_ready() {
     return 0
 }
 
+# verify_prover_chain_spec_match <mock_proof>
+#
+# Confirms that the prover's loaded chain_spec_list.json matches the one
+# simple-surge-node just generated in configs/. Without this, raiko's
+# /health and /guest_data probes pass even when raiko is still on a stale
+# chain spec (default-shipped or previous deploy) — its vkey is a property
+# of the guest binary, not the L1 addresses, so /guest_data returns SOMETHING
+# regardless of config drift. The downstream symptom is silent: catalyst
+# sends proof requests against the new RealTimeInbox, raiko proves against
+# the old one, L1 submissions revert / drop, L2 stuck → DEX vault linkage
+# times out 30+ minutes later with no useful error.
+#
+# Cases handled:
+#   - mock_proof=0          → simple-surge-node's own raiko service mounts
+#                              the same configs/ directory; trivially in sync.
+#   - host.docker.internal  → same-VM real prover; compare two local files.
+#   - remote host           → two-VM real prover; SSH in, sha256sum, compare.
+#   - SSH unreachable       → warn and proceed (today's lenient default).
+#   - hash mismatch / file missing → exit 1 with exact recovery commands.
+#
+# Reads PROVER_SSH_USER, PROVER_SSH_KEY, PROVER_RAIKO_DIR from env (.env).
+verify_prover_chain_spec_match() {
+    local mock_proof="$1"
+
+    if [[ "$mock_proof" == "0" ]]; then
+        log_info "Mock prover — chain spec verification skipped (raiko mounts simple-surge-node/configs/ directly)"
+        return 0
+    fi
+
+    local local_spec="${CONFIGS_DIR:-configs}/chain_spec_list.json"
+    if [[ ! -f "$local_spec" ]]; then
+        log_warning "$local_spec not found — can't verify prover chain spec match. Proceeding."
+        return 0
+    fi
+
+    local local_hash
+    local_hash=$(sha256sum "$local_spec" | awk '{print $1}')
+
+    # Derive prover host from RAIKO_HOST_ZKVM (e.g. http://185.216.20.7:8080 → 185.216.20.7).
+    local raiko_host
+    raiko_host=$(echo "${RAIKO_HOST_ZKVM:-}" | sed -E 's|^https?://||; s|:.*||; s|/.*||')
+
+    if [[ -z "$raiko_host" ]]; then
+        log_warning "RAIKO_HOST_ZKVM not set — skipping prover chain spec verification"
+        return 0
+    fi
+
+    # Same-VM real prover: raiko's submodule path is local.
+    if [[ "$raiko_host" == "host.docker.internal" || "$raiko_host" == "localhost" || "$raiko_host" == "127.0.0.1" ]]; then
+        local local_remote_spec="./raiko/host/config/devnet/chain_spec_list.json"
+        if [[ ! -f "$local_remote_spec" ]]; then
+            log_error "Same-VM real prover: chain spec missing at $local_remote_spec"
+            log_error "Sync configs and force-recreate raiko-zk:"
+            log_error "  mkdir -p \$(dirname $local_remote_spec)"
+            log_error "  cp $local_spec $local_remote_spec"
+            log_error "  cp ${CONFIGS_DIR:-configs}/config.json ./raiko/host/config/devnet/config.json"
+            log_error "  cd raiko && docker compose -f docker/docker-compose-zk.yml up -d --force-recreate raiko-zk"
+            return 1
+        fi
+        local remote_hash
+        remote_hash=$(sha256sum "$local_remote_spec" | awk '{print $1}')
+        if [[ "$local_hash" != "$remote_hash" ]]; then
+            log_error "Chain spec mismatch (same-VM):"
+            log_error "  local : $local_hash  ($local_spec)"
+            log_error "  raiko : $remote_hash  ($local_remote_spec)"
+            log_error "Fix:"
+            log_error "  cp $local_spec $local_remote_spec"
+            log_error "  cp ${CONFIGS_DIR:-configs}/config.json ./raiko/host/config/devnet/config.json"
+            log_error "  cd raiko && docker compose -f docker/docker-compose-zk.yml up -d --force-recreate raiko-zk"
+            return 1
+        fi
+        log_success "Chain spec matches (same-VM): $local_hash"
+        return 0
+    fi
+
+    # Two-VM real prover: SSH to the prover, sha256sum its chain spec.
+    local ssh_user="${PROVER_SSH_USER:-ubuntu}"
+    local ssh_key="${PROVER_SSH_KEY:-}"
+    local raiko_dir_raw="${PROVER_RAIKO_DIR:-\$HOME/simple-surge-node/raiko}"
+    local ssh_target="${ssh_user}@${raiko_host}"
+    local ssh_opts=(-o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+    [[ -n "$ssh_key" ]] && ssh_opts+=(-i "$ssh_key")
+
+    # Remote-side script: expand $HOME inside the prover's shell, sha256sum the file, exit cleanly.
+    # Sent via stdin (bash -s) so the $HOME-expansion happens server-side.
+    log_info "Verifying prover chain spec via ssh ${ssh_target} ..."
+    local remote_out
+    if ! remote_out=$(ssh "${ssh_opts[@]}" "$ssh_target" \
+            "RAIKO_DIR=\"$raiko_dir_raw\" bash -s" <<'REMOTE' 2>&1
+        set -eu
+        eval "RAIKO_DIR=\"$RAIKO_DIR\""
+        SPEC="$RAIKO_DIR/host/config/devnet/chain_spec_list.json"
+        if [[ ! -f "$SPEC" ]]; then
+            echo "MISSING:$SPEC"
+            exit 0
+        fi
+        printf 'HASH:'
+        sha256sum "$SPEC" | awk '{print $1}'
+REMOTE
+        ); then
+        log_warning "SSH to prover (${ssh_target}) failed — can't verify chain spec match. Proceeding."
+        log_warning "  → if you DO have SSH, verify manually:"
+        log_warning "     ssh ${ssh_target} 'sha256sum ${raiko_dir_raw}/host/config/devnet/chain_spec_list.json'"
+        log_warning "     expected (local): $local_hash"
+        return 0
+    fi
+
+    if [[ "$remote_out" == MISSING:* ]]; then
+        local missing_path="${remote_out#MISSING:}"
+        log_error "Prover chain spec missing at $missing_path"
+        log_error "scp configs + force-recreate raiko-zk on the prover:"
+        log_error "  scp $local_spec ${ssh_target}:${raiko_dir_raw}/host/config/devnet/chain_spec_list.json"
+        log_error "  scp ${CONFIGS_DIR:-configs}/config.json ${ssh_target}:${raiko_dir_raw}/host/config/devnet/config.json"
+        log_error "  ssh ${ssh_target} 'cd $(dirname ${raiko_dir_raw})/simple-surge-node/raiko && docker compose -f docker/docker-compose-zk.yml up -d --force-recreate raiko-zk'"
+        return 1
+    fi
+
+    local remote_hash
+    remote_hash=$(echo "$remote_out" | grep -E '^HASH:[a-f0-9]{64}$' | head -n1 | cut -d: -f2)
+    if [[ -z "$remote_hash" ]]; then
+        log_warning "Couldn't parse remote sha256 from prover. Raw output:"
+        echo "$remote_out" | sed 's/^/    /' >&2
+        log_warning "Proceeding without verification."
+        return 0
+    fi
+
+    if [[ "$local_hash" != "$remote_hash" ]]; then
+        log_error "Chain spec mismatch (two-VM):"
+        log_error "  local  ($local_spec):           $local_hash"
+        log_error "  prover (${ssh_target}:.../devnet/chain_spec_list.json): $remote_hash"
+        log_error "Sync from this host:"
+        log_error "  scp $local_spec ${ssh_target}:${raiko_dir_raw}/host/config/devnet/chain_spec_list.json"
+        log_error "  scp ${CONFIGS_DIR:-configs}/config.json ${ssh_target}:${raiko_dir_raw}/host/config/devnet/config.json"
+        log_error "Then force-recreate raiko-zk on the prover:"
+        log_error "  ssh ${ssh_target} 'cd $(dirname ${raiko_dir_raw})/simple-surge-node/raiko && docker compose -f docker/docker-compose-zk.yml up -d --force-recreate raiko-zk'"
+        log_error "Cold start: ~16 min single-GPU, much faster multi-GPU. Re-run deploy-surge-full.sh after."
+        return 1
+    fi
+
+    log_success "Chain spec matches (two-VM ${ssh_target}): $local_hash"
+    return 0
+}
+
 # Start L2 stack with specified configuration
 # Usage: start_l2_stack <stack_option> [mock_proof]
 #   mock_proof: "0" = mock prover selected → also start raiko; "1" = real prover (default)
@@ -1718,6 +1861,17 @@ main() {
     #     host.docker.internal → localhost for the host-side curl probes.
     # Skipped only for --stack-option 0 (no L2 stack at all).
     if [[ "$stack_choice" != "0" ]]; then
+        # Fast guard before the slow HTTP probe: verify the prover's loaded
+        # chain_spec_list.json matches what we just generated. Costs ~5s
+        # (sha256 + one SSH); fails fast on the most common silent footgun
+        # (raiko on stale chain spec → readiness check passes → DEX timeout
+        # 30 min later with no useful error).
+        if ! verify_prover_chain_spec_match "$mock_proof"; then
+            log_error "Chain spec verification failed — aborting before Raiko readiness check"
+            log_error "(See the scp + force-recreate commands above. Re-run this script after.)"
+            exit 1
+        fi
+
         local raiko_check_url=""
         local is_mock_raiko="false"
         if [[ "$mock_proof" == "0" ]]; then
