@@ -35,7 +35,11 @@ cd "$(dirname "$0")/.."
 HERE="$(pwd)"
 
 PRIVACY_ENV="${HERE}/.privacy.env"
-DEFAULT_RAIKO_DIR="\$HOME/raiko"
+# Default path on the prover VM. Matches deploy-prover.sh's layout: the user
+# clones simple-surge-node and uses its raiko submodule, so raiko lives at
+# $HOME/simple-surge-node/raiko, not the standalone $HOME/raiko clone the
+# original two-VM docs assumed.
+DEFAULT_RAIKO_DIR="\$HOME/simple-surge-node/raiko"
 
 red()    { printf '\033[31m%s\033[0m\n' "$*"; }
 green()  { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -85,11 +89,27 @@ sync_to_prover() {
         exit 1
     fi
 
-    # Serialise the lines as a newline-joined string we can stuff through ssh.
-    # Avoid stdin (we may want to attach later for the rebuild step).
+    # Serialise the lines as a newline-joined string and feed to ssh via stdin.
+    # Why not via inline env var (LINES="$joined" ssh ... bash -s): embedded
+    # newlines in $joined break ssh's command-line parsing — the remote shell
+    # sees the first line of LINES as part of its argv, then fails before
+    # bash -s reads the heredoc body with `RAIKO_DIR: unbound variable`.
+    # Stdin is unambiguous: the remote bash reads the script from stdin and
+    # the privacy lines come in via a temp env file on the remote side.
     local joined; joined=$(printf '%s\n' "${lines[@]}")
 
-    ssh "$prover_host" RAIKO_DIR="$raiko_dir" LINES="$joined" bash -s <<'REMOTE'
+    # Use a tempfile on the prover so the remote shell reads the lines
+    # independently of stdin (which carries the script body itself).
+    local remote_tmp
+    remote_tmp=$(ssh "$prover_host" "mktemp")
+    if [[ -z "$remote_tmp" ]]; then
+        red "Failed to create tempfile on $prover_host"; exit 1
+    fi
+    # shellcheck disable=SC2029
+    printf '%s' "$joined" | ssh "$prover_host" "cat > $remote_tmp"
+
+    # shellcheck disable=SC2029
+    ssh "$prover_host" RAIKO_DIR="$raiko_dir" REMOTE_TMP="$remote_tmp" bash -s <<'REMOTE'
 set -euo pipefail
 cd "${RAIKO_DIR/#~/$HOME}"
 if [[ ! -f docker/.env ]]; then
@@ -98,11 +118,13 @@ if [[ ! -f docker/.env ]]; then
         echo "[prover] created docker/.env from sample"
     else
         echo "[prover] docker/.env.sample.zk missing — raiko clone might be stale; cannot bootstrap"
+        rm -f "$REMOTE_TMP"
         exit 1
     fi
 fi
 
-# Replace-or-append each KEY=VALUE line.
+# Replace-or-append each KEY=VALUE line. Read the lines from the tempfile we
+# scp'd above — avoids the multi-line-env-var-via-ssh bug.
 while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     key="${line%%=*}"
@@ -111,7 +133,8 @@ while IFS= read -r line; do
     else
         printf '%s\n' "$line" >> docker/.env
     fi
-done <<< "$LINES"
+done < "$REMOTE_TMP"
+rm -f "$REMOTE_TMP"
 
 # Don't auto-flip SURGE_PRIVACY_MODE; let the operator opt in explicitly.
 echo "[prover] privacy hashes + keys synced into $(pwd)/docker/.env"
@@ -135,6 +158,7 @@ sync_and_rebuild() {
     sync_to_prover "$prover_host" "$raiko_dir"
 
     log "Flipping SURGE_PRIVACY_MODE=true and rebuilding guest ELFs on $prover_host ..."
+    # shellcheck disable=SC2029
     ssh "$prover_host" RAIKO_DIR="$raiko_dir" bash -s <<'REMOTE'
 set -euo pipefail
 cd "${RAIKO_DIR/#~/$HOME}"
@@ -164,8 +188,102 @@ set -a; source docker/.env; set +a
 docker compose -f docker/docker-compose-zk.yml up -d --force-recreate raiko-zk
 docker compose -f docker/docker-compose-zk.yml ps
 REMOTE
+
+    # Rebuilding the guest with new privacy hashes changes the ZisK batch
+    # vkey. Catalyst attaches that vkey to every proof; ZiskVerifier on L1
+    # checks _isTrustedProgram[vkey] and reverts with ZISK_INVALID_PROGRAM_VKEY()
+    # (selector 0x7f1ebce8) when the new vkey isn't registered yet.
+    # setup-zisk.sh only runs once during the initial deploy-surge-full.sh,
+    # before privacy was enabled — so it trusts the pre-privacy vkey only.
+    # Refresh the trust list here.
+    refresh_zisk_vkey_trust "$prover_host"
+
     green "Prover ready with privacy mode enabled."
     yellow "Verify with: ssh $prover_host 'curl -s localhost:8080/guest_data | jq'"
+}
+
+# Poll the prover's /guest_data for the freshly-rebuilt batch vkey, then run
+# setProgramTrusted(<new_vkey>, true) on L1's ZiskVerifier so on-chain
+# verification accepts proofs from the rebuilt guest. Reads ZiskVerifier
+# address, L1 RPC, and the deployer private key from the local .env (this
+# script runs on the L2 stack VM, which has them).
+refresh_zisk_vkey_trust() {
+    local prover_host="$1"
+
+    if [[ ! -f "${HERE}/.env" ]]; then
+        yellow "${HERE}/.env not found — skipping on-chain vkey re-registration."
+        yellow "Re-register manually:"
+        yellow "  cast send <ZISK_VERIFIER> \"setProgramTrusted(bytes32,bool)\" <new_vkey> true \\"
+        yellow "    --private-key \$PRIVATE_KEY --rpc-url \$L1_ENDPOINT_HTTP"
+        return 0
+    fi
+
+    # Load .env values without polluting the calling shell beyond the function.
+    local zisk_verifier private_key l1_rpc
+    zisk_verifier=$(grep -E '^REALTIME_ZISK_VERIFIER=' "${HERE}/.env" | tail -n1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+    private_key=$(grep -E '^PRIVATE_KEY=' "${HERE}/.env" | tail -n1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+    l1_rpc=$(grep -E '^L1_ENDPOINT_HTTP_EXTERNAL=' "${HERE}/.env" | tail -n1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+    [[ -z "$l1_rpc" ]] && l1_rpc=$(grep -E '^L1_ENDPOINT_HTTP=' "${HERE}/.env" | tail -n1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+
+    if [[ -z "$zisk_verifier" || "$zisk_verifier" == "0x0000000000000000000000000000000000000000" ]]; then
+        yellow "REALTIME_ZISK_VERIFIER is zero/empty in .env — mock-mode deploy, no vkey trust to update."
+        return 0
+    fi
+    if [[ -z "$private_key" ]]; then
+        red "PRIVATE_KEY missing in .env — can't update vkey trust on-chain."
+        return 1
+    fi
+    if [[ -z "$l1_rpc" ]]; then
+        red "L1_ENDPOINT_HTTP (and _EXTERNAL) missing in .env — can't reach L1 RPC."
+        return 1
+    fi
+    if ! command -v cast >/dev/null 2>&1; then
+        red "cast (Foundry) not on PATH — install Foundry or run the cast send below manually."
+        return 1
+    fi
+
+    log "Polling $prover_host:8080/guest_data for the new vkey ..."
+    # Poll because guest_data only returns the vkey after raiko-zk has warmed
+    # up post-recreate (single-GPU: up to ~16 min; multi-GPU: ~1 min).
+    local new_vkey="" elapsed=0 timeout=1800
+    local start; start=$(date +%s)
+    while (( elapsed < timeout )); do
+        # shellcheck disable=SC2029
+        local body; body=$(ssh "$prover_host" "curl -s --max-time 10 http://localhost:8080/guest_data" 2>/dev/null || echo "")
+        if [[ -n "$body" ]] && echo "$body" | jq -e '.zisk.batch_vkey' >/dev/null 2>&1; then
+            new_vkey=$(echo "$body" | jq -r '.zisk.batch_vkey')
+            log "Got new vkey: $new_vkey"
+            break
+        fi
+        sleep 10
+        elapsed=$(( $(date +%s) - start ))
+    done
+    if [[ -z "$new_vkey" ]]; then
+        red "Timed out (${timeout}s) waiting for prover's new vkey. Recover manually:"
+        red "  ssh $prover_host 'curl -s localhost:8080/guest_data | jq -r .zisk.batch_vkey'"
+        red "  cast send $zisk_verifier \"setProgramTrusted(bytes32,bool)\" <vkey> true \\"
+        red "    --private-key \$PRIVATE_KEY --rpc-url $l1_rpc"
+        return 1
+    fi
+
+    # Skip the broadcast if the vkey is already trusted (re-runs are common).
+    local already
+    if already=$(cast call "$zisk_verifier" "isProgramTrusted(bytes32)(bool)" "$new_vkey" --rpc-url "$l1_rpc" 2>/dev/null); then
+        if [[ "$already" == "true" ]]; then
+            log "vkey $new_vkey already trusted on $zisk_verifier — skipping setProgramTrusted"
+            return 0
+        fi
+    fi
+
+    log "Registering new vkey on ZiskVerifier ($zisk_verifier) ..."
+    if ! cast send "$zisk_verifier" "setProgramTrusted(bytes32,bool)" "$new_vkey" true \
+            --private-key "$private_key" --rpc-url "$l1_rpc" >/dev/null; then
+        red "cast send setProgramTrusted failed. Run manually:"
+        red "  cast send $zisk_verifier \"setProgramTrusted(bytes32,bool)\" $new_vkey true \\"
+        red "    --private-key \$PRIVATE_KEY --rpc-url $l1_rpc"
+        return 1
+    fi
+    green "Trusted new ZisK vkey on $zisk_verifier"
 }
 
 # ─── Same-VM (--local) path ──────────────────────────────────────────────────

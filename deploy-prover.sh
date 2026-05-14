@@ -153,10 +153,31 @@ preflight() {
         log_error "git not found — needed for submodule update"
         fail=1
     fi
+    # RAM precheck — surge-docs prover guide calls for ≥ 128 GiB. Below that
+    # raiko-host OOM-kills mid-proof on a single L40, even though the GPU
+    # spec is sufficient. Block early instead of letting docker compose up
+    # succeed and then watch the prover OOM ~16 min into the first proof.
+    if command -v free >/dev/null 2>&1; then
+        local total_gib
+        total_gib=$(free -g | awk '/^Mem:/{print $2}')
+        if [[ -n "$total_gib" ]] && (( total_gib < 128 )); then
+            log_error "Host RAM is ${total_gib} GiB — minimum supported is 128 GiB."
+            log_error "  → raiko-host has been observed OOM-killed during proof generation"
+            log_error "    on hosts below this floor even with a sufficient GPU."
+            log_error "  → see docs.surge.wtf/guides/running-surge/provers for the hardware matrix."
+            log_error "  → if you have substantial swap configured AND understand the risk,"
+            log_error "    set SURGE_SKIP_RAM_PRECHECK=true in your shell and re-run."
+            if [[ "${SURGE_SKIP_RAM_PRECHECK:-}" != "true" ]]; then
+                fail=1
+            else
+                log_warning "SURGE_SKIP_RAM_PRECHECK=true — proceeding despite low RAM."
+            fi
+        fi
+    fi
     if [[ $fail -ne 0 ]]; then
         exit 1
     fi
-    log_success "Pre-flight passed (docker, NVIDIA driver, git)"
+    log_success "Pre-flight passed (docker, NVIDIA driver, git, RAM)"
 }
 
 # ─── Submodule ──────────────────────────────────────────────────────────────

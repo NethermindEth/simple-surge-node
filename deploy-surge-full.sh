@@ -1528,6 +1528,13 @@ start_l2_stack() {
         mock_mode=false
     fi
 
+    # Persist MOCK_MODE to .env so any out-of-band container recreate
+    # (docker compose restart catalyst, --force-recreate, etc.) keeps the
+    # selector consistent with what L1 was deployed for. Without this,
+    # .env.devnet's default propagates into .env and Catalyst stamps the
+    # wrong proofBitFlag → L1 propose reverts with Surge_InvalidProofBitFlag().
+    update_env_var "$ENV_FILE" "MOCK_MODE" "$mock_mode"
+
     mkdir -p ./driver-data
     chmod -R 777 ./driver-data 2>/dev/null || true
 
