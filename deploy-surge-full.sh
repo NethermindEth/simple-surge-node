@@ -1047,6 +1047,8 @@ generate_l2_genesis() {
             '. * {difficulty: 0, config: {taiko: true, londonBlock: 0, ontakeBlock: 0, pacayaBlock: 1, shastaTimestamp: $hex_timestamp, feeCollector: "0x0000000000000000000000000000000000000000", shanghaiTime: 0}} | del(.config.clique)' \
         | jq --from-file "$gen2spec_file" \
         | jq --arg hex_timestamp "$HEX_TIMESTAMP" '.engine.Taiko.shastaTimestamp = $hex_timestamp' \
+        | jq '.engine.Taiko.rip7728TransitionTimestamp = "0x0"' \
+        | jq '.engine.Taiko.l1StaticCallTransitionTimestamp = "0x0"' \
         > "$DEPLOYMENT_DIR/surge_chainspec.json"
 
     rm -f "$gen2spec_file"
@@ -1060,7 +1062,7 @@ generate_l2_genesis() {
     # Clean up any leftover container from a previous run
     docker rm -f nethermind-genesis-hash 2>/dev/null || true
     # Get genesis hash first by running Nethermind with the chainspec
-    docker run -d --name nethermind-genesis-hash -v ./deployment/surge_chainspec.json:/chainspec.json nethermindeth/nethermind:taiko-shasta-changes --config=none --Init.ChainSpecPath=/chainspec.json
+    docker run -d --name nethermind-genesis-hash -v ./deployment/surge_chainspec.json:/chainspec.json "${NETHERMIND_CLIENT_IMAGE:-nethermindeth/nethermind:master}" --config=none --Init.ChainSpecPath=/chainspec.json --Surge.L1EthApiEndpoint="${L1_ENDPOINT_HTTP:-http://localhost:32003}"
     
     log_info "Waiting for Nethermind to output genesis hash (up to 60s)..."
     local waited=0
