@@ -51,7 +51,7 @@ mock_prover=""
 mode=""
 force=""
 update_submodules=""
-# verify_key_only=""
+privacy_mode=""
 
 
 # Show usage help
@@ -73,6 +73,7 @@ show_help() {
     echo "  --mode MODE              Execution mode (silence|debug)"
     echo "  -f, --force              Skip prompts; defaults to real prover unless --mock-prover is set"
     echo "  --update-submodules      Fast-forward submodules to the tip of their tracked branch instead of the pinned SHA"
+    echo "  --privacy-mode           Enable Surge privacy mode (overrides SURGE_PRIVACY_MODE in .env; persists the change)"
     echo "  -h, --help               Show this help message"
     echo
     echo "Stack Options:"
@@ -94,6 +95,9 @@ show_help() {
     echo ""
     echo "  # Deploy against an existing L1 (Sepolia/Gnosis/mainnet/etc. — edit .env first)"
     echo "  $0 --environment devnet --deploy-devnet false --mode silence --stack-option 2 --force"
+    echo ""
+    echo "  # Mock prover with privacy mode (no .env edit needed)"
+    echo "  $0 --environment devnet --deploy-devnet true --mock-prover --privacy-mode --mode silence --stack-option 2 --force"
     echo ""
     echo "  # Interactive (prompts for each step)"
     echo "  $0 --environment devnet --deploy-devnet true"
@@ -136,16 +140,16 @@ parse_arguments() {
                 mode="$2"
                 shift 2
                 ;;
-            # --verify-key-only)
-            #     verify_key_only="true"
-            #     shift
-            #     ;;
             -f|--force)
                 force="true"
                 shift
                 ;;
             --update-submodules)
                 update_submodules="true"
+                shift
+                ;;
+            --privacy-mode)
+                privacy_mode="true"
                 shift
                 ;;
             -h|--help)
@@ -329,13 +333,30 @@ deploy_l1_contracts() {
     
     # Check if Surge L1 is already deployed (only skip if both files exist AND we're broadcasting)
     if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" ]]; then
+
+        local _inbox _l1_rpc _inbox_codesize
+        _inbox=$(jq -r '.real_time_inbox // empty' "$L1_DEPLOYMENT_FILE" 2>/dev/null)
+        _l1_rpc="${L1_ENDPOINT_HTTP_EXTERNAL:-${L1_ENDPOINT_HTTP:-http://localhost:32003}}"
+        if [[ -n "$_inbox" && "$_inbox" != "0x0000000000000000000000000000000000000000" ]]; then
+            _inbox_codesize=$(cast codesize "$_inbox" --rpc-url "$_l1_rpc" 2>/dev/null || echo "")
+            if [[ -z "$_inbox_codesize" || "$_inbox_codesize" == "0" ]]; then
+                log_warning "Stale deployment lock detected."
+                log_warning "  deploy_l1.lock + deploy_l1.json exist, but RealTimeInbox ($_inbox)"
+                log_warning "  has NO code on the current L1 ($_l1_rpc) — the chain was wiped/recreated"
+                log_warning "  while the lock files survived. Clearing stale artifacts and redeploying."
+                rm -f "$DEPLOYMENT_DIR"/*.lock 2>/dev/null || true
+                rm -f "$L1_DEPLOYMENT_FILE" "$COMPOSABILITY_MULTICALL_FILE" \
+                      "$COMPOSABILITY_USEROPS_SUBMITTER_FILE" 2>/dev/null || true
+            fi
+        fi
+    fi
+
+    # Re-test after the stale-lock guard may have removed the files.
+    if [[ -f "$L1_DEPLOYMENT_FILE" && -f "$L1_LOCK_FILE" ]]; then
         log_info "Surge L1 already deployed..."
 
         local choice
         if [[ "${force:-}" == "true" ]]; then
-            # Non-interactive: keep the existing deployment. Re-running with
-            # --force should never silently nuke a working L1 — if you want
-            # a clean redeploy, run `./remove-surge-full.sh --force` first.
             log_info "--force set → using existing deployment (run remove-surge-full.sh first to redeploy)"
             choice=0
         else
@@ -396,9 +417,6 @@ deploy_l1_contracts() {
             _resolver=$(jq -r '.shared_resolver // empty' "$L1_DEPLOYMENT_FILE")
             _signal=$(jq -r '.signal_service // empty' "$L1_DEPLOYMENT_FILE")
 
-            # In mock mode the deploy script wires the inbox to ProofVerifierDummy
-            # instead of SurgeVerifier; surge_verifier in the JSON is left at the
-            # zero address. Pick the right verifier to verify based on mode.
             local _verifier_pair
             if [[ "$mock_proof" == "true" ]]; then
                 local _dummy
@@ -862,9 +880,6 @@ extract_l1_deployment_results() {
     export REALTIME_ERC721_VAULT; REALTIME_ERC721_VAULT=$(cat "$L1_DEPLOYMENT_FILE" | jq -r '.erc721_vault')
     export REALTIME_SHARED_RESOLVER; REALTIME_SHARED_RESOLVER=$(_jq_required "$L1_DEPLOYMENT_FILE" '.shared_resolver' "REALTIME_SHARED_RESOLVER") || return 1
     export REALTIME_SIGNAL_SERVICE; REALTIME_SIGNAL_SERVICE=$(_jq_required "$L1_DEPLOYMENT_FILE" '.signal_service' "REALTIME_SIGNAL_SERVICE") || return 1
-    # In mock mode the deploy script leaves surge_verifier at the zero address
-    # (or omits it entirely); ProofVerifierDummy is used instead. Default to
-    # zero so downstream env writes don't pick up the literal string "null".
     export REALTIME_SURGE_VERIFIER
     REALTIME_SURGE_VERIFIER=$(jq -r '.surge_verifier // "0x0000000000000000000000000000000000000000"' "$L1_DEPLOYMENT_FILE")
     export REALTIME_INBOX; REALTIME_INBOX=$(_jq_required "$L1_DEPLOYMENT_FILE" '.real_time_inbox' "REALTIME_INBOX") || return 1
@@ -1049,8 +1064,6 @@ generate_l2_genesis() {
     
     log_info "Waiting for Nethermind to output genesis hash (up to 60s)..."
     local waited=0
-    # Nethermind writes its startup banner (including "Genesis hash :") to stderr,
-    # so combine streams with 2>&1 — using 2>/dev/null here would never match.
     while ! docker logs nethermind-genesis-hash 2>&1 | grep -q "Genesis hash"; do
         if (( waited >= 60 )); then
             log_error "Timed out waiting for genesis hash after ${waited}s"
@@ -1451,7 +1464,7 @@ REMOTE
         log_error "scp configs + force-recreate raiko-zk on the prover:"
         log_error "  scp $local_spec ${ssh_target}:${raiko_dir_raw}/host/config/devnet/chain_spec_list.json"
         log_error "  scp ${CONFIGS_DIR:-configs}/config.json ${ssh_target}:${raiko_dir_raw}/host/config/devnet/config.json"
-        log_error "  ssh ${ssh_target} 'cd $(dirname ${raiko_dir_raw})/simple-surge-node/raiko && docker compose -f docker/docker-compose-zk.yml up -d --force-recreate raiko-zk'"
+        log_error "  ssh ${ssh_target} 'cd ${raiko_dir_raw} && docker compose -f docker/docker-compose-zk.yml up -d --force-recreate raiko-zk'"
         return 1
     fi
 
@@ -1472,7 +1485,7 @@ REMOTE
         log_error "  scp $local_spec ${ssh_target}:${raiko_dir_raw}/host/config/devnet/chain_spec_list.json"
         log_error "  scp ${CONFIGS_DIR:-configs}/config.json ${ssh_target}:${raiko_dir_raw}/host/config/devnet/config.json"
         log_error "Then force-recreate raiko-zk on the prover:"
-        log_error "  ssh ${ssh_target} 'cd $(dirname ${raiko_dir_raw})/simple-surge-node/raiko && docker compose -f docker/docker-compose-zk.yml up -d --force-recreate raiko-zk'"
+        log_error "  ssh ${ssh_target} 'cd ${raiko_dir_raw} && docker compose -f docker/docker-compose-zk.yml up -d --force-recreate raiko-zk'"
         log_error "Cold start: ~16 min single-GPU, much faster multi-GPU. Re-run deploy-surge-full.sh after."
         return 1
     fi
@@ -1481,9 +1494,6 @@ REMOTE
     return 0
 }
 
-# Start L2 stack with specified configuration
-# Usage: start_l2_stack <stack_option> [mock_proof]
-#   mock_proof: "0" = mock prover selected → also start raiko; "1" = real prover (default)
 start_l2_stack() {
     local stack_option="$1"
     local mock_proof="${2:-1}"
@@ -1492,8 +1502,6 @@ start_l2_stack() {
     local exit_status=0
     local temp_output="/tmp/surge_l2_stack_output_$$"
 
-    # Stack option 0: dev-only mode — skip L2 stack entirely, just verify the
-    # external L2 RPC is healthy so downstream protocol/DEX deploy steps work.
     if [[ "$stack_option" == "0" ]]; then
         local _l2_rpc="${L2_ENDPOINT_HTTP_EXTERNAL:-${L2_ENDPOINT_HTTP:-http://localhost:8547}}"
         log_info "Stack option 0: skipping L2 stack startup (dev mode)"
@@ -1516,7 +1524,6 @@ start_l2_stack() {
 
     log_info "Starting L2 stack..."
 
-    # Include raiko + redis-zk when mock proof mode is selected
     local prover_profiles=""
     local mock_mode=""
     if [[ "$mock_proof" == "0" ]]; then
@@ -1528,11 +1535,6 @@ start_l2_stack() {
         mock_mode=false
     fi
 
-    # Persist MOCK_MODE to .env so any out-of-band container recreate
-    # (docker compose restart catalyst, --force-recreate, etc.) keeps the
-    # selector consistent with what L1 was deployed for. Without this,
-    # .env.devnet's default propagates into .env and Catalyst stamps the
-    # wrong proofBitFlag → L1 propose reverts with Surge_InvalidProofBitFlag().
     update_env_var "$ENV_FILE" "MOCK_MODE" "$mock_mode"
 
     mkdir -p ./driver-data
@@ -1628,7 +1630,15 @@ main() {
         log_error "Failed to load environment file, please ensure the .env file is present"
         exit 1
     fi
-    
+
+    if [[ "${privacy_mode:-}" == "true" ]]; then
+        if [[ "${SURGE_PRIVACY_MODE:-false}" != "true" ]]; then
+            log_info "--privacy-mode: enabling SURGE_PRIVACY_MODE in .env"
+            update_env_var "$ENV_FILE" SURGE_PRIVACY_MODE true
+        fi
+        export SURGE_PRIVACY_MODE=true
+    fi
+
     # Get deployment choice (local/remote)
     local deployment_choice
     if [[ -z "${deployment:-}" ]]; then
@@ -1753,13 +1763,6 @@ main() {
     local mock_proof="1"  # default: real prover (no raiko)
     if [[ "$env_choice" == "1" || "$env_choice" == "devnet" ]]; then
 
-        # Determine mock/real prover. Resolution order:
-        #   1. --mock-prover flag (explicit)
-        #   2. MOCK_PROOF_MODE=true env var (explicit)
-        #   3. --force without --mock-prover → real prover (the assumption is that
-        #      anyone passing --force has set RAIKO_HOST_ZKVM in .env and wants
-        #      a fully non-interactive deployment)
-        #   4. Interactive prompt
         if [[ "$mock_prover" == "true" || "${MOCK_PROOF_MODE:-}" == "true" ]]; then
             mock_proof="0"
             log_info "Using mock prover (--mock-prover or MOCK_PROOF_MODE=true)"
@@ -1831,16 +1834,6 @@ main() {
         fi
     fi
 
-    # Optionally generate the Surge privacy key bundle (.privacy.env). Privacy
-    # mode is orthogonal to prover type: when SURGE_PRIVACY_MODE=true in .env,
-    # Catalyst encrypts and Driver decrypts regardless of whether the prover is
-    # mock or real ZisK. Only mock raiko ignores the keys (it doesn't process
-    # blob contents); everything else needs them at runtime. The ZisK guest
-    # additionally needs the matching hashes baked in at compile time, handled
-    # separately by deploy-prover.sh / build-guest-with-hashes.sh.
-    #
-    # If SURGE_PRIVACY_MODE=false (default), the function short-circuits and
-    # no .privacy.env is written.
     if ! generate_privacy_bundle; then
         log_error "Failed to generate privacy bundle"
         exit 1
@@ -1859,20 +1852,7 @@ main() {
         exit 1
     fi
 
-    # Verify Raiko is ready BEFORE the first L2 tx (DEX L2 deploy below) so the
-    # very first proof request from Catalyst doesn't time out during Raiko's
-    # warmup window. Applies to both mock and real prover:
-    #   - Mock prover: Raiko comes up via `--profile prover` inside start_l2_stack;
-    #     it's reachable from the host at localhost:8082 (host port mapping).
-    #   - Real prover: RAIKO_HOST_ZKVM points at the prover machine; transform
-    #     host.docker.internal → localhost for the host-side curl probes.
-    # Skipped only for --stack-option 0 (no L2 stack at all).
     if [[ "$stack_choice" != "0" ]]; then
-        # Fast guard before the slow HTTP probe: verify the prover's loaded
-        # chain_spec_list.json matches what we just generated. Costs ~5s
-        # (sha256 + one SSH); fails fast on the most common silent footgun
-        # (raiko on stale chain spec → readiness check passes → DEX timeout
-        # 30 min later with no useful error).
         if ! verify_prover_chain_spec_match "$mock_proof"; then
             log_error "Chain spec verification failed — aborting before Raiko readiness check"
             log_error "(See the scp + force-recreate commands above. Re-run this script after.)"
@@ -1909,13 +1889,6 @@ main() {
         fi
     fi
 
-    # Deploy Cross-Chain DEX (4 steps).
-    # Pre-flight: the DEX deployers and extract_l1_deployment_results below
-    # both consume $L1_DEPLOYMENT_FILE (deployment/deploy_l1.json). For
-    # --deploy-devnet false against an existing L1 that wasn't deployed by
-    # this script, the file isn't produced and the failure mode further
-    # down is a confusing _jq_required error far from the root cause. Fail
-    # fast with a useful pointer instead.
     if [[ ! -f "$L1_DEPLOYMENT_FILE" ]]; then
         log_error "DEX setup requires $L1_DEPLOYMENT_FILE but it's missing."
         log_error "Likely cause: --deploy-devnet false against an L1 that wasn't"

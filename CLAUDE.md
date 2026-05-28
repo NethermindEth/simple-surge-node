@@ -17,6 +17,8 @@ Privacy mode is an orthogonal opt-in — see the dedicated section below. Mock v
 
 This file only documents what's specific to driving the scripts *as an agent*. For the full guide (prerequisites, two-VM splits, troubleshooting, hardware requirements), read [docs.surge.wtf/guides/running-surge](https://docs.surge.wtf/guides/running-surge) first.
 
+For one-shot deploys, pick a ready-made subagent prompt from [`agent-prompts/`](./agent-prompts/) — one file per topology (mock single-host, real-ZisK single-host, real-ZisK two-host), privacy mode as a toggle. Each prompt has a "fill these in" header for host/SSH/branch placeholders and a pre-flight checklist.
+
 ## `--deployment local` vs `--deployment remote`
 
 The most common mistake. Get it wrong and DEX UI / Blockscout configs point at `localhost` instead of the VM's IP — they work on the VM but fail in any browser elsewhere.

@@ -41,10 +41,15 @@ PRIVACY_ENV="${HERE}/.privacy.env"
 # original two-VM docs assumed.
 DEFAULT_RAIKO_DIR="\$HOME/simple-surge-node/raiko"
 
-red()    { printf '\033[31m%s\033[0m\n' "$*"; }
-green()  { printf '\033[32m%s\033[0m\n' "$*"; }
-yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
-log()    { printf '[sync-privacy] %s\n' "$*"; }
+# All diagnostics go to stderr so this script is safe under `nohup` / detached
+# shells (no controlling tty) and never pollutes stdout that a caller might
+# capture. A previous revision's helpers wrote to the controlling terminal,
+# which under nohup made refresh_zisk_vkey_trust appear to "bail silently"
+# (exit 1 with no visible text) even when the work succeeded.
+red()    { printf '\033[31m%s\033[0m\n' "$*" >&2; }
+green()  { printf '\033[32m%s\033[0m\n' "$*" >&2; }
+yellow() { printf '\033[33m%s\033[0m\n' "$*" >&2; }
+log()    { printf '[sync-privacy] %s\n' "$*" >&2; }
 
 require_bundle() {
     if [[ ! -f "$PRIVACY_ENV" ]]; then
