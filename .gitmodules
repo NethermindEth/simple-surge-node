@@ -8,4 +8,4 @@
 [submodule "raiko"]
 	path = raiko
 	url = https://github.com/NethermindEth/raiko.git
-	branch = feat/realtime-privacy-docker-build
+	branch = feat/realtime-privacy
