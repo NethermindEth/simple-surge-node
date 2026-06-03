@@ -69,6 +69,9 @@ services:
       - .env
     environment:
       TAIKO_INBOX: ${TAIKO_INBOX}
+      SURGE_PRIVACY_MODE: ${SURGE_PRIVACY_MODE}
+      SURGE_PRIVACY_SYMMETRIC_KEY: ${SURGE_PRIVACY_SYMMETRIC_KEY}
+      SURGE_PRIVACY_FI_PRIVKEY: ${SURGE_PRIVACY_FI_PRIVKEY}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     entrypoint:
@@ -155,6 +158,7 @@ services:
     env_file:
       - .env
     environment:
+      RUST_LOG: ${CATALYST_RUST_LOG:-info}
       # Signer
       CATALYST_NODE_ECDSA_PRIVATE_KEY: ${OPERATOR_PRIVATE_KEY}
       # Mock prover
@@ -175,14 +179,13 @@ services:
       L1_SIGNAL_SERVICE_ADDRESS: ${REALTIME_SIGNAL_SERVICE}
       L2_BRIDGE_ADDRESS: ${L2_BRIDGE}
       L2_SIGNAL_SERVICE_ADDRESS: ${L2_SIGNAL_SERVICE}
-      # surge_simulateReturnMessage's trace logic looks up the L2 bridge under
-      # this name (NOT L2_BRIDGE_ADDRESS — that's read by a different catalyst
-      # subsystem). Without it, catalyst defaults the L2 bridge to 0x0 and the
-      # trace never matches, returning "No outbound Bridge.sendMessage found".
       TAIKO_BRIDGE_L2_ADDRESS: ${L2_BRIDGE}
       # Bridge handler RPC bind. Default in this image is 127.0.0.1:4545 which
       # is not reachable through Docker port forwarding — must be 0.0.0.0.
       BRIDGE_RPC_ADDR: "0.0.0.0:4545"
+      SURGE_PRIVACY_MODE: ${SURGE_PRIVACY_MODE}
+      SURGE_PRIVACY_SYMMETRIC_KEY: ${SURGE_PRIVACY_SYMMETRIC_KEY}
+      FI_MAX_PER_PROPOSAL: ${FI_MAX_PER_PROPOSAL}
       # Raiko endpoint
       RAIKO_URL: ${RAIKO_HOST_ZKVM}
     extra_hosts:
@@ -201,6 +204,22 @@ services:
 
   raiko:
     image: ${RAIKO_IMAGE}
+    # # Local build path so privacy-mode hashes can be baked in at `cargo build`
+    # # time. The SURGE_PRIVACY_*_HASH values are consumed at compile time via
+    # # option_env!() inside raiko's `lib` crate, so they MUST be present when
+    # # raiko-host is compiled — not passed at runtime. Build context is the
+    # # sibling raiko clone (../raiko); convert to a submodule when going beyond
+    # # local testing. The image: line below tags the local build with the key
+    # # hash so a key rotation forces a fresh build instead of reusing a stale
+    # # cached image whose baked-in hash no longer matches.
+    # build:
+    #   context: ../raiko
+    #   dockerfile: Dockerfile.mock
+    #   target: raiko-mock
+    #   args:
+    #     SURGE_PRIVACY_SYMMETRIC_KEY_HASH: ${SURGE_PRIVACY_SYMMETRIC_KEY_HASH}
+    #     SURGE_PRIVACY_FI_PRIVKEY_HASH: ${SURGE_PRIVACY_FI_PRIVKEY_HASH}
+    # image: surge-raiko-mock-local:${SURGE_PRIVACY_SYMMETRIC_KEY_HASH:-default}
     container_name: l2-raiko-zk-client
     restart: unless-stopped
     pull_policy: always
@@ -214,8 +233,12 @@ services:
       RAIKO_CONF_DIR: "/raiko/config"
       BASE_CONFIG_FILE: "config.json"
       BASE_CHAINSPEC_FILE: "chain_spec_list.json"
-      RUST_LOG: "info"
+      RUST_LOG: ${RAIKO_RUST_LOG:-info}
       MOCK_KEY: ${PRIVATE_KEY}
+      # Privacy mode runtime keys (raiko host).
+      SURGE_PRIVACY_MODE: ${SURGE_PRIVACY_MODE}
+      SURGE_PRIVACY_SYMMETRIC_KEY: ${SURGE_PRIVACY_SYMMETRIC_KEY}
+      SURGE_PRIVACY_FI_PRIVKEY: ${SURGE_PRIVACY_FI_PRIVKEY}
     entrypoint:
       - /opt/raiko/bin/raiko-host
       - --config-path=/raiko/config/config.json
@@ -264,7 +287,7 @@ services:
     image: postgres:alpine
     container_name: l2-blockscout-postgres
     restart: unless-stopped
-    pull_policy: always
+    pull_policy: missing
     volumes:
       - ./blockscout-postgres-data:/var/lib/postgresql
     ports:
@@ -292,7 +315,7 @@ services:
     image: ghcr.io/blockscout/smart-contract-verifier:latest
     container_name: l2-blockscout-verif
     restart: unless-stopped
-    pull_policy: always
+    pull_policy: missing
     depends_on:
       nethermind_execution_client:
         condition: service_healthy
@@ -322,7 +345,7 @@ services:
     image: ghcr.io/blockscout/blockscout:latest
     container_name: l2-blockscout
     restart: unless-stopped
-    pull_policy: always
+    pull_policy: missing
     depends_on:
       nethermind_execution_client:
         condition: service_healthy
@@ -380,7 +403,7 @@ services:
     image: ghcr.io/blockscout/frontend:latest
     container_name: l2-blockscout-frontend
     restart: unless-stopped
-    pull_policy: always
+    pull_policy: missing
     depends_on:
       nethermind_execution_client:
         condition: service_healthy
@@ -409,9 +432,6 @@ services:
       NEXT_PUBLIC_API_PROTOCOL: http
       NEXT_PUBLIC_API_HOST: ${BLOCKSCOUT_API_HOST}:${BLOCKSCOUT_PORT}
       NEXT_PUBLIC_USE_NEXT_JS_PROXY: false
-      # Browser-facing — must resolve from outside the docker network.
-      # BLOCKSCOUT_API_HOST is set to "localhost" (local) or the VM IP
-      # (remote) by configure_remote_blockscout in helpers.sh.
       NEXT_PUBLIC_NETWORK_RPC_URL: http://${BLOCKSCOUT_API_HOST}:${L2_HTTP_PORT}
       NEXT_PUBLIC_IS_TESTNET: true
       NEXT_PUBLIC_API_WEBSOCKET_PROTOCOL: ws
@@ -444,10 +464,6 @@ services:
     env_file:
       - ./surge-taiko-mono/packages/cross-chain-dex-ui/.env
     environment:
-      # Used only by the prod (target: runtime) image's nginx template
-      # (cross-chain-dex-ui/nginx.conf → /etc/nginx/templates/default.conf.template).
-      # The dev target above doesn't run nginx, but setting it here keeps the
-      # prod path build-able from this same compose file.
       BUILDER_URL: ${L2_CATALYST:-http://host.docker.internal:4545}
     volumes:
       - ./surge-taiko-mono/packages/cross-chain-dex-ui/.env:/app/.env:ro

@@ -5,3 +5,7 @@
 [submodule "ethereum-package"]
 	path = ethereum-package
 	url = https://github.com/ethpandaops/ethereum-package.git
+[submodule "raiko"]
+	path = raiko
+	url = https://github.com/NethermindEth/raiko.git
+	branch = feat/realtime-privacy

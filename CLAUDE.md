@@ -1,8 +1,23 @@
 # Simple Surge Node — Claude Code Instructions
 
-Claude can one-shot deploy a full Surge devnet (L1 + L2 + prover) with `deploy-surge-full.sh`. **Always pass `--force`** — without it the script blocks on `read -p` prompts that Claude can't answer.
+Two top-level scripts, by role:
 
-This file only documents what's specific to driving the deploy script *as an agent*. For the full guide (prerequisites, prover setup, two-VM splits, troubleshooting, hardware requirements), read [docs.surge.wtf/guides/running-surge](https://docs.surge.wtf/guides/running-surge) first.
+| Script | Role | Needs |
+|--------|------|-------|
+| `deploy-prover.sh` | Raiko ZisK prover (real proofs) | NVIDIA GPU on host |
+| `deploy-surge-full.sh` | L2 stack (Kurtosis L1 + contracts + Catalyst + driver) | no GPU; mock proofs by default |
+
+Pick based on what role the host should play. **Always pass `--force`** — without it both scripts block on interactive prompts agents can't answer.
+
+- **Same beefy box (one VM)**: run `deploy-prover.sh` first (raiko up), then `deploy-surge-full.sh` (L2 stack). Prover-first ordering avoids `deploy-surge-full.sh`'s Raiko-readiness check timing out.
+- **Two VMs (recommended for non-trivial GPU configs)**: prover VM runs `deploy-prover.sh`; L2 stack VM runs `deploy-surge-full.sh` with `RAIKO_HOST_ZKVM=http://<prover-ip>:8080` in `.env`. Post-deploy, `scp configs/{chain_spec_list,config}.json` from the L2 VM to the prover and `docker compose -f docker/docker-compose-zk.yml up -d --force-recreate` there.
+- **No GPU anywhere**: just `deploy-surge-full.sh --mock-prover`. Catalyst signs mock proofs; no Raiko build needed.
+
+Privacy mode is an orthogonal opt-in — see the dedicated section below. Mock vs real ZisK doesn't change the keygen/distribution flow, only the real-ZisK side additionally needs the guest rebuilt with matching hashes.
+
+This file only documents what's specific to driving the scripts *as an agent*. For the full guide (prerequisites, two-VM splits, troubleshooting, hardware requirements), read [docs.surge.wtf/guides/running-surge](https://docs.surge.wtf/guides/running-surge) first.
+
+For one-shot deploys, pick a ready-made subagent prompt from [`agent-prompts/`](./agent-prompts/) — one file per topology (mock single-host, real-ZisK single-host, real-ZisK two-host), privacy mode as a toggle. Each prompt has a "fill these in" header for host/SSH/branch placeholders and a pre-flight checklist.
 
 ## `--deployment local` vs `--deployment remote`
 
@@ -31,7 +46,16 @@ If you SSH'd in to deploy → `--deployment remote`.
 
 ### Real ZisK prover
 
-Requires Raiko already running. **Don't pass `RAIKO_HOST_ZKVM` inline** — `deploy-surge-full.sh` sources `.env` on every run and overrides any inline export. Edit `.env` first:
+Set up Raiko first via `deploy-prover.sh`:
+
+```bash
+# On the prover VM (or same-VM run before deploy-surge-full.sh):
+./deploy-prover.sh --force
+```
+
+That handles: NVIDIA + Docker pre-flight, raiko submodule init, apt+Rust+CUDA install, ZisK SDK install (~150 GB to `~/.zisk`), `docker compose up -d` for raiko-zk, and a poll on `/guest_data` until the vkey returns.
+
+Then on the L2 VM, **don't pass `RAIKO_HOST_ZKVM` inline** — `deploy-surge-full.sh` sources `.env` on every run and overrides any inline export. Edit `.env` first:
 
 ```bash
 RAIKO_HOST_ZKVM=http://host.docker.internal:8080    # same VM
@@ -46,7 +70,44 @@ Then deploy:
   --deployment remote --stack-option 2 --mode silence --force
 ```
 
-For two-VM and single-VM real-prover setup, follow [docs.surge.wtf/guides/running-surge/provers](https://docs.surge.wtf/guides/running-surge/provers).
+For two-VM splits and the prover hardware matrix, see [docs.surge.wtf/guides/running-surge/provers](https://docs.surge.wtf/guides/running-surge/provers).
+
+### Privacy mode
+
+Privacy mode is opt-in via `SURGE_PRIVACY_MODE=true` in `.env`. It's orthogonal to the prover type — applies to both mock and real ZisK runs. Components that consume the keys at runtime:
+
+| Component | Needs keys? |
+|-----------|-------------|
+| Catalyst | yes (encrypts blob bytes) |
+| Driver | yes (decrypts to rebuild L2 blocks) |
+| Real ZisK raiko host | yes (decrypts → builds witness for the guest) |
+| Real ZisK raiko guest | yes at runtime, **also needs matching hashes baked in at compile time** |
+| Mock raiko | no (bypasses the proof, signs ECDSA on whatever it receives) |
+
+Workflow (same regardless of prover):
+
+```bash
+# 1. Edit .env on the L2 VM
+sed -i 's|^SURGE_PRIVACY_MODE=.*|SURGE_PRIVACY_MODE=true|' .env
+
+# 2. Run / re-run deploy-surge-full.sh — generate_privacy_bundle is gated on
+#    SURGE_PRIVACY_MODE=true; it runs only when the flag is set, writes
+#    .privacy.env, and Catalyst+Driver pick up the keys via Compose interpolation.
+./deploy-surge-full.sh ... --force
+
+# 3. Sync to the real ZisK prover (skip if using mock — mock doesn't participate).
+#    Same-VM:
+./script/sync-privacy-to-prover.sh --local --rebuild
+#    Two-VM (from L2 VM):
+./script/sync-privacy-to-prover.sh --rebuild user@<prover-host>
+
+# 4. Recreate catalyst so the new env reaches the running container.
+docker compose -f docker-compose.yml --profile catalyst up -d --force-recreate catalyst
+```
+
+`--rebuild` rebuilds only the ZisK guest ELFs (~30 s on warm cache) and recreates raiko-zk — the prebuilt host image stays. Use `./script/sync-privacy-to-prover.sh --print` to dump values without applying. Flipping privacy on with mismatched hashes on the real ZisK side panics raiko with `privacy dispatch failed: Truncated`.
+
+Alternative on the prover VM (skips the SSH dance): `./deploy-prover.sh --privacy-mode --privacy-env /path/to/.privacy.env`.
 
 ## Built-in Raiko readiness check
 

@@ -26,6 +26,12 @@ services:
       # PERMISSIONLESS_PROVING_DELAY: 42300
       GENESIS_BLOCK_HASH: ${L2_GENESIS_HASH}
       NUM_PROOF_THRESHOLD: 1
+      # Forced-inclusion deploy parameters — read by DeployRealTimeSurgeL1.s.sol
+      # via vm.envOr(...). Compose's `${VAR}` substitution falls through to the
+      # protocol's compile-time defaults if any of these are unset/empty.
+      FORCED_INCLUSION_DELAY: ${FORCED_INCLUSION_DELAY}
+      FORCED_INCLUSION_FEE_IN_GWEI: ${FORCED_INCLUSION_FEE_IN_GWEI}
+      FORCED_INCLUSION_FEE_DOUBLE_THRESHOLD: ${FORCED_INCLUSION_FEE_DOUBLE_THRESHOLD}
     networks:
       - surge
     extra_hosts:
