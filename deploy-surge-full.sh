@@ -1026,11 +1026,17 @@ generate_l2_genesis() {
 
     local gen2spec_url="${SURGE_GEN2SPEC_URL:-https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/surge-poc/gen2spec/gen2spec.jq}"
     local gen2spec_file
-    gen2spec_file=$(mktemp /tmp/gen2spec.XXXXXX.jq)
+    gen2spec_file=$(mktemp /tmp/gen2spec.XXXXXX) || {
+        log_error "mktemp failed to create a tempfile for gen2spec.jq"
+        return 1
+    }
 
     log_info "Fetching gen2spec.jq from: $gen2spec_url"
-    if ! curl -sf --max-time 30 "$gen2spec_url" -o "$gen2spec_file" 2>/dev/null; then
+    local curl_err
+    curl_err=$(curl -sSf --max-time 30 "$gen2spec_url" -o "$gen2spec_file" 2>&1)
+    if [[ $? -ne 0 ]]; then
         log_error "Failed to fetch gen2spec.jq from: $gen2spec_url"
+        log_error "curl: ${curl_err:-(no error output)}"
         log_error "Set SURGE_GEN2SPEC_URL to override the URL, or check network connectivity"
         rm -f "$gen2spec_file"
         return 1
